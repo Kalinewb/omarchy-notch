@@ -2,6 +2,10 @@
 
 // The glow's falloff: opacity as a function of distance from the notch's edge.
 //
+// The curve below is the full-size one, reaching zero at 80 px. The notch's
+// `glowSize` setting is that reach in px; every knot distance scales with it
+// (opacities do not), so a 40 px glow is the same curve at half the distance.
+//
 // Not a shape and not a blur. Every pixel outside the notch takes its opacity
 // from its exact distance `d` (logical px) to the notch's silhouette -- the bar
 // plus both concave fillets -- through this one curve:
@@ -42,7 +46,16 @@ function slopes() {
 
 var m = slopes()
 
-function alpha(d) {
+// The knot distances for a glow reaching zero at `size` px.
+function scaled(size) {
+  var k = (size === undefined ? fullReach : Number(size)) / fullReach
+  return knots.map(function(n) { return { d: n.d * k, a: n.a } })
+}
+
+function alpha(d, size) {
+  var k = (size === undefined ? fullReach : Number(size)) / fullReach
+  if (k <= 0) return 0
+  d = d / k
   if (d <= knots[0].d) return knots[0].a
   var last = knots.length - 1
   if (d >= knots[last].d) return 0
@@ -55,14 +68,18 @@ function alpha(d) {
        + (-2 * t3 + 3 * t2) * knots[i + 1].a + (t3 - t2) * h * m[i + 1]
 }
 
-// The distance past which the glow is exactly zero.
-var reach = knots[knots.length - 1].d
+// The distance past which the full-size glow is exactly zero.
+var fullReach = knots[knots.length - 1].d
 
-// For ShaderEffect: the knots' distances, opacities and slopes as vec4s.
-function uniforms() {
+// For ShaderEffect, for a glow reaching zero at `size` px: the knots'
+// distances, opacities and slopes as vec4s. Scaling the distances by k scales
+// each slope by 1/k, which keeps the Hermite curve the same shape.
+function uniforms(size) {
+  var k = Number(size) / fullReach
+  var n = scaled(size)
   return {
-    d: Qt.vector4d(knots[0].d, knots[1].d, knots[2].d, knots[3].d),
-    a: Qt.vector4d(knots[0].a, knots[1].a, knots[2].a, knots[3].a),
-    m: Qt.vector4d(m[0], m[1], m[2], m[3])
+    d: Qt.vector4d(n[0].d, n[1].d, n[2].d, n[3].d),
+    a: Qt.vector4d(n[0].a, n[1].a, n[2].a, n[3].a),
+    m: Qt.vector4d(m[0] / k, m[1] / k, m[2] / k, m[3] / k)
   }
 }

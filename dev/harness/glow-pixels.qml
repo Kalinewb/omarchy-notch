@@ -24,7 +24,7 @@ Window {
   }
   function num(key, fallback) { var n = Number(args[key]); return isFinite(n) && args[key] !== undefined ? n : fallback }
 
-  readonly property real margin: Math.ceil(glow.reach) + 30
+  readonly property real margin: Math.ceil(glow.maxReach) + 30
   width: Math.ceil(island.width + 2 * margin)
   height: Math.ceil(island.height + margin)
 
@@ -42,6 +42,7 @@ Window {
       filletRadius: island.fillet
       color: win.args.color || "#FFB340"
       presence: win.num("presence", 1)
+      size: win.num("size", 80)
     }
 
     Notch.Island {

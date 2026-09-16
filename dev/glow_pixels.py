@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare a rendered glow PNG with the curve, pixel by pixel.
 
-    glow_pixels.py <png> <barX> <W> <H> <R> <F> <colour>
+    glow_pixels.py <png> <barX> <W> <H> <R> <F> <colour> <size>
 
 Distances are NOT taken from the shader's formula. The notch's outline -- left
 fillet arc, left side, bottom-left arc, bottom, bottom-right arc, right side,
@@ -13,9 +13,11 @@ Prints one JSON object.
 import json, math, subprocess, sys
 import numpy as np
 
-png, bx, W, H, R, F, colour = sys.argv[1], float(sys.argv[2]), *map(float, sys.argv[3:7]), sys.argv[7]
+png, bx, W, H, R, F, colour, SIZE = sys.argv[1], float(sys.argv[2]), *map(float, sys.argv[3:7]), sys.argv[7], float(sys.argv[8])
 
-KNOTS = [(6, 0.35), (20, 0.18), (50, 0.07), (80, 0.0)]
+# glow.js's full-size knots, with every distance scaled to reach zero at SIZE.
+K = SIZE / 80.0
+KNOTS = [(6 * K, 0.35), (20 * K, 0.18), (50 * K, 0.07), (80 * K, 0.0)]
 
 def slopes():
     m = [0.0]
@@ -100,19 +102,20 @@ res["maxError"] = float(err.max())
 res["meanError"] = float(err.mean())
 worst = np.argmax(np.where(keep, np.abs(alpha.ravel() - curve(np.maximum(d, 0))), -1))
 res["worst"] = {"x": float(cx[worst]), "y": float(cy[worst]), "distance": float(d[worst]), "alpha": float(alpha.ravel()[worst]), "expected": float(curve([d[worst]])[0])}
-res["nonZeroBeyond80"] = int(((d > 80.5) & (alpha.ravel() > 0)).sum())
+res["nonZeroBeyondReach"] = int(((d > SIZE + 0.5) & (alpha.ravel() > 0)).sum())
 res["maxDistanceOfNonZero"] = float(d[alpha.ravel() > 0].max())
 res["imageEdgeMaxAlpha"] = float(max(alpha[:, 0].max(), alpha[:, -1].max(), alpha[-1, :].max()))
 
-# 2. The four distances asked for, in four directions (bar sized so pixel
-#    centres sit at whole-pixel distances: H and the bar's x end in .5).
+# 2. The knot distances, in three directions: the pixel nearest each knot, its
+#    exact distance, its alpha, and the curve at that exact distance.
 def probe(name, fn):
     rows = []
-    for dd in (6, 20, 50, 80):
+    for dd, _ in KNOTS:
         x, y = fn(dd)
         i, j = px_at(x, y)
-        rows.append({"d": dd, "alpha": round(float(alpha[j, i]), 4), "curve": round(float(curve([dd])[0]), 4),
-                     "measuredDistance": round(float(dist(np.array([i + 0.5 - barX]), np.array([j + 0.5]))[0]), 3)})
+        md = float(dist(np.array([i + 0.5 - barX]), np.array([j + 0.5]))[0])
+        rows.append({"d": round(dd, 3), "measuredDistance": round(md, 3), "alpha": round(float(alpha[j, i]), 4),
+                     "curve": round(float(curve([md])[0]), 4), "curveAtKnot": round(float(curve([dd])[0]), 4)})
     res[name] = rows
 probe("belowBottom", lambda dd: (W / 2 - 0.5, H + dd))
 # Along the screen edge, out from the tip of the left fillet: the outline's

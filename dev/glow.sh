@@ -94,7 +94,7 @@ ipc simulateBattery auto 0 >/dev/null
 kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""
 
 echo
-jq -r '"  curve        " + ([.curve.alphaAt[] | "α(\(.d) px) = \(.alpha)"] | join(",  ")) + "   (monotone cubic Hermite through \([.curve.knots[] | "(\(.d), \(.a))"] | join(" ")), slopes \(.curve.slopes))"' <<<"$config"
+jq -r '"  curve        " + ([.curve.alphaAt[] | "α(\(.d) px) = \(.alpha)"] | join(",  ")) + "   (monotone cubic Hermite through \([.curve.knots[] | "(\(.d), \(.a))"] | join(" ")))"' <<<"$config"
 jq -r '"  colours      charging \(.colours.charging), full \(.colours.full), low battery \(.colours.low)"' <<<"$config"
 jq -r '"  motion       fade in \(.fadeInMs) ms \(.fadeEasing), fade out \(.fadeOutMs) ms \(.fadeEasing), colour crossfade \(.crossfadeMs) ms \(.crossfadeEasing); nothing else moves"' <<<"$config"
 echo
@@ -102,7 +102,7 @@ echo "  ${DIM}fade-in samples (t ms, presence, expected 1-(1-t/800)^3):${RESET}"
 for s in "${fade[@]}"; do
   jq -r '"    t=\(.t)  presence=\(.presence)  expected=\(((if .t > 800 then 0 else (1 - .t/800) end) as $u | 1 - $u*$u*$u) * 10000 | round / 10000)  colour=\(.color)"' <<<"$s"
 done
-echo "  ${DIM}held samples, 250 ms apart (presence / α at 0,6,20,50,80,100 px):${RESET} $(for s in "${still[@]}"; do jq -r '"\(.presence)/\(.layers|join(","))"' <<<"$s"; done | tr '\n' ' ')"
+echo "  ${DIM}held samples, 250 ms apart (presence / α at the knots and 10 px past the reach):${RESET} $(for s in "${still[@]}"; do jq -r '"\(.presence)/\(.layers|join(","))"' <<<"$s"; done | tr '\n' ' ')"
 echo "  ${DIM}charging → full:${RESET} $(jq -r '"t=\(.t) \(.color) presence \(.presence)"' <<<"$mid"),  $(jq -r '"t=\(.t) \(.color) presence \(.presence)"' <<<"$full")"
 echo
 
@@ -114,7 +114,7 @@ check "…rising at every sample, never past 1" "true" \
   "$(printf '%s\n' "${fade[@]}" | jq -s '[.[].presence] as $p | all(range(1; $p|length); $p[.] >= $p[.-1]) and all($p[]; . <= 1)')"
 check "then it is completely still: six samples over 1.5 s identical" "true" \
   "$(printf '%s\n' "${still[@]}" | jq -s '[.[] | [.presence, .layers]] | unique | length == 1')"
-check "…at full presence: α 0.35 at 0 and 6 px, 0.18 at 20, 0.07 at 50, 0 at 80 and 100" "[1,[0.35,0.35,0.18,0.07,0,0]]" \
+check "…at full presence, the default 30 px glow: α 0.35 at 2.25 px, 0.18 at 7.5, 0.07 at 18.75, 0 at 30 and 40" "[1,[0.35,0.18,0.07,0,0]]" \
   "$(jq -c '[.presence, .layers]' <<<"${still[0]}")"
 check "at full charge the colour is mid-crossfade at ~250 ms" "true" \
   "$(jq -r '.color != "#FFB340" and .color != "#30D158"' <<<"$mid")"
@@ -124,7 +124,7 @@ check "a low battery glows red (#FF453A)" "low #FF453A 1" "$(jq -r '"\(.mode) \(
 check "unplugging above the threshold fades out, keeping its colour" "true" \
   "$(jq -r '.presence > 0 and .presence < 1 and .color == "#FF453A"' <<<"$fading_out")"
 check "…and is gone by 1.2 s" "0" "$(jq -r .presence <<<"$gone")"
-check "the notch's window leaves the glow's full 80 px below the resting notch ${DIM}($(jq -r .room <<<"${still[0]}") px)${RESET}" "true" "$(jq -r '.room >= 88' <<<"${still[0]}")"
+check "the glow's window leaves room for the largest glow (80 px) below the resting notch ${DIM}($(jq -r .room <<<"${still[0]}") px)${RESET}" "true" "$(jq -r '.room >= 88' <<<"${still[0]}")"
 read -r room_o glow_h_o notch_h_o <<<"$room_open"
 read -r room_c glow_h_c notch_h_c <<<"$room_charging"
 check "…and below the open notch ${DIM}($room_o px)${RESET}" "true" "$(awk -v r="$room_o" 'BEGIN { print (r >= 88) ? "true" : "false" }')"
@@ -138,48 +138,50 @@ fi
 # Pixels
 # ---------------------------------------------------------------------------
 
-render() { # render <png> <colour> <presence> <w> <h> <r>
+render() { # render <png> <colour> <presence> <w> <h> <r> <size>
   QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 \
-    timeout 30 qml6 "$root/glow-pixels.qml" -- "w=$4" "h=$5" "r=$6" fillet=10 offset=0.5 "color=$2" "presence=$3" "out=$1" 2>&1 \
+    timeout 30 qml6 "$root/glow-pixels.qml" -- "w=$4" "h=$5" "r=$6" fillet=10 offset=0.5 "color=$2" "presence=$3" "size=$7" "out=$1" 2>&1 \
     | sed -n 's/^.*GLOW barX //p'
 }
 
 # Heights end in .5 and the bar is offset half a pixel, so pixel centres sit at
 # whole-pixel distances from the bottom edge and the probes read exactly 6, 20,
 # 50 and 80 px.
-for spec in "charging #FFB340 180 31.5 10" "full #30D158 180 31.5 10" "low #FF453A 180 31.5 10" "open #FFB340 400 67.5 18"; do
-  read -r name colour W H R <<<"$spec"
+for spec in "charging #FFB340 180 31.5 10 30" "full #30D158 180 31.5 10 30" "low #FF453A 180 31.5 10 30" "open #FFB340 600 31.5 10 30" "largest #FFB340 180 31.5 10 80" "smallest #FFB340 180 31.5 10 10"; do
+  read -r name colour W H R SIZE <<<"$spec"
   png="$root/glow-$name.png"
-  bx=$(render "$png" "$colour" 1 "$W" "$H" "$R")
-  echo; echo "${BOLD}Pixels, $name ($colour)${RESET} ${DIM}${W}×${H} notch, bottom r=$R, fillet r=10, presence 1${RESET}"
+  bx=$(render "$png" "$colour" 1 "$W" "$H" "$R" "$SIZE")
+  echo; echo "${BOLD}Pixels, $name ($colour)${RESET} ${DIM}${W}×${H} notch, bottom r=$R, fillet r=10, glow size $SIZE px, presence 1${RESET}"
   [[ -f $png && -n $bx ]] || { check "rendered" "true" "false"; continue; }
-  m=$(python3 "$REPO/dev/glow_pixels.py" "$png" "$bx" "$W" "$H" "$R" 10 "$colour")
+  m=$(python3 "$REPO/dev/glow_pixels.py" "$png" "$bx" "$W" "$H" "$R" 10 "$colour" "$SIZE")
 
   for probe in belowBottom cornerDiagonal screenEdgeBeyondFillet; do
-    echo "  ${DIM}$probe:${RESET} $(jq -r --arg p "$probe" '[.[$p][] | "\(.d) px → α \(.alpha) (curve \(.curve), exact distance \(.measuredDistance))"] | join(";  ")' <<<"$m")"
+    echo "  ${DIM}$probe:${RESET} $(jq -r --arg p "$probe" '[.[$p][] | "knot \(.d) px (curve \(.curveAtKnot)) → pixel at \(.measuredDistance) px: α \(.alpha), curve there \(.curve)"] | join(";  ")' <<<"$m")"
   done
   echo "  ${DIM}down the middle, 1 px steps from the edge: $(jq -r '.profile[1:] | map(tostring) | join(" ")' <<<"$m" | cut -c1-400)…${RESET}"
 
   check "every pixel outside the notch matches the curve at its exact distance to the outline, to within 1/255 ${DIM}($(jq -r '.pixelsCompared' <<<"$m") pixels, max error $(jq -r '.maxError*10000|round/10000' <<<"$m"), mean $(jq -r '.meanError*100000|round/100000' <<<"$m"))${RESET}" \
     "true" "$(jq -r '.maxError <= (1/255 + 0.0005)' <<<"$m")"
-  check "α at 6 / 20 / 50 / 80 px below the edge is 0.35 / 0.18 / 0.07 / 0 (±1/255)" "true" \
+check "below the edge at the knots ($(jq -r '[.belowBottom[].d] | join(" / ")' <<<"$m") px) α matches 0.35 / 0.18 / 0.07 / 0 at the exact distance (±1/255)" "true" \
     "$(jq -r '[.belowBottom[] | ((.alpha - .curve) | fabs) <= (1/255 + 0.0005)] | all' <<<"$m")"
   check "the same around the rounded bottom corner" "true" \
     "$(jq -r '[.cornerDiagonal[] | ((.alpha - .curve) | fabs) <= 0.01] | all' <<<"$m")"
-  check "no pixel further than 80 px from the outline has any glow" "0" "$(jq -r .nonZeroBeyond80 <<<"$m")"
+  check "no pixel further than $SIZE px from the outline has any glow" "0" "$(jq -r .nonZeroBeyondReach <<<"$m")"
   check "the glow is zero at every edge of the drawn area (nothing is cut off)" "true" "$(jq -r '.imageEdgeMaxAlpha == 0' <<<"$m")"
-  check "no step or kink: neighbouring pixels differ by at most 5/255, and that difference changes by at most 2/255" "true" \
-    "$(jq -r '.maxStep <= (5/255 + 0.0001) and .maxStepChange <= (2/255 + 0.0001)' <<<"$m")"
+  # A smaller glow is the same curve over fewer pixels, so its steps are
+  # proportionally larger; the limit scales with 80 / size.
+  check "no step or kink: neighbouring pixels differ by at most $(awk -v s="$SIZE" 'BEGIN { printf "%.3f", (5/255) * 80 / s }'), and that difference changes by at most $(awk -v s="$SIZE" 'BEGIN { printf "%.3f", (2/255) * (80 / s) ^ 2 + 2/255 }') ${DIM}(measured $(jq -r '.maxStep*1000|round/1000' <<<"$m") / $(jq -r '.maxStepChange*1000|round/1000' <<<"$m"))${RESET}" "true" \
+    "$(jq -r --argjson s "$SIZE" '.maxStep <= ((5/255) * 80 / $s + 0.0001) and .maxStepChange <= ((2/255) * (80 / $s) * (80 / $s) + 2/255 + 0.0001)' <<<"$m")"
   check "every glow pixel with α ≥ 0.3 is $colour to within 8-bit rounding ${DIM}(max channel error $(jq -r '.colourMaxError*1000|round/1000' <<<"$m"))${RESET}" "true" \
     "$(jq -r '.colourMaxError <= 0.015' <<<"$m")"
   check "inside the notch: pure black, fully opaque" "true" "$(jq -r '.insideNotch == [0,0,0,1]' <<<"$m")"
 done
 
 png="$root/glow-off.png"
-bx=$(render "$png" "#FFB340" 0 180 31.5 10)
+bx=$(render "$png" "#FFB340" 0 180 31.5 10 30)
 echo; echo "${BOLD}Pixels, glow off${RESET} ${DIM}(presence 0)${RESET}"
 if [[ -f $png ]]; then
-  m=$(python3 "$REPO/dev/glow_pixels.py" "$png" "$bx" 180 31.5 10 10 "#FFB340")
+  m=$(python3 "$REPO/dev/glow_pixels.py" "$png" "$bx" 180 31.5 10 10 "#FFB340" 30)
   check "nothing outside the notch" "true" "$(jq -r '(.profile[1:] | max) == 0' <<<"$m")"
 fi
 

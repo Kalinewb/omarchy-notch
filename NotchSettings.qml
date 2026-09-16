@@ -133,8 +133,7 @@ PopupCard {
 
       NumberRow { label: "Width at rest"; key: "compactWidth"; value: root.bar ? root.bar.notchCompactWidth : 180; from: 100; to: 600; stepSize: 10 }
       NumberRow { label: "Height at rest"; key: "compactHeight"; value: root.bar ? root.bar.notchCompactHeight : 32; from: 26; to: 60; stepSize: 2 }
-      NumberRow { label: "Bottom corners at rest"; key: "bottomRadius"; value: root.bar ? root.bar.notchBottomRadius : 10; from: 0; to: 24; stepSize: 1 }
-      NumberRow { label: "Bottom corners when open"; key: "expandedBottomRadius"; value: root.bar ? root.bar.notchExpandedBottomRadius : 18; from: 0; to: 34; stepSize: 1 }
+      NumberRow { label: "Bottom corners"; key: "bottomRadius"; value: root.bar ? root.bar.notchBottomRadius : 10; from: 0; to: 24; stepSize: 1 }
       NumberRow { label: "Edge fillets"; key: "filletRadius"; value: root.bar ? root.bar.notchFilletRadius : 10; from: 0; to: 24; stepSize: 1 }
 
       // --- battery -------------------------------------------------------------
@@ -147,6 +146,40 @@ PopupCard {
         ToggleSwitch {
           checked: root.bar ? root.bar.notchBatteryGlow : true
           onToggled: root.set("batteryGlow", !checked)
+        }
+      }
+
+      SettingRow {
+        id: glowSizeRow
+        label: "Glow size"
+        // The slider shows its value while it moves, and saves once on release
+        // so dragging does not write shell.json on every step.
+        property real liveSize: root.bar ? root.bar.notchGlowSize : 30
+        Row {
+          spacing: Style.space(8)
+          PanelSlider {
+            id: glowSizeSlider
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(150)
+            height: Style.space(24)
+            bar: root.bar
+            minimum: 10
+            maximum: 80
+            step: 1
+            integer: true
+            value: root.bar ? root.bar.notchGlowSize : 30
+            onMoved: function(value) { glowSizeRow.liveSize = value }
+            onReleased: function(value) { root.set("glowSize", Math.round(value)) }
+          }
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(40)
+            horizontalAlignment: Text.AlignRight
+            text: Math.round(glowSizeSlider.dragging ? glowSizeRow.liveSize : (root.bar ? root.bar.notchGlowSize : 30)) + " px"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
         }
       }
 

@@ -5,8 +5,10 @@ import "glow.js" as GlowCurve
 //
 // A ShaderEffect, not a shape: shaders/glow.frag computes each pixel's exact
 // distance to the notch's silhouette (bar plus concave fillets) and takes its
-// opacity from the curve in glow.js -- 0.35 up to 6 px, 0.18 at 20 px, 0.07 at
-// 50 px, reaching 0 smoothly at 80 px. Nothing is drawn under the notch.
+// opacity from the curve in glow.js -- at full size 0.35 up to 6 px, 0.18 at
+// 20 px, 0.07 at 50 px, reaching 0 smoothly at 80 px; `size` sets where it
+// reaches zero and scales the other distances with it. Nothing is drawn under
+// the notch.
 //
 // This item's origin is the notch bar's top-left corner, like the bar's own
 // coordinates; the effect itself spills `reach` px (plus a spare `pad`) past
@@ -21,19 +23,22 @@ Item {
   property real filletRadius: 0
   property color color: "#FFB340"
   property real presence: 0
+  // Where the glow reaches zero, px from the edge.
+  property real size: 30
 
-  readonly property real reach: GlowCurve.reach
+  readonly property real reach: Math.max(1, size)
+  // The window holding the glow is sized once, for the largest glow allowed.
+  readonly property real maxReach: GlowCurve.fullReach
   readonly property real pad: 8
-  readonly property var knots: GlowCurve.knots
-  readonly property var slopes: GlowCurve.m
-  function alphaAt(d) { return GlowCurve.alpha(d) }
+  readonly property var knots: GlowCurve.scaled(reach)
+  function alphaAt(d) { return GlowCurve.alpha(d, reach) }
 
   width: barWidth
   height: barHeight
   visible: presence > 0.001 && barHeight > 0.5
 
   ShaderEffect {
-    readonly property var curve: GlowCurve.uniforms()
+    readonly property var curve: GlowCurve.uniforms(root.reach)
 
     x: -margin
     y: 0

@@ -1229,7 +1229,7 @@ Item {
   //
   //   compact        glance items shown in the resting notch: "clock", "date",
   //                  "media". Empty by default, which keeps the notch pitch black.
-  //   expanded       glance items on the expanded notch's top row (default
+  //   expanded       glance items shown in the open notch's row (default
   //                  ["clock", "date", "media"], or ["media"] when the layout
   //                  already has an omarchy.clock widget)
   //   expandOn       "hover" (default) or "click"
@@ -1237,13 +1237,13 @@ Item {
   //   foreground     text colour (default: the theme's bar text)
   //   compactWidth   resting width in logical px (default 180)
   //   compactHeight  resting height, and the space reserved for windows (default 32)
-  //   bottomRadius   convex bottom-corner radius at rest (default 10)
-  //   expandedBottomRadius  ...when expanded (default 18)
+  //   bottomRadius   convex bottom-corner radius (default 10)
   //   filletRadius   concave fillet radius where the notch meets the screen edge (default 10)
   //   hoverDelay / collapseDelay   ms (default 60 / 350)
   //   peekOnTrackChange  briefly widen to show a new track (default true)
   //   peekDuration   ms (default 3500)
   //   batteryGlow    the charging glow (default true)
+  //   glowSize       how far the glow reaches before it is zero, px (default 30, 10–80)
   //   chargingColor / fullColor / lowColor   (default #FFB340 / #30D158 / #FF453A)
   //   lowBattery / criticalBattery   percent thresholds (default 20 / 10)
   //   batteryPeek    widen to show the charge when plugged in or running low (default true)
@@ -1288,7 +1288,6 @@ Item {
   readonly property real notchCompactWidth: Math.max(0, notchNumber("compactWidth", 180))
   readonly property real notchCompactHeight: Math.max(barSize, notchNumber("compactHeight", 32))
   readonly property real notchBottomRadius: Math.max(0, notchNumber("bottomRadius", 10))
-  readonly property real notchExpandedBottomRadius: Math.max(0, notchNumber("expandedBottomRadius", 18))
   readonly property real notchFilletRadius: Math.max(0, notchNumber("filletRadius", 10))
   readonly property int notchHoverDelay: Math.max(0, notchNumber("hoverDelay", 60))
   readonly property int notchCollapseDelay: Math.max(0, notchNumber("collapseDelay", 350))
@@ -1299,6 +1298,7 @@ Item {
   // --- battery ---------------------------------------------------------------
 
   readonly property bool notchBatteryGlow: notchSetting("batteryGlow", true) !== false
+  readonly property real notchGlowSize: Math.max(10, Math.min(80, notchNumber("glowSize", 30)))
   readonly property color notchChargingColor: notchSetting("chargingColor", "#FFB340")
   readonly property color notchFullColor: notchSetting("fullColor", "#30D158")
   readonly property color notchLowColor: notchSetting("lowColor", "#FF453A")
@@ -1390,13 +1390,12 @@ Item {
     }) !== false
   }
 
-  // Inner layout of the expanded notch: the top row is as tall as the resting
-  // notch, the widget row sits under it, then a little bottom padding.
+  // The open notch is one row on the same axis as the resting one: it keeps
+  // the resting height and only widens, with the widgets vertically centred
+  // where the resting notch's content sits.
   readonly property real notchSidePadding: Style.space(14)
-  readonly property real notchWidgetRowHeight: barSize + Style.space(4)
-  readonly property real notchBottomPadding: Style.space(8)
   readonly property real notchSectionGap: Style.space(18)
-  readonly property real notchExpandedHeight: notchCompactHeight + notchWidgetRowHeight + notchBottomPadding
+  readonly property real notchExpandedHeight: notchCompactHeight
 
   // Motion, as numbers. Growing runs on a damped spring (one overshoot of
   // about 4 %, then settled): height over 350 ms, width 50 ms later over
@@ -1633,9 +1632,7 @@ Item {
     readonly property real compactWidth: Math.max(root.notchCompactWidth,
       compactGlance.empty ? 0 : compactGlance.implicitWidth + 2 * root.notchSidePadding)
     readonly property real peekWidth: Math.max(compactWidth, peekGlance.implicitWidth + 2 * root.notchSidePadding)
-    readonly property real expandedWidth: Math.max(compactWidth,
-      expandedGlance.implicitWidth + 2 * root.notchSidePadding,
-      widgetRow.implicitWidth + 2 * root.notchSidePadding)
+    readonly property real expandedWidth: Math.max(compactWidth, widgetRow.implicitWidth + 2 * root.notchSidePadding)
 
     readonly property real targetWidth: Math.min(maxBarWidth,
       notchState === "expanded" ? expandedWidth : notchState === "peek" ? peekWidth : compactWidth)
@@ -1703,20 +1700,12 @@ Item {
       easing.type: Easing.OutCubic
     }
 
-    // How far the notch is between resting and expanded (0..1, unclamped
-    // during the overshoot), and how far it has grown out of the edge (0..1).
-    readonly property real openness: {
-      var span = root.notchExpandedHeight - root.notchCompactHeight
-      return span > 0 ? Math.max(0, (shownHeight - root.notchCompactHeight) / span) : 0
-    }
+    // How far the notch has grown out of the edge (0..1).
     readonly property real emergence: root.notchCompactHeight > 0 ? Math.max(0, Math.min(1, shownHeight / root.notchCompactHeight)) : 1
 
     // Requested radii. While the notch grows out of the edge both scale with
-    // its height, so it never passes through a pill; past the resting height
-    // the bottom radius eases towards its expanded value.
-    readonly property real requestedBottomRadius: emergence < 1
-      ? root.notchBottomRadius * emergence
-      : root.notchBottomRadius + (root.notchExpandedBottomRadius - root.notchBottomRadius) * Math.min(1, openness)
+    // its height, so it never passes through a pill.
+    readonly property real requestedBottomRadius: root.notchBottomRadius * emergence
     readonly property real requestedFilletRadius: root.notchFilletRadius * emergence
 
     function point(p) { return { x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)) } }
@@ -1758,8 +1747,8 @@ Item {
           mode: root.glowMode, color: String(barWindow.glowColorShown).toUpperCase(),
           presence: Number(glowPresence.toFixed(4)),
           curve: {
-            knots: glow.knots, slopes: glow.slopes.map(function(v) { return Number(v.toFixed(6)) }), reach: glow.reach,
-            alphaAt: [0, 6, 20, 50, 80, 100].map(function(d) { return { d: d, alpha: Number(glow.alphaAt(d).toFixed(4)), shown: Number((glow.alphaAt(d) * glowPresence).toFixed(4)) } })
+            size: glow.reach, knots: glow.knots.map(function(n) { return { d: Number(n.d.toFixed(3)), a: n.a } }),
+            alphaAt: glow.knots.map(function(n) { return n.d }).concat([glow.reach + 10]).map(function(d) { return { d: Number(d.toFixed(3)), alpha: Number(glow.alphaAt(d).toFixed(4)), shown: Number((glow.alphaAt(d) * glowPresence).toFixed(4)) } })
           },
           window: { namespace: "omarchy-notch-glow", height: glowWindow.height, input: "none" },
           roomBelowBar: Number((glowWindow.height - island.barHeight).toFixed(3)),
@@ -1791,7 +1780,9 @@ Item {
       screen: barWindow.screen
       visible: barWindow.visible
       anchors { top: true; left: true; right: true }
-      implicitHeight: Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + glow.reach + glow.pad + 16)
+      // Sized for the largest glow the setting allows, so changing the size
+      // never resizes the window either.
+      implicitHeight: Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + glow.maxReach + glow.pad + 16)
       color: "transparent"
       surfaceFormat.opaque: false
       exclusionMode: ExclusionMode.Ignore
@@ -1809,6 +1800,7 @@ Item {
         filletRadius: island.fillet
         color: barWindow.glowColorShown
         presence: barWindow.glowPresence
+        size: root.notchGlowSize
       }
     }
 
@@ -1915,32 +1907,24 @@ Item {
         }
 
         Glance {
-          id: expandedGlance
-          x: (content.width - width) / 2
-          width: implicitWidth
-          height: root.notchCompactHeight
+          id: expandedGlanceProbe
+          opacity: 0
+          enabled: false
           items: root.notchExpandedItems
-          foreground: root.notchForeground
           batteryPercent: root.batteryPercent
-          batteryCharging: root.batteryCharging
-          batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
-            : root.batteryMode === "full" ? root.notchFullColor
-            : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body
-          opacity: barWindow.notchState === "expanded" ? 1 : 0
-          visible: opacity > 0
-          Behavior on opacity { NumberAnimation { duration: barWindow.expanded ? 220 : 90; easing.type: Easing.OutCubic } }
         }
 
-        // Every widget from the bar layout, left | center | right. Always
-        // loaded, so widgets keep their services and their width is known
-        // before the notch opens; hidden and inert while it is closed.
+        // Every widget from the bar layout, left | center | glance | right, in
+        // the same row as the resting notch's content. Always loaded, so
+        // widgets keep their services and their width is known before the
+        // notch opens; hidden and inert while it is closed.
         Row {
           id: widgetRow
           x: (content.width - width) / 2
-          y: root.notchCompactHeight
-          height: root.notchWidgetRowHeight
+          y: 0
+          height: root.notchCompactHeight
           spacing: root.notchSectionGap
           opacity: barWindow.notchState === "expanded" ? 1 : 0
           enabled: barWindow.expanded
@@ -1951,6 +1935,25 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             entries: root.layoutEntries("center")
             region: "center"
+          }
+          Glance {
+            id: expandedGlance
+            anchors.verticalCenter: parent.verticalCenter
+            // Hidden while it has nothing to show, so the row has no empty gap.
+            // Whether it has anything is read from a copy outside the row: a
+            // hidden item's own content measures as empty, and would stay hidden.
+            visible: expandedGlanceProbe.implicitWidth > 0
+            width: implicitWidth
+            height: root.notchCompactHeight
+            items: root.notchExpandedItems
+            foreground: root.notchForeground
+            batteryPercent: root.batteryPercent
+            batteryCharging: root.batteryCharging
+            batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
+              : root.batteryMode === "full" ? root.notchFullColor
+              : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.body
           }
           RightModules { anchors.verticalCenter: parent.verticalCenter }
         }

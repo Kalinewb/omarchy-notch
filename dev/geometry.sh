@@ -132,8 +132,8 @@ run_checks "$compact"
 report "$expanded" "Expanded"
 run_checks "$expanded"
 
-check "expanded is taller than at rest" "true" \
-  "$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); b=json.loads(sys.argv[2]); print("true" if b["bar"]["height"] > a["bar"]["height"] else "false")' "$compact" "$expanded")"
+check "open, the notch keeps the resting height and top edge: it only widens" "true" \
+  "$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); b=json.loads(sys.argv[2]); print("true" if b["bar"]["height"] == a["bar"]["height"] and b["bar"]["y"] == 0 and b["bar"]["width"] >= a["bar"]["width"] else "false")' "$compact" "$expanded")"
 check "windows are kept below the resting notch (windowsToTop off)" "true" \
   "$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); print("true" if abs(a["window"]["exclusiveZone"] - __import__("math").ceil(a["bar"]["height"])) < 0.01 else "false")' "$compact")"
 

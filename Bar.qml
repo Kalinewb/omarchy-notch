@@ -1270,6 +1270,8 @@ Item {
   //                  (they stay loaded, and can still be a hover/open plugin)
   //   chargingColor / fullColor / lowColor   (default #FFB340 / #30D158 / #FF453A)
   //   lowBattery / criticalBattery   percent thresholds (default 20 / 10)
+  //   greenAbove     charging at or above this percent shows the full colour
+  //                  (default 100: only when full)
   //   batteryPeek    widen to show the charge when plugged in or running low (default true)
   //   autoHide       true: the resting notch hides in the screen edge until the
   //                  pointer reaches the top edge above it (default false).
@@ -1368,40 +1370,61 @@ Item {
     return parts.join(" + ")
   }
 
-  // Keybinds are added to the running Hyprland with `hyprctl eval`, nothing is
-  // written to its config: a bind in place is removed before a new one goes in,
-  // and both are re-added after every config reload, which clears them.
+  // Keybinds are added to the running Hyprland with `hyprctl eval`; nothing is
+  // written to its config. Hyprland keeps runtime binds across a shell
+  // restart and a new shell can't know what an earlier one bound, so every
+  // apply hands bin/notch-keybinds the wanted binds and it reconciles them
+  // against Hyprland's own list: present once is left alone, missing is
+  // added, duplicates and stale notch binds are removed -- only on keys where
+  // every bind is a notch bind. Config reloads clear runtime binds; the apply
+  // after `configreloaded` adds them back. NOTCH_NO_KEYBINDS=1 turns it off
+  // (test harnesses).
   property var appliedKeys: ({ open: "", settings: "", autoHide: "" })
   readonly property string keyState: notchOpenKey + "|" + notchSettingsKey + "|" + notchAutoHideKey
+  // Only the notch Omarchy's shell is hosting touches Hyprland's binds. A notch
+  // running anywhere else (a test harness) would otherwise reconcile the live
+  // notch's binds away; NOTCH_FORCE_KEYBINDS=1 lets a keybind test opt in.
+  readonly property bool keybindsDisabled: Quickshell.env("NOTCH_NO_KEYBINDS") === "1"
+    || (!root.shell && Quickshell.env("NOTCH_FORCE_KEYBINDS") !== "1")
+  // Appended to every keybind description. Test harnesses set it, so a test
+  // notch's binds are distinct and its reconcile can never touch the live
+  // notch's binds (which it would otherwise see as stale notch binds).
+  readonly property string keybindTag: Quickshell.env("NOTCH_KEYBIND_TAG") || ""
   readonly property var keybindActions: ({
-    open: { method: "toggle", description: "Open the notch" },
-    settings: { method: "settings", description: "Notch settings" },
-    autoHide: { method: "autoHide toggle", description: "Toggle notch auto-hide" }
+    open: { method: "toggle", description: "Open the notch" + keybindTag },
+    settings: { method: "settings", description: "Notch settings" + keybindTag },
+    autoHide: { method: "autoHide toggle", description: "Toggle notch auto-hide" + keybindTag }
   })
   onKeyStateChanged: Qt.callLater(applyKeybinds)
   function keybindLua(key, method, description) {
     return 'hl.bind("' + key + '", hl.dsp.exec_cmd("omarchy-shell -q notch ' + method + '"), { description = "' + description + '" })'
   }
-  function applyKeybinds(force) {
+  property bool keybindRerun: false
+  function applyKeybinds() {
+    if (keybindsDisabled) return
     var wanted = { open: notchOpenKey, settings: notchSettingsKey, autoHide: notchAutoHideKey }
-    var lua = []
     var names = ["open", "settings", "autoHide"]
+    var list = []
     for (var i = 0; i < names.length; i++) {
       var n = names[i]
-      if (!force && appliedKeys[n] === wanted[n]) continue
-      if (appliedKeys[n] && !force) lua.push('hl.unbind("' + appliedKeys[n] + '")')
-      if (wanted[n]) lua.push(keybindLua(wanted[n], keybindActions[n].method, keybindActions[n].description))
+      if (!wanted[n]) continue
+      list.push({ description: keybindActions[n].description, combo: wanted[n],
+                  lua: keybindLua(wanted[n], keybindActions[n].method, keybindActions[n].description) })
     }
     appliedKeys = wanted
-    if (lua.length === 0) return
-    lastKeybindLua = lua.join("; ")
-    keybindProcess.command = ["hyprctl", "eval", lastKeybindLua]
-    keybindProcess.running = true
+    var script = String(Qt.resolvedUrl("bin/notch-keybinds")).replace(/^file:\/\//, "")
+    keybindProcess.command = [script, JSON.stringify(list), JSON.stringify(names.map(function(n) { return keybindActions[n].description }))]
+    if (keybindProcess.running) keybindRerun = true
+    else keybindProcess.running = true
   }
   // The last Lua sent to Hyprland for keybinds, for the IPC report: Hyprland
   // itself only reports a bind's action as a function reference.
   property string lastKeybindLua: ""
-  Process { id: keybindProcess }
+  Process {
+    id: keybindProcess
+    stdout: StdioCollector { onStreamFinished: root.lastKeybindLua = text.trim() }
+    onExited: if (root.keybindRerun) { root.keybindRerun = false; running = true }
+  }
   readonly property color notchColor: notchSetting("color", "#000000")
   readonly property color notchForeground: notchSetting("foreground", themeForeground)
   readonly property real notchCompactWidth: Math.max(0, notchNumber("compactWidth", 180))
@@ -1426,6 +1449,11 @@ Item {
   readonly property color notchFullColor: notchSetting("fullColor", "#30D158")
   readonly property color notchLowColor: notchSetting("lowColor", "#FF453A")
   readonly property int notchLowBattery: notchNumber("lowBattery", 20)
+  // Charging at or above this percentage already shows the full (green)
+  // colour; 100 (default) means only a full battery does.
+  readonly property int notchGreenAbove: Math.max(0, Math.min(100, notchNumber("greenAbove", 100)))
+  readonly property bool batteryLooksFull: batteryMode === "full"
+    || (batteryMode === "charging" && batteryPercent >= notchGreenAbove)
   readonly property int notchCriticalBattery: notchNumber("criticalBattery", 10)
   readonly property bool notchBatteryPeek: notchSetting("batteryPeek", true) !== false
 
@@ -1458,7 +1486,7 @@ Item {
   // red when the battery is low. None on battery above the low threshold.
   readonly property string glowMode: !notchBatteryGlow ? "none"
     : batteryMode === "critical" ? "low" : batteryMode
-  readonly property color glowColor: glowMode === "full" ? notchFullColor
+  readonly property color glowColor: glowMode === "full" || (glowMode === "charging" && batteryLooksFull) ? notchFullColor
     : glowMode === "low" ? notchLowColor : notchChargingColor
 
   // The glow does not move on its own. It fades in once, 800 ms ease-out
@@ -1486,7 +1514,7 @@ Item {
     function onRawEvent(event) {
       if (event && String(event.name) === "configreloaded") {
         glowLayerRuleProcess.running = true
-        root.applyKeybinds(true)
+        root.applyKeybinds()
       }
     }
   }
@@ -1662,6 +1690,9 @@ Item {
       }
       return root.setNotchSetting(key, parsed) ? "ok" : "unsaved"
     }
+    // Read-only: what the focused notch shows and how its settings resolve,
+    // for dev/contract.sh to compare before and after the plugin contract.
+    function snapshot(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.contractSnapshot()) : "{}" }
     function geometry(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.geometryReport()) : "{}" }
   }
 
@@ -2026,6 +2057,48 @@ Item {
 
     function point(p) { return { x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)) } }
 
+    // The structure of what the notch shows, without anything that changes
+    // on its own (clock text, media, battery level): which widgets the row
+    // shows, in order, with their widths; which glance items each place
+    // resolves to; the pickers' choices; the resolved settings.
+    function contractSnapshot() {
+      var slots = root.moduleSlots.filter(function(sl) { return root.slotWindow(sl) === barWindow })
+      var row = []
+      for (var i = 0; i < slots.length; i++) {
+        var sl = slots[i]
+        if (sl.filteredOut || sl.width <= 0) continue
+        var p = sl.mapToItem(widgetRow, 0, 0)
+        row.push({ id: root.canonicalWidgetId(sl.moduleName), region: sl.region, x: Math.round(p.x * 100) / 100, w: Math.round(sl.width * 100) / 100 })
+      }
+      row.sort(function(a, b) { return a.x - b.x })
+      var widgetsWidth = 0
+      for (var j = 0; j < row.length; j++) widgetsWidth += row[j].w
+      return {
+        state: notchState, view: view, viewPlugin: viewPlugin, settingsOpen: settingsOpen,
+        rowShown: widgetRow.opacity > 0,
+        row: row.map(function(r) { return r.id + ":" + r.w }),
+        widgetsWidth: Math.round(widgetsWidth * 100) / 100,
+        rowFilter: widgetRow.filter,
+        glance: {
+          compact: root.notchCompactItems, expanded: expandedGlance.visible ? root.notchExpandedItems : [],
+          hover: barWindow.view === "hover" ? root.notchHoverItems : [],
+          peek: peekGlance.items
+        },
+        heightIsRest: Math.abs(targetHeight - root.notchCompactHeight) < 0.01,
+        settingsPanel: { width: Math.round(settingsWidth * 100) / 100, height: Math.round(settingsHeight * 100) / 100 },
+        pickers: root.layoutPluginChoices(),
+        resolved: {
+          compact: root.notchCompactItems, expanded: root.notchExpandedItems,
+          hoverItems: root.notchHoverItems, hoverPlugins: root.notchHoverPlugins,
+          hiddenPlugins: root.notchHiddenPlugins, openAction: root.notchOpenAction, openPlugin: root.notchOpenPlugin,
+          openWith: root.notchOpenWith, settingsWith: root.notchSettingsWith,
+          keys: { open: root.notchOpenKey, settings: root.notchSettingsKey, autoHide: root.notchAutoHideKey },
+          autoHide: root.notchAutoHide, windowsToTop: root.notchWindowsToTop,
+          glowStyle: root.notchGlowStyle, glowScale: root.notchGlowScale
+        }
+      }
+    }
+
     function geometryReport() {
       var bx = island.x + island.barX
       function onScreen(p) { return { x: Number((bx + p.x).toFixed(3)), y: Number((island.y + p.y).toFixed(3)) } }
@@ -2066,6 +2139,7 @@ Item {
         hiddenPlugins: root.notchHiddenPlugins, hoverPlugins: root.notchHoverPlugins, openAction: root.notchOpenAction, openPlugin: root.notchOpenPlugin, viewPlugin: barWindow.viewPlugin,
         battery: {
           percent: root.batteryPercent, mode: root.batteryMode, simulated: root.batterySimulated,
+          greenAbove: root.notchGreenAbove, looksFull: root.batteryLooksFull,
           lowThreshold: root.notchLowBattery, criticalThreshold: root.notchCriticalBattery
         },
         glow: {
@@ -2265,8 +2339,8 @@ Item {
           foreground: root.notchForeground
           batteryPercent: root.batteryPercent
           batteryCharging: root.batteryCharging
-          batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
-            : root.batteryMode === "full" ? root.notchFullColor
+          batteryColor: root.batteryLooksFull ? root.notchFullColor
+            : root.batteryMode === "charging" ? root.notchChargingColor
             : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body
@@ -2284,8 +2358,8 @@ Item {
           foreground: root.notchForeground
           batteryPercent: root.batteryPercent
           batteryCharging: root.batteryCharging
-          batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
-            : root.batteryMode === "full" ? root.notchFullColor
+          batteryColor: root.batteryLooksFull ? root.notchFullColor
+            : root.batteryMode === "charging" ? root.notchChargingColor
             : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body
@@ -2357,8 +2431,8 @@ Item {
               foreground: root.notchForeground
               batteryPercent: root.batteryPercent
               batteryCharging: root.batteryCharging
-              batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
-                : root.batteryMode === "full" ? root.notchFullColor
+              batteryColor: root.batteryLooksFull ? root.notchFullColor
+                : root.batteryMode === "charging" ? root.notchChargingColor
                 : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
               fontFamily: root.fontFamily
               fontSize: Style.font.body
@@ -2387,8 +2461,8 @@ Item {
             foreground: root.notchForeground
             batteryPercent: root.batteryPercent
             batteryCharging: root.batteryCharging
-            batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
-              : root.batteryMode === "full" ? root.notchFullColor
+            batteryColor: root.batteryLooksFull ? root.notchFullColor
+              : root.batteryMode === "charging" ? root.notchChargingColor
               : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
             fontFamily: root.fontFamily
             fontSize: Style.font.body
@@ -2434,8 +2508,8 @@ Item {
           foreground: root.notchForeground
           batteryPercent: root.batteryPercent
           batteryCharging: root.batteryCharging
-          batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
-            : root.batteryMode === "full" ? root.notchFullColor
+          batteryColor: root.batteryLooksFull ? root.notchFullColor
+            : root.batteryMode === "charging" ? root.notchChargingColor
             : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body

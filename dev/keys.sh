@@ -6,7 +6,10 @@
 #
 # 1. keys.js, which turns a key press in a settings record button into a
 #    Hyprland combination, over a table of presses.
-# 2. The auto-hide keybind in a throwaway notch: it is bound in the running
+# 2. bin/notch-keybinds against the running Hyprland: adds once, leaves an
+#    existing bind alone, collapses duplicates, moves a changed key, never
+#    removes someone else's bind on a shared key, clears on empty.
+# 3. The auto-hide keybind in a throwaway notch: it is bound in the running
 #    Hyprland with the right command, replaced when changed, and gone when
 #    cleared. Uses combinations nobody binds (SUPER+ALT+CTRL+F9/F10) and
 #    removes them again whatever happens.
@@ -28,7 +31,7 @@ root=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-notch-keys.XXXXXX")
 qs_pid=""
 cleanup() {
   [[ -n $qs_pid ]] && kill "$qs_pid" 2>/dev/null
-  hyprctl eval 'hl.unbind("SUPER + ALT + CTRL + F9"); hl.unbind("SUPER + ALT + CTRL + F10")' >/dev/null 2>&1
+  hyprctl eval 'hl.unbind("SUPER + ALT + CTRL + F9"); hl.unbind("SUPER + ALT + CTRL + F10"); hl.unbind("SUPER + ALT + CTRL + F11")' >/dev/null 2>&1
   rm -rf "$root"
 }
 trap cleanup EXIT
@@ -52,12 +55,50 @@ check "holding only a modifier keeps listening" "true|" "$(get "modifier held al
 check "a key with no bindable name is refused" "|that key can't be bound" "$(get "unbindable key" '"\(.combo)|\(.reason)"')"
 check "Escape (which cancels recording) is Qt's Escape" "true" "$(get "escape code" .escape)"
 
-echo; echo "${BOLD}Auto-hide keybind in the running Hyprland${RESET}"
-binds() { hyprctl binds -j | jq -c '[.[] | select(.description == "Toggle notch auto-hide") | {key, modmask, arg}]'; }
-ipc() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
-check "no auto-hide bind before the test" "[]" "$(binds)"
+echo; echo "${BOLD}bin/notch-keybinds reconciles with Hyprland's own bind list${RESET}"
+live_binds() { hyprctl binds -j | jq -c '[.[] | select(.description == "Open the notch" or .description == "Notch settings" or .description == "Toggle notch auto-hide") | "\(.key)/\(.modmask)"] | sort'; }
+live_before=$(live_binds)
+R="$REPO/bin/notch-keybinds"
+# A description of its own, so these checks can never match (and remove) the
+# live notch's real keybinds, which share Hyprland with this test.
+T="notch keys.sh test bind"
+OURS="[\"$T\"]"
+want() { # want <combo> -> wanted json for the test bind on that combo
+  jq -cn --arg c "$1" --arg t "$T" '[{description: $t, combo: $c, lua: ("hl.bind(\"" + $c + "\", hl.dsp.exec_cmd(\"true\"), { description = \"" + $t + "\" })")}]'
+}
+count() { # count <key> <modmask> [description]
+  hyprctl binds -j | jq --arg k "$1" --argjson m "$2" --arg d "${3:-}" '[.[] | select(.key == $k and .modmask == $m and ($d == "" or .description == $d))] | length'
+}
+out=$("$R" "$(want "SUPER + ALT + CTRL + F9")" "$OURS")
+check "a missing bind is added once" "1" "$(count F9 76 "$T")"
+out=$("$R" "$(want "SUPER + ALT + CTRL + F9")" "$OURS")
+check "running again changes nothing (no Lua sent)" "|1" "$out|$(count F9 76 "$T")"
+hyprctl eval "hl.bind(\"SUPER + ALT + CTRL + F9\", hl.dsp.exec_cmd(\"true\"), { description = \"$T\" })" >/dev/null
+hyprctl eval "hl.bind(\"SUPER + ALT + CTRL + F9\", hl.dsp.exec_cmd(\"true\"), { description = \"$T\" })" >/dev/null
+dupes=$(count F9 76 "$T")
+"$R" "$(want "SUPER + ALT + CTRL + F9")" "$OURS" >/dev/null
+check "three copies (as restarts used to leave) come back to one ${DIM}(was $dupes)${RESET}" "1" "$(count F9 76 "$T")"
+"$R" "$(want "SUPER + ALT + CTRL + F10")" "$OURS" >/dev/null
+check "changing the key removes the old bind and adds the new one" "0 1" "$(count F9 76) $(count F10 76 "$T")"
+hyprctl eval 'hl.bind("SUPER + ALT + CTRL + F11", hl.dsp.exec_cmd("true"), { description = "a bind of the user'"'"'s own" })' >/dev/null
+hyprctl eval "hl.bind(\"SUPER + ALT + CTRL + F11\", hl.dsp.exec_cmd(\"true\"), { description = \"$T\" })" >/dev/null
+"$R" "$(want "SUPER + ALT + CTRL + F10")" "$OURS" >/dev/null
+check "a stale notch bind sharing its key with someone else's bind is left alone, and theirs survives" "1 1" \
+  "$(count F11 76 "a bind of the user's own") $(count F11 76 "$T")"
+"$R" '[]' "$OURS" >/dev/null
+check "wanting nothing removes the notch's bind" "0" "$(count F10 76)"
+check "…and no real notch keybind was touched ${DIM}(live binds before: $live_before)${RESET}" "$live_before" "$(live_binds)"
+hyprctl eval 'hl.unbind("SUPER + ALT + CTRL + F9"); hl.unbind("SUPER + ALT + CTRL + F10"); hl.unbind("SUPER + ALT + CTRL + F11")' >/dev/null
 
-NOTCH_HARNESS_CONFIG='{"autoHideKey":"SUPER + ALT + CTRL + F9"}' quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
+echo; echo "${BOLD}Auto-hide keybind in the running Hyprland${RESET}"
+# The harness notches tag their bind descriptions, so they never reconcile
+# away the live notch's binds.
+TAG=" [keys.sh]"
+binds() { hyprctl binds -j | jq -c --arg d "Toggle notch auto-hide$TAG" '[.[] | select(.description == $d) | {key, modmask, arg}]'; }
+ipc() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
+check "no auto-hide bind before the harness starts" "[]" "$(binds)"
+
+NOTCH_FORCE_KEYBINDS=1 NOTCH_KEYBIND_TAG="$TAG" NOTCH_HARNESS_CONFIG='{"autoHideKey":"SUPER + ALT + CTRL + F9"}' quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
 qs_pid=$!
 for _ in $(seq 1 40); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
 sleep 1.5
@@ -68,10 +109,11 @@ check "the auto-hide keybind is bound once, to F9 with SUPER+ALT+CTRL (modmask 7
 # Hyprland reports the action only as a function reference, so read the Lua
 # the notch sent.
 check "…with the action omarchy-shell -q notch autoHide toggle" "true" "$(jq -r '.lastLua | contains("hl.bind(\"SUPER + ALT + CTRL + F9\", hl.dsp.exec_cmd(\"omarchy-shell -q notch autoHide toggle\")")' <<<"$keys_report")"
+check "…and the live notch's own binds are untouched by the test notch" "$live_before" "$(live_binds)"
 kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""
 hyprctl eval 'hl.unbind("SUPER + ALT + CTRL + F9")' >/dev/null 2>&1
 
-NOTCH_HARNESS_CONFIG='{"autoHideKey":"SUPER + ALT + CTRL + F10"}' quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
+NOTCH_FORCE_KEYBINDS=1 NOTCH_KEYBIND_TAG="$TAG" NOTCH_HARNESS_CONFIG='{"autoHideKey":"SUPER + ALT + CTRL + F10"}' quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
 qs_pid=$!
 for _ in $(seq 1 40); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
 sleep 1.5

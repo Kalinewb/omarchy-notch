@@ -1,0 +1,49 @@
+#!/bin/bash
+# Reconcile the notch's keybinds with the running Hyprland.
+#
+#   notch-keybinds '<wanted json>' '<our descriptions json>'
+#
+# wanted: [{ "description", "combo" ("SUPER + ALT + N"), "lua" (the hl.bind call) }]
+# ours:   every description a notch keybind can have
+#
+# Hyprland keeps runtime binds across a shell restart, so the list of binds it
+# actually has is the only truth. Notch binds are recognised by description.
+#   - a wanted bind present exactly once is left alone
+#   - a wanted bind missing (or duplicated) is (re)added once
+#   - notch binds on keys no longer wanted, and duplicates, are removed (in
+#     every modifier order, since Hyprland's unbind is order-sensitive) -- but
+#     only on a key where every bind is a notch bind, so the user's own binds
+#     on the same key are never touched
+# Prints the Lua it ran (empty when nothing needed doing).
+
+set -uo pipefail
+wanted=${1:-[]}
+ours=${2:-[]}
+binds=$(hyprctl binds -j 2>/dev/null) || exit 0
+
+# SUPER 64, CTRL 4, ALT 8, SHIFT 1 -- as `hyprctl binds -j` reports modmask.
+plan=$(jq -r --argjson wanted "$wanted" --argjson ours "$ours" '
+  def mask($combo): ($combo | split(" + ") | .[:-1] | map({SUPER: 64, CTRL: 4, ALT: 8, SHIFT: 1}[.] // 0) | add // 0);
+  def keyof($combo): ($combo | split(" + ") | last);
+  # hl.unbind only matches the modifiers in the order the bind was made with,
+  # which for a stale bind is unknown -- so unbind every order (at most 24).
+  def perms: if length <= 1 then [.] else [ .[] as $x | ((. - [$x]) | perms[] | [$x] + .) ] end;
+  def combosof($key; $m): [{n: "SUPER", v: 64}, {n: "CTRL", v: 4}, {n: "ALT", v: 8}, {n: "SHIFT", v: 1}]
+                          | map(select((($m / .v) | floor) % 2 == 1) | .n) | perms[] | . + [$key] | join(" + ");
+  . as $binds
+  | ($wanted | map(. + {key: keyof(.combo), modmask: mask(.combo)})) as $w
+  | [ $binds[] | select(.description as $d | $ours | index($d)) ] as $mine
+  | [ $mine[] | select(. as $b | [ $w[] | select(.description == $b.description and .key == $b.key and .modmask == $b.modmask) ] | length == 0) ] as $stale
+  | [ $w[] | select(. as $x | [ $mine[] | select(.description == $x.description and .key == $x.key and .modmask == $x.modmask) ] | length > 1) ] as $dupes
+  | ([ ($stale + $dupes)[] | {key, modmask} ] | unique) as $candidates
+  | [ $candidates[] | select(. as $c | [ $binds[] | select(.key == $c.key and .modmask == $c.modmask) ] | all(.description as $d | $ours | index($d))) ] as $clear
+  | ( $clear[] | "hl.unbind(\"" + combosof(.key; .modmask) + "\")" ),
+    ( $w[] | . as $x
+      | select(([ $mine[] | select(.description == $x.description and .key == $x.key and .modmask == $x.modmask) ] | length) != 1
+               or ([ $clear[] | select(.key == $x.key and .modmask == $x.modmask) ] | length) > 0)
+      | .lua )
+' <<<"$binds") || exit 0
+
+lua=$(paste -sd ';' <<<"$plan" | sed 's/;/; /g')
+[[ -n $lua ]] && hyprctl eval "$lua" >/dev/null
+printf '%s\n' "$lua"

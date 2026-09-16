@@ -39,7 +39,10 @@ double-click, long press, right-click, long right-click, middle-click, scroll). 
 toggling auto-hide. In the settings each has a **Record** button: press it, then the combination
 (Escape cancels). Plain letters need SUPER, CTRL or ALT; F-keys work alone. A gesture belongs to one list at a time. Keybinds go into the running
 Hyprland with `hyprctl eval`, are replaced when changed, and are re-added after every config
-reload; nothing is written to your Hyprland config.
+reload; nothing is written to your Hyprland config. Hyprland keeps runtime binds across a shell
+restart, so every apply reconciles with Hyprland's own bind list (`bin/notch-keybinds`): a bind
+already there is left alone, duplicates and stale notch binds are removed, and a key that also
+carries a bind of your own is never touched.
 
 ## Settings panel
 
@@ -141,6 +144,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `glowStyle` | `"outline"` | `"outline"`: around the resting notch. `"bottom"`: subtler (0.24 at its brightest), only under the bottom edge, strongest in the middle. |
 | `chargingColor`, `fullColor`, `lowColor` | `#FFB340`, `#30D158`, `#FF453A` | Glow colours. |
 | `lowBattery`, `criticalBattery` | `20`, `10` | Percent thresholds, on battery. |
+| `greenAbove` | `100` | Charging at or above this percentage already shows the full colour (green). 100 means only a full battery does. |
 | `batteryPeek` | `true` | Widen to show the charge on plug-in, unplug and low battery. |
 | `autoHide` | `false` | The resting notch hides in the screen edge until the pointer reaches the top edge above it (a 3 px strip a little wider than the notch). Peeks, the open notch and the settings still show. Windows use the full height. |
 | `windowsToTop` | `false` | `false`: windows stay below the resting notch. `true`: windows go all the way to the top edge, under the notch. |

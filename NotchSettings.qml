@@ -314,6 +314,7 @@ Item {
           }
         }
 
+        NumberRow { label: "Green when charging above %"; key: "greenAbove"; value: root.bar ? root.bar.notchGreenAbove : 100; from: 0; to: 100; stepSize: 5 }
         NumberRow { label: "Low below %"; key: "lowBattery"; value: root.bar ? root.bar.notchLowBattery : 20; from: 5; to: 60; stepSize: 5 }
         NumberRow { label: "Critical below %"; key: "criticalBattery"; value: root.bar ? root.bar.notchCriticalBattery : 10; from: 1; to: 40; stepSize: 1 }
 

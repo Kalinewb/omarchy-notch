@@ -1241,6 +1241,7 @@ Item {
   //   settingsWith   what opens the settings panel, from the same list plus
   //                  "longRightClick" (default ["longRightClick"])
   //   settingsKey    a key combination that toggles the settings (default none)
+  //   autoHideKey    a key combination that toggles autoHide (default none)
   //   color          notch colour (default "#000000")
   //   foreground     text colour (default: the theme's bar text)
   //   compactWidth   resting width in logical px (default 180)
@@ -1357,6 +1358,7 @@ Item {
   function settingsWith(trigger) { return notchSettingsWith.indexOf(trigger) !== -1 }
   readonly property string notchOpenKey: cleanKey(notchSetting("openKey", ""))
   readonly property string notchSettingsKey: cleanKey(notchSetting("settingsKey", ""))
+  readonly property string notchAutoHideKey: cleanKey(notchSetting("autoHideKey", ""))
 
   // A Hyprland key combination: modifiers and a key joined by "+", letters,
   // digits and underscores only, so it can be quoted into a Lua call safely.
@@ -1369,28 +1371,36 @@ Item {
   // Keybinds are added to the running Hyprland with `hyprctl eval`, nothing is
   // written to its config: a bind in place is removed before a new one goes in,
   // and both are re-added after every config reload, which clears them.
-  property var appliedKeys: ({ open: "", settings: "" })
-  readonly property string keyState: notchOpenKey + "|" + notchSettingsKey
+  property var appliedKeys: ({ open: "", settings: "", autoHide: "" })
+  readonly property string keyState: notchOpenKey + "|" + notchSettingsKey + "|" + notchAutoHideKey
+  readonly property var keybindActions: ({
+    open: { method: "toggle", description: "Open the notch" },
+    settings: { method: "settings", description: "Notch settings" },
+    autoHide: { method: "autoHide toggle", description: "Toggle notch auto-hide" }
+  })
   onKeyStateChanged: Qt.callLater(applyKeybinds)
   function keybindLua(key, method, description) {
     return 'hl.bind("' + key + '", hl.dsp.exec_cmd("omarchy-shell -q notch ' + method + '"), { description = "' + description + '" })'
   }
   function applyKeybinds(force) {
-    var wanted = { open: notchOpenKey, settings: notchSettingsKey }
+    var wanted = { open: notchOpenKey, settings: notchSettingsKey, autoHide: notchAutoHideKey }
     var lua = []
-    var names = ["open", "settings"]
+    var names = ["open", "settings", "autoHide"]
     for (var i = 0; i < names.length; i++) {
       var n = names[i]
       if (!force && appliedKeys[n] === wanted[n]) continue
       if (appliedKeys[n] && !force) lua.push('hl.unbind("' + appliedKeys[n] + '")')
-      if (wanted[n]) lua.push(keybindLua(wanted[n], n === "open" ? "toggle" : "settings",
-                                         n === "open" ? "Open the notch" : "Notch settings"))
+      if (wanted[n]) lua.push(keybindLua(wanted[n], keybindActions[n].method, keybindActions[n].description))
     }
     appliedKeys = wanted
     if (lua.length === 0) return
-    keybindProcess.command = ["hyprctl", "eval", lua.join("; ")]
+    lastKeybindLua = lua.join("; ")
+    keybindProcess.command = ["hyprctl", "eval", lastKeybindLua]
     keybindProcess.running = true
   }
+  // The last Lua sent to Hyprland for keybinds, for the IPC report: Hyprland
+  // itself only reports a bind's action as a function reference.
+  property string lastKeybindLua: ""
   Process { id: keybindProcess }
   readonly property color notchColor: notchSetting("color", "#000000")
   readonly property color notchForeground: notchSetting("foreground", themeForeground)
@@ -1615,6 +1625,12 @@ Item {
         root.batterySimulatedState = state
       }
       return root.batteryMode
+    }
+    // "true", "false" or "toggle"; saved to shell.json. Returns the new value.
+    function autoHide(value: string): string {
+      var next = value === "toggle" ? !root.notchAutoHide : value === "true"
+      if (value !== "toggle" && value !== "true" && value !== "false") return String(root.notchAutoHide)
+      return root.setNotchSetting("autoHide", next) ? String(next) : "unsaved"
     }
     // "true", "false" or "toggle"; saved to shell.json. Returns the new value.
     function windowsToTop(value: string): string {
@@ -1850,6 +1866,11 @@ Item {
     // --- battery glow -----------------------------------------------------------
 
     readonly property bool glowOn: root.glowMode !== "none" && !root.barHidden
+    // 0 at rest, 1 once the notch is 24 px wider or taller than rest: how far
+    // the glow has moved from the resting shape to the open notch's bottom.
+    readonly property real glowWiden: Math.max(0, Math.min(1, Math.max(
+      (shownWidth - Math.min(maxBarWidth, compactWidth)) / 24,
+      (shownHeight - root.notchCompactHeight) / 24)))
     property real glowPresence: 0
     // Follows the glow's colour while it is on, crossfading on a change; held
     // while it fades out, so it does not flash to another colour on the way.
@@ -2041,7 +2062,7 @@ Item {
         view: barWindow.view,
         hoverItems: root.notchHoverItems,
         openWith: root.notchOpenWith, settingsWith: root.notchSettingsWith,
-        keys: { open: root.notchOpenKey, settings: root.notchSettingsKey, applied: root.appliedKeys },
+        keys: { open: root.notchOpenKey, settings: root.notchSettingsKey, autoHide: root.notchAutoHideKey, applied: root.appliedKeys, lastLua: root.lastKeybindLua },
         hiddenPlugins: root.notchHiddenPlugins, hoverPlugins: root.notchHoverPlugins, openAction: root.notchOpenAction, openPlugin: root.notchOpenPlugin, viewPlugin: barWindow.viewPlugin,
         battery: {
           percent: root.batteryPercent, mode: root.batteryMode, simulated: root.batterySimulated,
@@ -2052,7 +2073,9 @@ Item {
           presence: Number(glowPresence.toFixed(4)),
           curve: {
             style: root.notchGlowStyle,
-          outlineDrawn: glow.visible, bottomDrawn: bottomGlow.visible,
+          outlineDrawn: glow.visible, bottomDrawn: bottomGlow.visible, openDrawn: openGlow.visible,
+          widen: Number(glowWiden.toFixed(3)),
+          open: { width: Number(openGlow.barWidth.toFixed(3)), height: Number(openGlow.barHeight.toFixed(3)), bottomRadius: Number(openGlow.bottomRadius.toFixed(3)), presence: Number(openGlow.presence.toFixed(3)) },
           bottom: {
             strength: bottomGlow.strength, reach: Number(bottomGlow.reach.toFixed(3)),
             alphaAt: [[0, 0], [0, 0.5], [0, 0.9], [glow.knots[1].d, 0], [glow.knots[2].d, 0], [bottomGlow.reach, 0]].map(function(p) {
@@ -2093,9 +2116,9 @@ Item {
       screen: barWindow.screen
       visible: barWindow.visible
       anchors { top: true; left: true; right: true }
-      // Sized for the largest glow the setting allows, so changing the size
-      // never resizes the window either.
-      implicitHeight: Math.ceil(root.notchCompactHeight * (1 + root.springOvershoot) + glow.maxReach + glow.pad + 16)
+      // Sized once for the tallest the notch can grow (its settings panel)
+      // plus the largest glow the setting allows, so nothing ever resizes it.
+      implicitHeight: Math.ceil(Math.max(root.notchCompactHeight, barWindow.panelMaxHeight) * (1 + root.springOvershoot) + glow.maxReach + glow.pad + 16)
       color: "transparent"
       surfaceFormat.opaque: false
       exclusionMode: ExclusionMode.Ignore
@@ -2118,8 +2141,9 @@ Item {
         bottomRadius: Math.max(0, Math.min(root.notchBottomRadius * barWindow.emergence, barWidth / 2, barHeight / 2))
         filletRadius: Math.max(0, Math.min(root.notchFilletRadius * barWindow.emergence, barHeight - bottomRadius))
         color: barWindow.glowColorShown
-        // Drawn only in the outline style, and not at all at glow size 0.
-        presence: root.notchGlowStyle === "outline" && root.notchGlowScale > 0 ? barWindow.glowPresence : 0
+        // Drawn only in the outline style, not at all at glow size 0, and
+        // handed over to the open-notch glow as the notch widens.
+        presence: root.notchGlowStyle === "outline" && root.notchGlowScale > 0 ? barWindow.glowPresence * (1 - barWindow.glowWiden) : 0
         // Relative to the resting notch's size: glowScale × √(width × height),
         // calibrated so the default 180 × 32 notch reaches 32 px at 1.0 --
         // a wider or taller notch glows further. Never past the 80 px the
@@ -2139,7 +2163,23 @@ Item {
         barHeight: glow.barHeight
         bottomRadius: glow.bottomRadius
         color: barWindow.glowColorShown
-        presence: root.notchGlowStyle === "bottom" && root.notchGlowScale > 0 ? barWindow.glowPresence : 0
+        presence: root.notchGlowStyle === "bottom" && root.notchGlowScale > 0 ? barWindow.glowPresence * (1 - barWindow.glowWiden) : 0
+        size: glow.size
+      }
+
+      // When the notch widens or grows past rest, the glow moves to the
+      // bottom of the notch as it is now, whichever style is set at rest:
+      // the bottom glow, following the live width, height and corner radius.
+      // It takes over from the resting glow over the first 24 px of growth.
+      BottomGlow {
+        id: openGlow
+        x: island.x + island.barX
+        y: 0
+        barWidth: island.barWidth
+        barHeight: island.barHeight
+        bottomRadius: island.bottomR
+        color: barWindow.glowColorShown
+        presence: root.notchGlowScale > 0 ? barWindow.glowPresence * barWindow.glowWiden : 0
         size: glow.size
       }
     }

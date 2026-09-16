@@ -92,6 +92,41 @@ check "…and 0 at its reach" "0" "$(jq -r '[.bottom.alphaAt[] | select(.u == 0)
 check "the bottom glow is subtler than the outline glow (0.24 vs 0.35 at its brightest)" "true" "$(jq -r '.bottom.strength < 0.35' <<<"$bottom")"
 
 # ---------------------------------------------------------------------------
+# The glow moves to the bottom of the notch when it widens
+# ---------------------------------------------------------------------------
+
+echo
+NOTCH_HARNESS_CONFIG='{"openWith":["click"],"expanded":["clock","date","media","battery"]}' quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
+qs_pid=$!
+for _ in $(seq 1 40); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
+sleep 0.8
+ipc simulateBattery charging 60 >/dev/null; sleep 1.5
+snap() { ipc geometry | jq -c '{notch: {w: .bar.width, h: .bar.height, r: .radii.bottomLeft}, widen: .glow.curve.widen, outline: .glow.curve.outlineDrawn, bottom: .glow.curve.bottomDrawn, open: .glow.curve.openDrawn, openShape: .glow.curve.open, window: .glow.window.height}'; }
+w_rest=$(snap)
+ipc expand >/dev/null; sleep 1
+w_open=$(snap)
+ipc collapse >/dev/null; sleep 1
+w_back=$(snap)
+ipc settings >/dev/null; sleep 1.3
+w_panel=$(snap)
+ipc settings >/dev/null
+kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""
+echo "  ${DIM}at rest:        $w_rest${RESET}"
+echo "  ${DIM}open (wider):   $w_open${RESET}"
+echo "  ${DIM}back at rest:   $w_back${RESET}"
+echo "  ${DIM}settings panel: $w_panel${RESET}"
+check "at rest the resting glow is drawn, not the open-notch glow" "0 true false" "$(jq -r '"\(.widen) \(.outline) \(.open)"' <<<"$w_rest")"
+check "when the notch widens the glow moves to its bottom: only the open-notch glow is drawn" "1 false false true" "$(jq -r '"\(.widen) \(.outline) \(.bottom) \(.open)"' <<<"$w_open")"
+check "…following the widened notch's width and bottom radius ${DIM}($(jq -r '"\(.openShape.width)×\(.openShape.height)"' <<<"$w_open"))${RESET}" "true" \
+  "$(jq -r '.openShape.width == .notch.w and .openShape.height == .notch.h and .openShape.bottomRadius == .notch.r and .notch.w > 200' <<<"$w_open")"
+check "…at full strength" "1" "$(jq -r .openShape.presence <<<"$w_open")"
+check "back at rest the resting glow returns" "0 true false" "$(jq -r '"\(.widen) \(.outline) \(.open)"' <<<"$w_back")"
+check "grown into the settings panel, the glow follows the panel's bottom ${DIM}($(jq -r '"\(.openShape.width)×\(.openShape.height), r \(.openShape.bottomRadius)"' <<<"$w_panel"))${RESET}" "true" \
+  "$(jq -r '.open and (.outline | not) and .openShape.height == .notch.h and .openShape.bottomRadius == .notch.r and .notch.h > 100' <<<"$w_panel")"
+check "the glow window never resizes for any of it" "1" "$(printf '%s\n' "$w_rest" "$w_open" "$w_back" "$w_panel" | jq -s '[.[].window] | unique | length')"
+check "…and leaves room for an 80 px glow below the tallest notch" "true" "$(jq -r '.window >= .notch.h + 88' <<<"$w_panel")"
+
+# ---------------------------------------------------------------------------
 # Pixels
 # ---------------------------------------------------------------------------
 

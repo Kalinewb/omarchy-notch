@@ -34,8 +34,10 @@ plugin's live widget and never loads a second copy.
 ### Ways to open it
 
 `openWith` and `settingsWith` pick the gestures for the notch and for the settings (hover, click,
-double-click, long press, right-click, long right-click, middle-click, scroll), and `openKey` and
-`settingsKey` add a keybind. A gesture belongs to one list at a time. Keybinds go into the running
+double-click, long press, right-click, long right-click, middle-click, scroll). `openKey`,
+`settingsKey` and `autoHideKey` add keybinds for opening the notch, opening the settings and
+toggling auto-hide. In the settings each has a **Record** button: press it, then the combination
+(Escape cancels). Plain letters need SUPER, CTRL or ALT; F-keys work alone. A gesture belongs to one list at a time. Keybinds go into the running
 Hyprland with `hyprctl eval`, are replaced when changed, and are re-added after every config
 reload; nothing is written to your Hyprland config.
 
@@ -69,6 +71,14 @@ Between those points the curve is a monotone cubic Hermite spline, with zero slo
 | Charging | amber `#FFB340` |
 | Full, on the charger | green `#30D158` |
 | Low (≤ 20 %, on battery) | red `#FF453A` |
+
+**Bottom style** (`glowStyle: "bottom"`): the same falloff at 0.24 instead of 0.35, only below the
+bottom edge, weighted cos²(π·u/2) across it: full in the middle, half at a quarter of the width in
+from each side, nothing at the sides.
+
+**When the notch widens or grows** (open, or the settings panel), the glow moves to the bottom of
+the notch as it is then, in the bottom style, following its live width and corner radius; it
+hands over from the resting glow within the first 24 px of growth and comes back at rest.
 
 The glow fades in once over 800 ms (ease-out) and then stays completely still. Charging to full
 crossfades the colour over 600 ms. Unplugging fades the glow out over 800 ms, widens the notch to
@@ -116,7 +126,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `expanded` | `["clock","date","media"]` | Glance items added to the widget row. Leaves out time and date when the layout already has `omarchy.clock`. |
 | `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
-| `openKey`, `settingsKey` | none | Keybinds, e.g. `"SUPER + N"`. |
+| `openKey`, `settingsKey`, `autoHideKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. |
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |
 | `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. |
 | `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. |
@@ -127,7 +137,8 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `hoverDelay`, `collapseDelay` | `60`, `350` | Milliseconds. |
 | `peekOnTrackChange`, `peekDuration` | `true`, `3500` | Widen briefly on a new track. |
 | `batteryGlow` | `true` | The battery glow. |
-| `glowScale` | `1.0` | Glow reach as a multiple of the resting height (0.25–2.5, at most 80 px). |
+| `glowScale` | `1.0` | Glow reach relative to the resting notch's size (0–2.5, at most 80 px). 0 draws no glow. |
+| `glowStyle` | `"outline"` | `"outline"`: around the resting notch. `"bottom"`: subtler (0.24 at its brightest), only under the bottom edge, strongest in the middle. |
 | `chargingColor`, `fullColor`, `lowColor` | `#FFB340`, `#30D158`, `#FF453A` | Glow colours. |
 | `lowBattery`, `criticalBattery` | `20`, `10` | Percent thresholds, on battery. |
 | `batteryPeek` | `true` | Widen to show the charge on plug-in, unplug and low battery. |

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import qs.Commons
 import qs.Ui
+import "keys.js" as KeyCombo
 
 // The notch's settings, drawn inside the notch itself: opening them grows the
 // notch -- the same surface, top edge on the screen edge -- into this panel.
@@ -220,6 +221,8 @@ Item {
             onToggled: root.set("autoHide", !checked)
           }
         }
+
+        KeyRow { label: "Keybind for auto-hide"; key: "autoHideKey"; current: root.bar ? root.bar.notchAutoHideKey : "" }
 
         SettingRow {
           label: "Windows reach the top edge"
@@ -587,34 +590,82 @@ Item {
 
   // A Hyprland key combination, applied when typing finishes (Enter or
   // leaving the field). Empty removes the keybind.
+  // A keybind: the current combination, a Record button that listens for
+  // the next key press (Escape cancels), and ✕ to remove it. Saved on record.
   component KeyRow: SettingRow {
     id: keyRow
     property string key: ""
     property string current: ""
+    property bool recording: false
+    property string hint: ""
+
+    // Every notch keybind, so one combination can't be recorded twice.
+    function usedBy(combo) {
+      if (!root.bar) return ""
+      var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey }
+      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide" }
+      for (var k in others) if (k !== keyRow.key && others[k] === combo) return labels[k]
+      return ""
+    }
+
+    function stop() {
+      recording = false
+      root.forceActiveFocus()
+    }
+
     Row {
       spacing: Style.space(6)
+
       Text {
-        id: keyHint
         anchors.verticalCenter: parent.verticalCenter
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-      }
-      TextField {
-        id: keyField
-        width: Style.space(150)
-        text: keyRow.current
-        placeholderText: "e.g. SUPER + N"
+        text: keyRow.recording ? (keyRow.hint || "press keys…") : (keyRow.hint || (keyRow.current || "none"))
+        color: keyRow.recording || keyRow.hint ? root.dim : root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
-        onEditingFinished: {
-          var clean = root.bar ? root.bar.cleanKey(text) : ""
-          if (text.trim() !== "" && clean === "") { keyHint.text = "not a key"; return }
-          keyHint.text = ""
-          if (clean !== keyRow.current) root.set(keyRow.key, clean)
-          text = clean
+      }
+
+      Button {
+        text: keyRow.recording ? "Cancel" : "Record"
+        bordered: true
+        fontFamily: root.fontFamily
+        fontSize: Style.font.bodySmall
+        horizontalPadding: Style.space(7)
+        onClicked: {
+          keyRow.hint = ""
+          if (keyRow.recording) { keyRow.stop(); return }
+          keyRow.recording = true
+          catcher.forceActiveFocus()
         }
       }
+
+      Button {
+        visible: keyRow.current !== "" && !keyRow.recording
+        text: "✕"
+        bordered: true
+        fontFamily: root.fontFamily
+        fontSize: Style.font.bodySmall
+        horizontalPadding: Style.space(6)
+        onClicked: { keyRow.hint = ""; root.set(keyRow.key, "") }
+      }
+    }
+
+    Item {
+      id: catcher
+      focus: keyRow.recording
+      Keys.onPressed: function(event) {
+        if (!keyRow.recording) return
+        event.accepted = true
+        if (event.key === KeyCombo.ESCAPE) { keyRow.hint = ""; keyRow.stop(); return }
+        var result = KeyCombo.combo(event.key, event.modifiers)
+        if (result.waiting) return
+        if (!result.combo) { keyRow.hint = result.reason; return }
+        var clash = keyRow.usedBy(result.combo)
+        if (clash) { keyRow.hint = result.combo + " is used by " + clash; return }
+        keyRow.hint = ""
+        root.set(keyRow.key, result.combo)
+        keyRow.stop()
+      }
+      onActiveFocusChanged: if (!activeFocus && keyRow.recording) keyRow.recording = false
     }
   }
 

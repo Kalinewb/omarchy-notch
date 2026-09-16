@@ -1,0 +1,2781 @@
+{
+  "defaults": {
+    "battery": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "battery",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "clock": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "clock",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "hover": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "compact",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "plugin": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "rest": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "peek",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "widgets": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    }
+  },
+  "hidden": {
+    "battery": {
+      "glance": {
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "hover": [],
+        "peek": [
+          "clock",
+          "date",
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "acme.beta",
+          "acme.delta",
+          "nobody.there"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "battery",
+      "viewPlugin": "",
+      "widgetsWidth": 271
+    },
+    "clock": {
+      "glance": {
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "hover": [],
+        "peek": [
+          "clock",
+          "date",
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "acme.beta",
+          "acme.delta",
+          "nobody.there"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "clock",
+      "viewPlugin": "",
+      "widgetsWidth": 271
+    },
+    "hover": {
+      "glance": {
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "hover": [],
+        "peek": [
+          "clock",
+          "date",
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "acme.beta",
+          "acme.delta",
+          "nobody.there"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "compact",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 271
+    },
+    "plugin": {
+      "glance": {
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "hover": [],
+        "peek": [
+          "clock",
+          "date",
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "acme.beta",
+          "acme.delta",
+          "nobody.there"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 271
+    },
+    "rest": {
+      "glance": {
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "hover": [],
+        "peek": [
+          "clock",
+          "date",
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "acme.beta",
+          "acme.delta",
+          "nobody.there"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "peek",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 271
+    },
+    "widgets": {
+      "glance": {
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "hover": [],
+        "peek": [
+          "clock",
+          "date",
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "clock",
+          "date"
+        ],
+        "expanded": [
+          "battery"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "acme.beta",
+          "acme.delta",
+          "nobody.there"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 271
+    }
+  },
+  "hover-mix": {
+    "battery": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [
+          "clock",
+          "media"
+        ],
+        "hoverPlugins": [
+          "acme.alpha",
+          "acme.epsilon"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "plugin",
+        "openPlugin": "acme.gamma",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 449,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "battery",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "clock": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [
+          "clock",
+          "media"
+        ],
+        "hoverPlugins": [
+          "acme.alpha",
+          "acme.epsilon"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "plugin",
+        "openPlugin": "acme.gamma",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 449,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "clock",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "hover": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [
+          "clock",
+          "media"
+        ],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [
+          "clock",
+          "media"
+        ],
+        "hoverPlugins": [
+          "acme.alpha",
+          "acme.epsilon"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "plugin",
+        "openPlugin": "acme.gamma",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": " acme.alpha acme.epsilon ",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 449,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "hover",
+      "viewPlugin": "",
+      "widgetsWidth": 105
+    },
+    "plugin": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [
+          "clock",
+          "media"
+        ],
+        "hoverPlugins": [
+          "acme.alpha",
+          "acme.epsilon"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "plugin",
+        "openPlugin": "acme.gamma",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.gamma:45"
+      ],
+      "rowFilter": " acme.gamma ",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 449,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "plugin",
+      "viewPlugin": "acme.gamma",
+      "widgetsWidth": 45
+    },
+    "rest": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [
+          "clock",
+          "media"
+        ],
+        "hoverPlugins": [
+          "acme.alpha",
+          "acme.epsilon"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "plugin",
+        "openPlugin": "acme.gamma",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 449,
+        "width": 353
+      },
+      "state": "peek",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "widgets": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [
+          "clock",
+          "media"
+        ],
+        "hoverPlugins": [
+          "acme.alpha",
+          "acme.epsilon"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "plugin",
+        "openPlugin": "acme.gamma",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 449,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    }
+  },
+  "legacy-keys": {
+    "battery": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [
+          "acme.alpha"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 419,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "battery",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "clock": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [
+          "acme.alpha"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 419,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "clock",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "hover": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [
+          "acme.alpha"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48"
+      ],
+      "rowFilter": " acme.alpha ",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 419,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "hover",
+      "viewPlugin": "",
+      "widgetsWidth": 48
+    },
+    "plugin": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [
+          "acme.alpha"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 419,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "rest": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [
+          "acme.alpha"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 419,
+        "width": 353
+      },
+      "state": "peek",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    },
+    "widgets": {
+      "glance": {
+        "compact": [],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [],
+        "expanded": [
+          "media"
+        ],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [],
+        "hoverItems": [],
+        "hoverPlugins": [
+          "acme.alpha"
+        ],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "widgets",
+        "openPlugin": "",
+        "openWith": [
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "omarchy.clock:27",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 419,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 359
+    }
+  },
+  "open-actions": {
+    "battery": {
+      "glance": {
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "omarchy.clock"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "battery",
+        "openPlugin": "omarchy.spacer",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "battery",
+      "viewPlugin": "",
+      "widgetsWidth": 332
+    },
+    "clock": {
+      "glance": {
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "omarchy.clock"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "battery",
+        "openPlugin": "omarchy.spacer",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "clock",
+      "viewPlugin": "",
+      "widgetsWidth": 332
+    },
+    "hover": {
+      "glance": {
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "omarchy.clock"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "battery",
+        "openPlugin": "omarchy.spacer",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "omarchy.spacer:47",
+        "omarchy.spacer:47"
+      ],
+      "rowFilter": " omarchy.spacer ",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "compact",
+      "view": "plugin",
+      "viewPlugin": "omarchy.spacer",
+      "widgetsWidth": 94
+    },
+    "plugin": {
+      "glance": {
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "omarchy.clock"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "battery",
+        "openPlugin": "omarchy.spacer",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "omarchy.spacer:47",
+        "omarchy.spacer:47"
+      ],
+      "rowFilter": " omarchy.spacer ",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "plugin",
+      "viewPlugin": "omarchy.spacer",
+      "widgetsWidth": 94
+    },
+    "rest": {
+      "glance": {
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "omarchy.clock"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "battery",
+        "openPlugin": "omarchy.spacer",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": false,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "peek",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 332
+    },
+    "widgets": {
+      "glance": {
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "hover": [],
+        "peek": [
+          "battery"
+        ]
+      },
+      "heightIsRest": true,
+      "pickers": [
+        {
+          "label": "Fake acme.alpha",
+          "value": "acme.alpha"
+        },
+        {
+          "label": "Fake acme.beta",
+          "value": "acme.beta"
+        },
+        {
+          "label": "Fake omarchy.clock",
+          "value": "omarchy.clock"
+        },
+        {
+          "label": "Fake acme.gamma",
+          "value": "acme.gamma"
+        },
+        {
+          "label": "Fake omarchy.spacer",
+          "value": "omarchy.spacer"
+        },
+        {
+          "label": "Fake acme.delta",
+          "value": "acme.delta"
+        },
+        {
+          "label": "Fake acme.epsilon",
+          "value": "acme.epsilon"
+        }
+      ],
+      "resolved": {
+        "autoHide": false,
+        "compact": [
+          "battery"
+        ],
+        "expanded": [],
+        "glowScale": 1,
+        "glowStyle": "outline",
+        "hiddenPlugins": [
+          "omarchy.clock"
+        ],
+        "hoverItems": [],
+        "hoverPlugins": [],
+        "keys": {
+          "autoHide": "",
+          "open": "",
+          "settings": ""
+        },
+        "openAction": "battery",
+        "openPlugin": "omarchy.spacer",
+        "openWith": [
+          "hover",
+          "click"
+        ],
+        "settingsWith": [
+          "longRightClick"
+        ],
+        "windowsToTop": false
+      },
+      "row": [
+        "acme.alpha:48",
+        "acme.beta:36",
+        "acme.gamma:45",
+        "omarchy.spacer:47",
+        "omarchy.spacer:47",
+        "acme.delta:52",
+        "acme.epsilon:57"
+      ],
+      "rowFilter": "",
+      "rowShown": true,
+      "settingsOpen": false,
+      "settingsPanel": {
+        "height": 436,
+        "width": 353
+      },
+      "state": "expanded",
+      "view": "widgets",
+      "viewPlugin": "",
+      "widgetsWidth": 332
+    }
+  }
+}

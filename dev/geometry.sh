@@ -134,7 +134,7 @@ run_checks "$expanded"
 
 check "expanded is taller than at rest" "true" \
   "$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); b=json.loads(sys.argv[2]); print("true" if b["bar"]["height"] > a["bar"]["height"] else "false")' "$compact" "$expanded")"
-check "the space reserved for windows is the resting height" "true" \
+check "windows are kept below the resting notch (windowsToTop off)" "true" \
   "$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); print("true" if abs(a["window"]["exclusiveZone"] - __import__("math").ceil(a["bar"]["height"])) < 0.01 else "false")' "$compact")"
 
 python3 - "$compact" <<'PY'

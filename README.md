@@ -25,9 +25,14 @@ Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clo
 | **Open** | On hover (or click): a top row with the glance items, and your bar widgets under it. It stays open while a widget's panel is open. |
 | **Hidden** | `omarchy-toggle-bar` slides it up into the edge. |
 
-Windows keep the resting height clear at the top; the open notch floats over them.
+By default windows stay below the resting notch and the open notch floats over them. Set
+`windowsToTop` to let windows use the full height, or flip it (it is saved to `shell.json`):
 
-IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|toggle|peek|geometry`.
+```sh
+quickshell ipc -p $OMARCHY_PATH/shell call notch windowsToTop toggle   # or true / false
+```
+
+Other IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|toggle|peek|geometry`.
 
 ## Settings
 
@@ -46,7 +51,8 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
     "bottomRadius": 10,
     "expandedBottomRadius": 18,
     "filletRadius": 10,
-    "peekOnTrackChange": true
+    "peekOnTrackChange": true,
+    "windowsToTop": false
   },
   "layout": { "left": [], "center": [], "right": [] }
 }
@@ -63,13 +69,13 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `filletRadius` | `10` | Concave fillet where the notch meets the screen edge. |
 | `hoverDelay`, `collapseDelay` | `60`, `350` | Milliseconds. |
 | `peekOnTrackChange`, `peekDuration` | `true`, `3500` | Widen briefly on a new track. |
-| `reserve` | `true` | Keep the resting height clear for windows. |
+| `windowsToTop` | `false` | `false`: windows stay below the resting notch. `true`: windows go all the way to the top edge, under the notch. |
 
 Widgets are still placed with `omarchy bar move` and `omarchy plugin enable/disable`.
 
 ## The shape
 
-`Island.qml` holds the shape, in three parts:
+`Island.qml` builds the shape from three items: the bar and two fillets.
 
 - **The bar**: a plain `Rectangle`. Its top edge is on the screen edge, its top corners are
   square, and its bottom corners have an ordinary convex radius. Nothing is cut out of it.

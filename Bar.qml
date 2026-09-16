@@ -1239,7 +1239,9 @@ Item {
   //   hoverDelay / collapseDelay   ms (default 60 / 350)
   //   peekOnTrackChange  briefly widen to show a new track (default true)
   //   peekDuration   ms (default 3500)
-  //   reserve        reserve compactHeight at the top for windows (default true)
+  //   windowsToTop   false (default): windows stay below the resting notch.
+  //                  true: windows go all the way to the top edge, under the notch.
+  //                  Toggle with `quickshell ipc -p $OMARCHY_PATH/shell call notch windowsToTop toggle`.
 
   readonly property var notchConfig: Util.isPlainObject(barConfig) && Util.isPlainObject(barConfig.notch) ? barConfig.notch : ({})
 
@@ -1284,7 +1286,18 @@ Item {
   readonly property int notchCollapseDelay: Math.max(0, notchNumber("collapseDelay", 350))
   readonly property bool notchPeekOnTrackChange: notchSetting("peekOnTrackChange", true) !== false
   readonly property int notchPeekDuration: Math.max(500, notchNumber("peekDuration", 3500))
-  readonly property bool notchReserve: notchSetting("reserve", true) !== false
+  readonly property bool notchWindowsToTop: notchSetting("windowsToTop", false) === true
+
+  // Persist a notch setting into bar.notch in shell.json; the change comes
+  // back in through barConfig like any other edit.
+  function setNotchSetting(key, value) {
+    if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
+    return root.shell.mutateShellConfig(function(config) {
+      if (!Util.isPlainObject(config.bar)) config.bar = {}
+      if (!Util.isPlainObject(config.bar.notch)) config.bar.notch = {}
+      config.bar.notch[key] = value
+    }) !== false
+  }
 
   // Inner layout of the expanded notch: the top row is as tall as the resting
   // notch, the widget row sits under it, then a little bottom padding.
@@ -1339,6 +1352,12 @@ Item {
       else w.clickExpanded = true
     }
     function peek(): void { var w = root.focusedNotchWindow(); if (w) w.startPeek() }
+    // "true", "false" or "toggle"; saved to shell.json. Returns the new value.
+    function windowsToTop(value: string): string {
+      var next = value === "toggle" ? !root.notchWindowsToTop : value === "true"
+      if (value !== "toggle" && value !== "true" && value !== "false") return String(root.notchWindowsToTop)
+      return root.setNotchSetting("windowsToTop", next) ? String(next) : "unsaved"
+    }
     // Every radius, centre and easing constant of the focused screen's notch,
     // as JSON, so the geometry can be checked numerically.
     function geometry(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.geometryReport()) : "{}" }
@@ -1369,8 +1388,8 @@ Item {
     // animation) and any user blur rule written for the bar still apply.
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
-    exclusionMode: root.barHidden || !root.notchReserve ? ExclusionMode.Ignore : ExclusionMode.Normal
-    exclusiveZone: root.barHidden || !root.notchReserve ? 0 : Math.ceil(root.notchCompactHeight)
+    exclusionMode: root.barHidden || root.notchWindowsToTop ? ExclusionMode.Ignore : ExclusionMode.Normal
+    exclusiveZone: root.barHidden || root.notchWindowsToTop ? 0 : Math.ceil(root.notchCompactHeight)
 
     mask: Region { item: island }
 
@@ -1550,7 +1569,7 @@ Item {
       return {
         screen: { name: barWindow.screen ? barWindow.screen.name : "", width: barWindow.width, height: barWindow.screen ? barWindow.screen.height : 0 },
         state: barWindow.notchState,
-        window: { height: barWindow.height, exclusiveZone: barWindow.exclusiveZone },
+        window: { height: barWindow.height, exclusiveZone: barWindow.exclusiveZone, windowsToTop: root.notchWindowsToTop },
         bar: { x: Number(bx.toFixed(3)), y: island.y, width: Number(island.barWidth.toFixed(3)), height: Number(island.barHeight.toFixed(3)) },
         target: { width: Number(targetWidth.toFixed(3)), height: Number(targetHeight.toFixed(3)) },
         widgets: {

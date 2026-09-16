@@ -1254,9 +1254,10 @@ Item {
   //   glowScale      how far the glow reaches, relative to the resting notch's
   //                  size: scale × √(width × height) × 32/√(180×32), so 32 px
   //                  for the default notch at 1.0 (0.25–2.5, never past 80 px)
-  //   hoverAction    what hovering the notch shows, when "hover" opens it:
-  //                  "widgets" (default), "clock", "battery", "plugin" or
-  //                  "settings"
+  //   hoverAction    what hovering shows when "hover" is not in openWith:
+  //                  "none" (default), "widgets", "clock", "battery", "plugin"
+  //                  or "settings". With "hover" in openWith, hovering opens
+  //                  the notch (openAction) instead.
   //   hoverPlugin    the bar widget id shown when hoverAction is "plugin"
   //   openAction     what every other trigger (click, keybind, …) opens, from
   //                  the same list (default "widgets")
@@ -1289,8 +1290,8 @@ Item {
 
   readonly property var notchCompactItems: notchItems("compact", [])
   readonly property string notchHoverAction: {
-    var v = String(notchSetting("hoverAction", "widgets"))
-    return ["widgets", "clock", "battery", "plugin", "settings", "none"].indexOf(v) === -1 ? "widgets" : v
+    var v = String(notchSetting("hoverAction", "none"))
+    return ["widgets", "clock", "battery", "plugin", "settings", "none"].indexOf(v) === -1 ? "none" : v
   }
   readonly property string notchHoverPlugin: canonicalWidgetId(String(notchSetting("hoverPlugin", "")))
   readonly property string notchOpenAction: {
@@ -1724,9 +1725,10 @@ Item {
 
     // Open `requested` because of a hover or a click (any non-hover trigger).
     function openView(requested, how) {
+      if (requested === "none") return
       if (requested === "settings") { openSettings(); return }
       if (settingsOpen) return
-      var plugin = how === "click" ? root.notchOpenPlugin : root.notchHoverPlugin
+      var plugin = how === "hover" ? root.notchHoverPlugin : root.notchOpenPlugin
       if (requested === "plugin" && !plugin) requested = "widgets"
       peeking = false
       viewPlugin = requested === "plugin" ? plugin : ""
@@ -1762,7 +1764,13 @@ Item {
     Timer {
       id: expandTimer
       interval: root.notchHoverDelay
-      onTriggered: if (islandHover.hovered && !barWindow.expanded) barWindow.openView(root.notchHoverAction, "hover")
+      // Hover either opens the notch (when it is one of the ways to open it)
+      // or shows its own hover view; both close again when the pointer leaves.
+      onTriggered: {
+        if (!islandHover.hovered || barWindow.expanded) return
+        if (root.opensWith("hover")) barWindow.openView(root.notchOpenAction, "hoverOpen")
+        else barWindow.openView(root.notchHoverAction, "hover")
+      }
     }
 
     Timer {
@@ -2080,7 +2088,7 @@ Item {
           root.setBarHovered(hovered)
           if (hovered) {
             collapseTimer.stop()
-            if (root.opensWith("hover")) expandTimer.restart()
+            if (root.opensWith("hover") || root.notchHoverAction !== "none") expandTimer.restart()
           } else {
             expandTimer.stop()
             collapseTimer.restart()

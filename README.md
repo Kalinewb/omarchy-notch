@@ -22,7 +22,7 @@ Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clo
 |---|---|
 | **At rest** | A black rectangle at the top centre. Empty by default; can show time, date, now playing and battery. |
 | **Peek** | A new track, plugging in, unplugging or a low battery widens the notch for a few seconds. |
-| **On hover** | What `hoverAction` says: the widgets, the clock, the battery, one plugin, or the settings. |
+| **On hover** | If hover opens the notch (`openWith`), the open view. Otherwise what `hoverAction` says: nothing, the widgets, the clock, the battery, one plugin, or the settings. Either closes when the pointer leaves. |
 | **When open** | What `openAction` says, for every other way of opening it (click, keybind, …). |
 | **Settings** | The notch grows down into its settings panel -- the same surface, top edge on the screen edge. |
 | **Hidden** | `omarchy-toggle-bar` slides it up into the edge. |
@@ -116,7 +116,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
 | `openKey`, `settingsKey` | none | Keybinds, e.g. `"SUPER + N"`. |
-| `hoverAction`, `hoverPlugin` | `"widgets"` | What hover shows: `widgets`, `clock`, `battery`, `plugin` (with the widget id), `settings`. |
+| `hoverAction`, `hoverPlugin` | `"none"` | What hovering shows when hover isn't in `openWith`: `none`, `widgets`, `clock`, `battery`, `plugin` (with the widget id), `settings`. With hover in `openWith`, hovering opens the notch instead. |
 | `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. |
 | `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. |
 | `color` / `foreground` | `#000000` / theme bar text | Notch and glance text colours. |

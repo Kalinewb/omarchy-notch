@@ -124,6 +124,61 @@ Item {
       width: parent.width
       spacing: Style.space(2)
 
+      // --- what it shows ---------------------------------------------------------
+
+      PanelSectionHeader { text: "What it shows"; fontFamily: root.fontFamily; width: parent.width }
+
+      SettingRow {
+        label: "At rest"
+        ItemChips {
+          selected: root.bar ? root.bar.notchCompactItems : []
+          onPicked: function(item) { root.toggleItem("compact", root.bar.notchCompactItems, item) }
+        }
+      }
+
+      ViewRow {
+        label: "On hover"
+        // What hovering shows when hover is not one of the ways to open the
+        // notch; when it is, hovering opens the notch instead, so say that.
+        allowNothing: true
+        note: root.bar && root.bar.opensWith("hover") ? "Hover opens the notch (see Behaviour), so this is not used." : ""
+        actionKey: "hoverAction"; pluginKey: "hoverPlugin"
+        action: root.bar ? root.bar.notchHoverAction : "widgets"
+        plugin: root.bar ? root.bar.notchHoverPlugin : ""
+      }
+
+      ViewRow {
+        label: "When open (click, keybind, …)"
+        actionKey: "openAction"; pluginKey: "openPlugin"
+        action: root.bar ? root.bar.notchOpenAction : "widgets"
+        plugin: root.bar ? root.bar.notchOpenPlugin : ""
+      }
+
+      StackedRow {
+        label: "Hide from the open notch"
+        ChipFlow {
+          options: root.bar ? root.bar.layoutPluginChoices() : []
+          selected: root.bar ? root.bar.notchHiddenPlugins : []
+          onPicked: function(value) {
+            var next = root.bar.notchHiddenPlugins.slice()
+            var i = next.indexOf(value)
+            if (i === -1) next.push(value)
+            else next.splice(i, 1)
+            root.set("hiddenPlugins", next)
+          }
+        }
+      }
+
+      SettingRow {
+        label: "Also in the widget row"
+        ItemChips {
+          selected: root.bar ? root.bar.notchExpandedItems : []
+          onPicked: function(item) { root.toggleItem("expanded", root.bar.notchExpandedItems, item) }
+        }
+      }
+
+      PanelSeparator { width: parent.width }
+
       // --- behaviour ---------------------------------------------------------
 
       PanelSectionHeader { text: "Behaviour"; fontFamily: root.fontFamily; width: parent.width }
@@ -169,55 +224,6 @@ Item {
       }
 
       // --- what it shows -------------------------------------------------------
-
-      PanelSeparator { width: parent.width }
-      PanelSectionHeader { text: "Shows"; fontFamily: root.fontFamily; width: parent.width }
-
-      SettingRow {
-        label: "At rest"
-        ItemChips {
-          selected: root.bar ? root.bar.notchCompactItems : []
-          onPicked: function(item) { root.toggleItem("compact", root.bar.notchCompactItems, item) }
-        }
-      }
-
-      ViewRow {
-        visible: root.bar && root.bar.opensWith("hover")
-        label: "On hover"
-        actionKey: "hoverAction"; pluginKey: "hoverPlugin"
-        action: root.bar ? root.bar.notchHoverAction : "widgets"
-        plugin: root.bar ? root.bar.notchHoverPlugin : ""
-      }
-
-      ViewRow {
-        label: "When open (click, keybind, …)"
-        actionKey: "openAction"; pluginKey: "openPlugin"
-        action: root.bar ? root.bar.notchOpenAction : "widgets"
-        plugin: root.bar ? root.bar.notchOpenPlugin : ""
-      }
-
-      StackedRow {
-        label: "Hide from the open notch"
-        ChipFlow {
-          options: root.bar ? root.bar.layoutPluginChoices() : []
-          selected: root.bar ? root.bar.notchHiddenPlugins : []
-          onPicked: function(value) {
-            var next = root.bar.notchHiddenPlugins.slice()
-            var i = next.indexOf(value)
-            if (i === -1) next.push(value)
-            else next.splice(i, 1)
-            root.set("hiddenPlugins", next)
-          }
-        }
-      }
-
-      SettingRow {
-        label: "Also in the widget row"
-        ItemChips {
-          selected: root.bar ? root.bar.notchExpandedItems : []
-          onPicked: function(item) { root.toggleItem("expanded", root.bar.notchExpandedItems, item) }
-        }
-      }
 
       // --- size and shape --------------------------------------------------------
 
@@ -413,17 +419,30 @@ Item {
     property string pluginKey: ""
     property string action: "widgets"
     property string plugin: ""
+    property bool allowNothing: false
+    property string note: ""
     width: parent ? parent.width : 0
+
+    function pick(key, value) { root.set(key, value) }
 
     StackedRow {
       label: viewRow.label
       ChipFlow {
         options: [{ value: "widgets", label: "Widgets" }, { value: "clock", label: "Clock" },
                   { value: "battery", label: "Battery" }, { value: "plugin", label: "A plugin" },
-                  { value: "settings", label: "Settings" }]
+                  { value: "settings", label: "Settings" }].concat(viewRow.allowNothing ? [{ value: "none", label: "Nothing" }] : [])
         selected: [viewRow.action]
-        onPicked: function(value) { root.set(viewRow.actionKey, value) }
+        onPicked: function(value) { viewRow.pick(viewRow.actionKey, value) }
       }
+    }
+
+    Text {
+      visible: viewRow.note !== ""
+      text: viewRow.note
+      color: root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      bottomPadding: Style.space(4)
     }
 
     StackedRow {
@@ -432,7 +451,7 @@ Item {
       ChipFlow {
         options: root.bar ? root.bar.layoutPluginChoices() : []
         selected: [viewRow.plugin]
-        onPicked: function(value) { root.set(viewRow.pluginKey, value) }
+        onPicked: function(value) { viewRow.pick(viewRow.pluginKey, value) }
       }
     }
   }

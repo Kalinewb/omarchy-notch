@@ -185,3 +185,21 @@ pixel's distance to the outline by brute force and checks each pixel's opacity a
 
 `Bar.qml` and `BarModel.js` start from Omarchy's `omarchy.bar` (MIT), with the full-width
 strip replaced by the notch. The island shape and spring curve come from graveklar.face.
+
+## Checks
+
+```sh
+./dev/check.sh            # QML lint, then every suite
+./dev/check.sh keys       # lint, then just the named suites
+```
+
+`dev/lint.sh` runs `qmllint` with `qs.*` resolved against the installed Omarchy shell, because a
+QML error in a third-party plugin never reaches the journal: the plugin just doesn't appear. It
+fails on a non-zero exit or on any warning that means QML won't load or bind (syntax, import,
+missing or unresolved types, …) beyond the ones Omarchy's own `Bar.qml` produces. Our `Bar.qml`
+is vendored from it, and that allowance is recomputed from the installed file on every run.
+Members "not found on type QObject" are expected (`bar` is injected untyped). `install.sh` runs
+the lint before installing anything.
+
+Test notches (the suites start throwaway Quickshell instances) ignore Omarchy's `bar-off` toggle
+and never touch Hyprland keybinds; only the notch Omarchy's shell hosts does either.

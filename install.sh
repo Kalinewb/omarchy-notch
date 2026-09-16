@@ -31,6 +31,10 @@ if command -v omarchy >/dev/null; then
   omarchy plugin validate "$STAGE" || { echo "install.sh: plugin failed validation" >&2; exit 1; }
 fi
 
+# A QML error in a third-party plugin never reaches the journal; the plugin
+# just doesn't appear. Lint before anything is installed.
+"$SRC/dev/lint.sh" || { echo "install.sh: QML lint failed; nothing installed" >&2; exit 1; }
+
 mkdir -p "$DEST"
 rsync -a --delete --delete-excluded "${EXCLUDES[@]}" "$STAGE/" "$DEST/"
 rm -rf "$STAGE"

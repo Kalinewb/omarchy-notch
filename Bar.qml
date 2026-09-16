@@ -1169,11 +1169,18 @@ Item {
   // Presence of the `bar-off` flag = bar hidden. Watching the parent toggles
   // directory because FileView can't observe a file that doesn't exist yet,
   // and the flag is created/removed by `omarchy-toggle-bar`.
+  //
+  // The flag belongs to the bar Omarchy's shell is hosting. A notch running
+  // anywhere else (a test harness) ignores it, as it ignores keybinds, unless
+  // NOTCH_HONOR_BAR_OFF=1. The host sets `shell` after creating the bar, so the
+  // probe runs again when it arrives.
+  readonly property bool hostedBar: !!root.shell || Quickshell.env("NOTCH_HONOR_BAR_OFF") === "1"
+  onShellChanged: barHiddenProbe.running = true
   Process {
     id: barHiddenProbe
     running: true
     command: ["bash", "-c", "[[ -f $HOME/.local/state/omarchy/toggles/bar-off ]] && echo yes || echo no"]
-    stdout: SplitParser { onRead: function(line) { root.barHidden = String(line).trim() === "yes" } }
+    stdout: SplitParser { onRead: function(line) { root.barHidden = root.hostedBar && String(line).trim() === "yes" } }
   }
   FileView {
     path: root.home + "/.local/state/omarchy/toggles"
@@ -1396,6 +1403,9 @@ Item {
     autoHide: { method: "autoHide toggle", description: "Toggle notch auto-hide" + keybindTag }
   })
   onKeyStateChanged: Qt.callLater(applyKeybinds)
+  // Keybinds are skipped until the host has set `shell` (see keybindsDisabled);
+  // apply as soon as that changes.
+  onKeybindsDisabledChanged: if (!keybindsDisabled) Qt.callLater(applyKeybinds)
   function keybindLua(key, method, description) {
     return 'hl.bind("' + key + '", hl.dsp.exec_cmd("omarchy-shell -q notch ' + method + '"), { description = "' + description + '" })'
   }
@@ -1423,7 +1433,7 @@ Item {
   Process {
     id: keybindProcess
     stdout: StdioCollector { onStreamFinished: root.lastKeybindLua = text.trim() }
-    onExited: if (root.keybindRerun) { root.keybindRerun = false; running = true }
+    onRunningChanged: if (!running && root.keybindRerun) { root.keybindRerun = false; running = true }
   }
   readonly property color notchColor: notchSetting("color", "#000000")
   readonly property color notchForeground: notchSetting("foreground", themeForeground)

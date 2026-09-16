@@ -143,20 +143,10 @@ PopupCard {
       PanelSectionHeader { text: "Battery"; fontFamily: root.fontFamily; width: parent.width }
 
       SettingRow {
-        label: "Glow"
+        label: "Charging glow"
         ToggleSwitch {
           checked: root.bar ? root.bar.notchBatteryGlow : true
           onToggled: root.set("batteryGlow", !checked)
-        }
-      }
-
-      SettingRow {
-        label: "While charging"
-        ButtonGroup {
-          options: [{ value: "always", label: "Glow" }, { value: "plug", label: "Plug-in only" }]
-          value: root.bar ? root.bar.notchChargingGlow : "always"
-          fontFamily: root.fontFamily
-          onChanged: function(value) { root.set("chargingGlow", value) }
         }
       }
 
@@ -175,20 +165,17 @@ PopupCard {
         label: "Preview"
         ButtonGroup {
           readonly property string current: !root.bar || !root.bar.batterySimulated ? "real"
-            : root.bar.batterySimulatedState === "charging" ? "charging"
-            : root.bar.batterySimulatedPercent <= root.bar.notchCriticalBattery ? "critical" : "low"
+            : root.bar.batterySimulatedState
           options: [{ value: "real", label: "Off" }, { value: "charging", label: "Charging" },
-                    { value: "low", label: "Low" }, { value: "critical", label: "Critical" }]
+                    { value: "full", label: "Full" }, { value: "discharging", label: "Low" }]
           value: current
           fontFamily: root.fontFamily
           onChanged: function(value) {
             var b = root.bar
             if (!b) return
             if (value === "real") { b.batterySimulatedState = ""; b.batterySimulatedPercent = -1; return }
-            b.batterySimulatedPercent = value === "charging" ? 64
-              : value === "critical" ? Math.max(1, b.notchCriticalBattery - 2)
-              : Math.max(b.notchCriticalBattery + 1, b.notchLowBattery - 2)
-            b.batterySimulatedState = value === "charging" ? "charging" : "discharging"
+            b.batterySimulatedPercent = value === "charging" ? 64 : value === "full" ? 100 : Math.max(1, b.notchLowBattery - 2)
+            b.batterySimulatedState = value
           }
         }
       }

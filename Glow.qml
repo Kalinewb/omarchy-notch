@@ -1,17 +1,17 @@
 import QtQuick
-import QtQuick.Effects
+import "glow.js" as GlowCurve
 
-// A soft coloured mist around the notch, used for the battery glow.
+// The battery glow: opacity falling off with distance from the notch's edge.
 //
-// It is the notch's own silhouette -- the bar plus both background fillets --
-// grown by `spread` px, painted in `color`, and blurred. It sits BEHIND the
-// notch, so the bar stays pitch black and only the halo outside it shows:
-// down its sides, along its rounded bottom, and out along the screen edge
-// past the fillets.
+// A ShaderEffect, not a shape: shaders/glow.frag computes each pixel's exact
+// distance to the notch's silhouette (bar plus concave fillets) and takes its
+// opacity from the curve in glow.js -- 0.35 up to 6 px, 0.18 at 20 px, 0.07 at
+// 50 px, reaching 0 smoothly at 80 px. Nothing is drawn under the notch.
 //
-// This item's origin is the notch bar's top-left corner. Put it at the bar's
-// position and give it the bar's size and radii; the halo spills outside it
-// by up to `reach` px.
+// This item's origin is the notch bar's top-left corner, like the bar's own
+// coordinates; the effect itself spills `reach` px (plus a spare `pad`) past
+// the bar on the left, right and bottom, so the curve is always drawn out to
+// zero and never cut off. Its window must leave that much room below the bar.
 Item {
   id: root
 
@@ -19,45 +19,39 @@ Item {
   property real barHeight: 0
   property real bottomRadius: 0
   property real filletRadius: 0
-  property color color: "#30d158"
-  // 0..1: how strong the mist is. 0 draws nothing at all.
-  property real intensity: 0
-  // How far the silhouette is grown before blurring, and the blur's size.
-  property real spread: 6
-  property int blurMax: 48
+  property color color: "#FFB340"
+  property real presence: 0
 
-  readonly property real reach: spread + blurMax
+  readonly property real reach: GlowCurve.reach
+  readonly property real pad: 8
+  readonly property var knots: GlowCurve.knots
+  readonly property var slopes: GlowCurve.m
+  function alphaAt(d) { return GlowCurve.alpha(d) }
 
   width: barWidth
   height: barHeight
-  visible: intensity > 0.001 && barHeight > 0.5
+  visible: presence > 0.001 && barHeight > 0.5
 
-  Island {
-    id: silhouette
-    // Grown by `spread` on the sides and bottom; the top stays on the screen
-    // edge. The fillets grow with it, so the halo keeps the fused outline.
-    x: -silhouette.barX - root.spread
+  ShaderEffect {
+    readonly property var curve: GlowCurve.uniforms()
+
+    x: -margin
     y: 0
-    barWidth: root.barWidth + 2 * root.spread
-    barHeight: root.barHeight + root.spread
-    bottomRadius: root.bottomRadius + root.spread
-    filletRadius: root.filletRadius + root.spread
-    color: root.color
-    visible: false
-    layer.enabled: root.visible
-  }
+    width: root.barWidth + 2 * margin
+    height: root.barHeight + root.reach + root.pad
+    fragmentShader: "shaders/glow.frag.qsb"
+    blending: true
 
-  MultiEffect {
-    source: silhouette
-    x: silhouette.x
-    y: silhouette.y
-    width: silhouette.width
-    height: silhouette.height
-    autoPaddingEnabled: true
-    blurEnabled: true
-    blur: 1.0
-    blurMax: root.blurMax
-    blurMultiplier: 0.6
-    opacity: Math.max(0, Math.min(1, root.intensity))
+    readonly property size itemSize: Qt.size(width, height)
+    readonly property real margin: root.filletRadius + root.reach + root.pad
+    readonly property real barWidth: root.barWidth
+    readonly property real barHeight: root.barHeight
+    readonly property real bottomRadius: root.bottomRadius
+    readonly property real filletRadius: root.filletRadius
+    readonly property real presence: Math.max(0, Math.min(1, root.presence))
+    readonly property color glowColor: root.color
+    readonly property vector4d knotD: curve.d
+    readonly property vector4d knotA: curve.a
+    readonly property vector4d knotM: curve.m
   }
 }

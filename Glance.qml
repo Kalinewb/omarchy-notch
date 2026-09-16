@@ -152,8 +152,12 @@ Item {
             anchors.centerIn: batteryCase
             width: 8
             height: 11
-            visible: root.batteryCharging
+            // The bolt fades rather than vanishing when charging stops.
+            opacity: root.batteryCharging ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
             onVisibleChanged: requestPaint()
+            Component.onCompleted: requestPaint()
             onPaint: {
               var ctx = getContext("2d")
               ctx.reset()

@@ -1243,10 +1243,8 @@ Item {
   //   hoverDelay / collapseDelay   ms (default 60 / 350)
   //   peekOnTrackChange  briefly widen to show a new track (default true)
   //   peekDuration   ms (default 3500)
-  //   batteryGlow    mist glow around the notch for battery state (default true)
-  //   chargingGlow   "always" (default): glow for as long as it charges;
-  //                  "plug": only the surge when the charger goes in
-  //   chargingColor / lowColor / criticalColor   (default #30d158 / #ff9f0a / #ff453a)
+  //   batteryGlow    the charging glow (default true)
+  //   chargingColor / fullColor / lowColor   (default #FFB340 / #30D158 / #FF453A)
   //   lowBattery / criticalBattery   percent thresholds (default 20 / 10)
   //   batteryPeek    widen to show the charge when plugged in or running low (default true)
   //   windowsToTop   false (default): windows stay below the resting notch.
@@ -1301,10 +1299,9 @@ Item {
   // --- battery ---------------------------------------------------------------
 
   readonly property bool notchBatteryGlow: notchSetting("batteryGlow", true) !== false
-  readonly property string notchChargingGlow: notchSetting("chargingGlow", "always") === "plug" ? "plug" : "always"
-  readonly property color notchChargingColor: notchSetting("chargingColor", "#30d158")
-  readonly property color notchLowColor: notchSetting("lowColor", "#ff9f0a")
-  readonly property color notchCriticalColor: notchSetting("criticalColor", "#ff453a")
+  readonly property color notchChargingColor: notchSetting("chargingColor", "#FFB340")
+  readonly property color notchFullColor: notchSetting("fullColor", "#30D158")
+  readonly property color notchLowColor: notchSetting("lowColor", "#FF453A")
   readonly property int notchLowBattery: notchNumber("lowBattery", 20)
   readonly property int notchCriticalBattery: notchNumber("criticalBattery", 10)
   readonly property bool notchBatteryPeek: notchSetting("batteryPeek", true) !== false
@@ -1334,31 +1331,39 @@ Item {
     : batteryDischarging && batteryPercent <= notchLowBattery ? "low"
     : batteryFull ? "full" : "none"
 
-  // Which glow is on. A full battery has none; with chargingGlow "plug",
-  // charging shows only the surge.
-  readonly property string glowMode: !notchBatteryGlow || batteryMode === "full" || batteryMode === "none" ? "none"
-    : batteryMode === "charging" && notchChargingGlow === "plug" ? "none"
-    : batteryMode
-  readonly property color glowColor: batteryMode === "critical" ? notchCriticalColor
-    : batteryMode === "low" ? notchLowColor : notchChargingColor
+  // Which glow is on: amber while charging, green once full on the charger,
+  // red when the battery is low. None on battery above the low threshold.
+  readonly property string glowMode: !notchBatteryGlow ? "none"
+    : batteryMode === "critical" ? "low" : batteryMode
+  readonly property color glowColor: glowMode === "full" ? notchFullColor
+    : glowMode === "low" ? notchLowColor : notchChargingColor
 
-  // The glow breathes: intensity = base + amplitude × breath, breath easing
-  // 0 → 1 → 0 (InOutSine) once per period. Faster and deeper as it gets urgent.
-  readonly property var glowStyles: ({
-    charging: { base: 0.45, amplitude: 0.25, period: 3200 },
-    low:      { base: 0.35, amplitude: 0.30, period: 2400 },
-    critical: { base: 0.50, amplitude: 0.45, period: 1200 }
-  })
-  readonly property var glowStyle: glowStyles[glowMode] || glowStyles.charging
-  // Plugging in plays a surge: +0.55 intensity and +10 px spread, up in 260 ms
-  // (OutCubic), back down over 1600 ms (InOutSine).
-  readonly property real glowRestSpread: 6
-  readonly property real glowSurgeSpread: 10
-  readonly property real glowSurgeIntensity: 0.55
-  readonly property int glowSurgeUp: 260
-  readonly property int glowSurgeDown: 1600
-  readonly property int glowFade: 700
-  readonly property int glowBlurMax: 48
+  // The glow does not move on its own. It fades in once, 800 ms ease-out
+  // (OutCubic), when it turns on, and out the same way when it turns off; a
+  // colour change while it is on (charging → full) crossfades over 600 ms.
+  // The three layers' blur radii and opacities live in Glow.qml.
+  readonly property int glowFadeIn: 800
+  readonly property int glowFadeOut: 800
+  readonly property int glowCrossfade: 600
+
+  // Hyprland animates a layer surface as it maps; the glow's window should just
+  // be there. `hyprctl eval` is how this Lua-configured Hyprland takes a rule
+  // at runtime, re-applied after every config reload. Nothing depends on it.
+  readonly property string glowLayerRule:
+    'hl.layer_rule({ match = { namespace = "omarchy-notch-glow" }, no_anim = true, animation = "none" })'
+
+  Process {
+    id: glowLayerRuleProcess
+    command: ["hyprctl", "eval", root.glowLayerRule]
+    running: true
+  }
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event && String(event.name) === "configreloaded") glowLayerRuleProcess.running = true
+    }
+  }
 
   signal batteryEvent(string kind)
   property string previousBatteryMode: ""
@@ -1366,7 +1371,10 @@ Item {
     var previous = previousBatteryMode
     previousBatteryMode = batteryMode
     if (previous === "") return
-    if (batteryMode === "charging" && previous !== "charging") batteryEvent("plugged")
+    var wasPlugged = previous === "charging" || previous === "full"
+    var isPlugged = batteryMode === "charging" || batteryMode === "full"
+    if (batteryMode === "charging" && !wasPlugged) batteryEvent("plugged")
+    else if (wasPlugged && !isPlugged) batteryEvent("unplugged")
     else if (batteryMode === "critical" && previous !== "critical") batteryEvent("critical")
     else if (batteryMode === "low" && previous !== "low" && previous !== "critical") batteryEvent("low")
   }
@@ -1484,7 +1492,6 @@ Item {
       right: true
     }
     implicitHeight: Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + 2)
-      + (glowNeedsRoom ? Math.ceil(root.glowRestSpread + root.glowSurgeSpread + root.glowBlurMax) + 8 : 0)
     color: "transparent"
     surfaceFormat.opaque: false
     // The stock bar's namespace, so Omarchy's own layer rule (no map
@@ -1537,7 +1544,7 @@ Item {
       shownWidth = targetWidth * root.seedWidthFraction
       shownHeight = 0
       retarget()
-      if (glowOn) { glowFadeAnim.to = 1; glowFadeAnim.restart() }
+      if (glowOn) { glowFadeAnim.to = 1; glowFadeAnim.duration = root.glowFadeIn; glowFadeAnim.restart() }
     }
     Component.onDestruction: root.unregisterNotchWindow(barWindow)
 
@@ -1573,54 +1580,34 @@ Item {
 
     readonly property bool glowOn: root.glowMode !== "none" && !root.barHidden
     property real glowPresence: 0
-    property real breath: 0
-    property real surge: 0
-    // Held while the glow fades out, so it does not flash to another colour.
+    // Follows the glow's colour while it is on, crossfading on a change; held
+    // while it fades out, so it does not flash to another colour on the way.
     property color glowColorShown: root.glowColor
-    readonly property bool glowNeedsRoom: glowOn || glowPresence > 0 || surge > 0
-    readonly property real glowIntensity: Math.min(1,
-      glowPresence * (root.glowStyle.base + root.glowStyle.amplitude * breath)
-      + surge * root.glowSurgeIntensity)
-    readonly property real glowSpread: root.glowRestSpread + root.glowSurgeSpread * surge
 
     onGlowOnChanged: {
+      glowCrossfade.enabled = false
       if (glowOn) glowColorShown = Qt.binding(function() { return root.glowColor })
       else glowColorShown = glowColorShown
+      glowCrossfade.enabled = true
+      glowFadeAnim.stop()
       glowFadeAnim.to = glowOn ? 1 : 0
-      glowFadeAnim.restart()
+      glowFadeAnim.duration = glowOn ? root.glowFadeIn : root.glowFadeOut
+      glowFadeAnim.start()
     }
-    Behavior on glowColorShown { ColorAnimation { duration: 600; easing.type: Easing.InOutSine } }
+    Behavior on glowColorShown {
+      id: glowCrossfade
+      ColorAnimation { duration: root.glowCrossfade; easing.type: Easing.InOutQuad }
+    }
 
     NumberAnimation {
       id: glowFadeAnim
       target: barWindow; property: "glowPresence"
-      duration: root.glowFade
-      easing.type: Easing.InOutSine
-    }
-
-    SequentialAnimation {
-      running: barWindow.glowPresence > 0
-      loops: Animation.Infinite
-      NumberAnimation { target: barWindow; property: "breath"; to: 1; duration: root.glowStyle.period / 2; easing.type: Easing.InOutSine }
-      NumberAnimation { target: barWindow; property: "breath"; to: 0; duration: root.glowStyle.period / 2; easing.type: Easing.InOutSine }
-    }
-
-    SequentialAnimation {
-      id: surgeAnim
-      NumberAnimation { target: barWindow; property: "surge"; to: 1; duration: root.glowSurgeUp; easing.type: Easing.OutCubic }
-      NumberAnimation { target: barWindow; property: "surge"; to: 0; duration: root.glowSurgeDown; easing.type: Easing.InOutSine }
-    }
-
-    function playSurge() {
-      if (!root.notchBatteryGlow || root.barHidden) return
-      glowColorShown = Qt.binding(function() { return root.glowColor })
-      surgeAnim.restart()
+      easing.type: Easing.OutCubic
     }
 
     Connections {
       target: root
       function onBatteryEvent(kind) {
-        if (kind === "plugged") barWindow.playSurge()
         if (root.notchBatteryPeek) barWindow.startPeek("battery")
       }
     }
@@ -1768,12 +1755,17 @@ Item {
           lowThreshold: root.notchLowBattery, criticalThreshold: root.notchCriticalBattery
         },
         glow: {
-          mode: root.glowMode, color: String(barWindow.glowColorShown),
-          presence: Number(glowPresence.toFixed(3)), breath: Number(breath.toFixed(3)), surge: Number(surge.toFixed(3)),
-          intensity: Number(glowIntensity.toFixed(3)), spread: Number(glowSpread.toFixed(3)),
-          blurMax: root.glowBlurMax, reach: Number(glow.reach.toFixed(3)),
-          style: root.glowStyle, surgeUpMs: root.glowSurgeUp, surgeDownMs: root.glowSurgeDown,
-          surgeIntensity: root.glowSurgeIntensity, surgeSpread: root.glowSurgeSpread, fadeMs: root.glowFade
+          mode: root.glowMode, color: String(barWindow.glowColorShown).toUpperCase(),
+          presence: Number(glowPresence.toFixed(4)),
+          curve: {
+            knots: glow.knots, slopes: glow.slopes.map(function(v) { return Number(v.toFixed(6)) }), reach: glow.reach,
+            alphaAt: [0, 6, 20, 50, 80, 100].map(function(d) { return { d: d, alpha: Number(glow.alphaAt(d).toFixed(4)), shown: Number((glow.alphaAt(d) * glowPresence).toFixed(4)) } })
+          },
+          window: { namespace: "omarchy-notch-glow", height: glowWindow.height, input: "none" },
+          roomBelowBar: Number((glowWindow.height - island.barHeight).toFixed(3)),
+          colours: { charging: String(root.notchChargingColor).toUpperCase(), full: String(root.notchFullColor).toUpperCase(), low: String(root.notchLowColor).toUpperCase() },
+          fadeInMs: root.glowFadeIn, fadeOutMs: root.glowFadeOut, fadeEasing: "OutCubic",
+          crossfadeMs: root.glowCrossfade, crossfadeEasing: "InOutQuad"
         },
         motion: {
           springDamping: root.springDamping, springPeakAt: root.springPeakAt,
@@ -1787,19 +1779,37 @@ Item {
 
     // --- the shape and what is in it ------------------------------------------
 
-    // Behind the notch, so only the halo outside it shows.
-    Glow {
-      id: glow
-      x: island.x + island.barX
-      y: 0
-      barWidth: island.barWidth
-      barHeight: island.barHeight
-      bottomRadius: island.bottomR
-      filletRadius: island.fillet
-      color: barWindow.glowColorShown
-      intensity: barWindow.glowIntensity
-      spread: barWindow.glowSpread
-      blurMax: root.glowBlurMax
+    // The glow lives in a window of its own, under this one. This window's
+    // height is read by panels that hang from the bar (the clock, the weather)
+    // and must stay the notch's own, while the glow needs 80 px of room below
+    // the open notch to fall all the way to zero. That window is sized once
+    // for the open notch plus the glow's full reach and never resizes, so the
+    // glow is never cut off and nothing reflows when it turns on or off. It
+    // takes no input, and it has its own layer namespace so a blur rule
+    // written for the bar cannot draw a blurred edge inside the falloff.
+    property PanelWindow glowWindow: PanelWindow {
+      screen: barWindow.screen
+      visible: barWindow.visible
+      anchors { top: true; left: true; right: true }
+      implicitHeight: Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + glow.reach + glow.pad + 16)
+      color: "transparent"
+      surfaceFormat.opaque: false
+      exclusionMode: ExclusionMode.Ignore
+      WlrLayershell.namespace: "omarchy-notch-glow"
+      WlrLayershell.layer: WlrLayer.Top
+      mask: Region {}
+
+      Glow {
+        id: glow
+        x: island.x + island.barX
+        y: 0
+        barWidth: island.barWidth
+        barHeight: island.barHeight
+        bottomRadius: island.bottomR
+        filletRadius: island.fillet
+        color: barWindow.glowColorShown
+        presence: barWindow.glowPresence
+      }
     }
 
     Island {
@@ -1870,9 +1880,9 @@ Item {
           foreground: root.notchForeground
           batteryPercent: root.batteryPercent
           batteryCharging: root.batteryCharging
-          batteryColor: root.batteryMode === "charging" || root.batteryMode === "full" ? root.notchChargingColor
-            : root.batteryMode === "critical" ? root.notchCriticalColor
-            : root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
+          batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
+            : root.batteryMode === "full" ? root.notchFullColor
+            : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body
           opacity: barWindow.notchState === "compact" ? 1 : 0
@@ -1889,9 +1899,9 @@ Item {
           foreground: root.notchForeground
           batteryPercent: root.batteryPercent
           batteryCharging: root.batteryCharging
-          batteryColor: root.batteryMode === "charging" || root.batteryMode === "full" ? root.notchChargingColor
-            : root.batteryMode === "critical" ? root.notchCriticalColor
-            : root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
+          batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
+            : root.batteryMode === "full" ? root.notchFullColor
+            : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body
           opacity: barWindow.notchState === "peek" ? 1 : 0
@@ -1913,9 +1923,9 @@ Item {
           foreground: root.notchForeground
           batteryPercent: root.batteryPercent
           batteryCharging: root.batteryCharging
-          batteryColor: root.batteryMode === "charging" || root.batteryMode === "full" ? root.notchChargingColor
-            : root.batteryMode === "critical" ? root.notchCriticalColor
-            : root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
+          batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
+            : root.batteryMode === "full" ? root.notchFullColor
+            : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body
           opacity: barWindow.notchState === "expanded" ? 1 : 0

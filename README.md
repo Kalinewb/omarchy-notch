@@ -35,29 +35,29 @@ closes. You can also open the menu with `quickshell ipc -p $OMARCHY_PATH/shell c
 
 ## Battery glow
 
-A soft mist around the notch shows the battery state:
+Light falls off outward from the notch's edge. It is not a shape and not a blur: every pixel
+takes its opacity from its exact distance to the notch's outline, the fillet arcs included
+(`shaders/glow.frag`, curve in `glow.js`):
 
-| State | Colour | Breathing |
-|---|---|---|
-| Charging | green `#30d158` | intensity 0.45–0.70, every 3.2 s |
-| Low (≤ 20 %, on battery) | amber `#ff9f0a` | 0.35–0.65, every 2.4 s |
-| Critical (≤ 10 %, on battery) | red `#ff453a` | 0.50–0.95, every 1.2 s |
-| Full, or on battery above 20 % | none | — |
+| Distance from the edge | 0–6 px | 20 px | 50 px | 80 px and beyond |
+|---|---|---|---|---|
+| Opacity | 0.35 | 0.18 | 0.07 | 0 |
 
-Plugging in plays a surge: the mist flares (+0.55 intensity, +10 px) in 260 ms, then settles
-over 1.6 s. The notch also briefly widens to show the charge; it does the same when the battery
-goes low or critical. The mist is the notch's own outline, bar and fillets together, grown by 6 px
-and blurred (48 px), and drawn behind the notch so the notch stays pitch black.
+Between those points the curve is a monotone cubic Hermite spline. Its slope is zero at 6 px and
+at 80 px, so it never steps, never rises, and meets zero without an edge. Nothing is drawn under
+the notch.
 
-By default windows stay below the resting notch and the open notch floats over them. Set
-`windowsToTop` to let windows use the full height, or flip it (it is saved to `shell.json`):
+| State | Colour |
+|---|---|
+| Charging | amber `#FFB340` |
+| Full, on the charger | green `#30D158` |
+| Low (≤ 20 %, on battery) | red `#FF453A` |
 
-```sh
-quickshell ipc -p $OMARCHY_PATH/shell call notch windowsToTop toggle   # or true / false
-```
-
-Other IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|toggle|peek|settings|geometry`,
-and `simulateBattery charging|discharging|full|auto <percent>` to preview the glow.
+The glow fades in once over 800 ms (ease-out) and then stays completely still. Charging to full
+crossfades the colour over 600 ms. Unplugging fades the glow out over 800 ms, widens the notch to
+show the battery, and fades out the charging bolt. The glow has its own full-width, click-through
+window (`omarchy-notch-glow`) that is always tall enough for the whole falloff below the open
+notch, so it is never cut off and nothing resizes when it turns on or off.
 
 ## Settings
 
@@ -94,11 +94,10 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `filletRadius` | `10` | Concave fillet where the notch meets the screen edge. |
 | `hoverDelay`, `collapseDelay` | `60`, `350` | Milliseconds. |
 | `peekOnTrackChange`, `peekDuration` | `true`, `3500` | Widen briefly on a new track. |
-| `batteryGlow` | `true` | The battery mist. |
-| `chargingGlow` | `"always"` | `"always"`: glow while charging. `"plug"`: only the surge on plug-in. |
-| `chargingColor`, `lowColor`, `criticalColor` | `#30d158`, `#ff9f0a`, `#ff453a` | Glow colours. |
+| `batteryGlow` | `true` | The battery glow. |
+| `chargingColor`, `fullColor`, `lowColor` | `#FFB340`, `#30D158`, `#FF453A` | Glow colours. |
 | `lowBattery`, `criticalBattery` | `20`, `10` | Percent thresholds, on battery. |
-| `batteryPeek` | `true` | Widen to show the charge on plug-in and low battery. |
+| `batteryPeek` | `true` | Widen to show the charge on plug-in, unplug and low battery. |
 | `windowsToTop` | `false` | `false`: windows stay below the resting notch. `true`: windows go all the way to the top edge, under the notch. |
 
 Widgets are still placed with `omarchy bar move` and `omarchy plugin enable/disable`.
@@ -128,10 +127,10 @@ Quickshell instance, reads every radius and arc centre over IPC (resting and ope
 tangency arithmetic, then renders `Island.qml` offscreen at those sizes and samples the pixels
 that separate a fused bar from a pill or a notch.
 
-`dev/glow.sh` does the same for the battery glow. It simulates each battery state over IPC and
-reads back the mode, colour, intensity and surge. Then it renders the glow offscreen and samples
-the halo: the notch stays black, the mist has the right hue, fades with distance, is symmetric,
-and follows the fillets along the screen edge.
+`dev/glow.sh` does the same for the glow. It simulates each battery state over IPC and samples
+the fade and crossfade with timestamps. Then it renders the glow offscreen, where
+`dev/glow_pixels.py` traces the outline, fillets included, as a dense polyline. It measures every
+pixel's distance to the outline by brute force and checks each pixel's opacity against the curve.
 
 ## Credits
 

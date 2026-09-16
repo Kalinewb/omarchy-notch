@@ -6,7 +6,7 @@ import "notch" as Notch
 // sampled. Run by dev/glow.sh with the OpenGL RHI backend (the software
 // renderer cannot run the blur):
 //
-//   qml6 glow-pixels.qml -- w=180 h=32 r=10 fillet=10 color=#30d158 intensity=1 out=glow.png
+//   qml6 glow-pixels.qml -- w=180 h=32 r=10 fillet=10 color=#FFB340 presence=1 out=glow.png
 Window {
   id: win
   visible: true
@@ -24,7 +24,7 @@ Window {
   }
   function num(key, fallback) { var n = Number(args[key]); return isFinite(n) && args[key] !== undefined ? n : fallback }
 
-  readonly property real margin: Math.ceil(glow.reach) + 20
+  readonly property real margin: Math.ceil(glow.reach) + 30
   width: Math.ceil(island.width + 2 * margin)
   height: Math.ceil(island.height + margin)
 
@@ -40,13 +40,15 @@ Window {
       barHeight: island.barHeight
       bottomRadius: island.bottomR
       filletRadius: island.fillet
-      color: win.args.color || "#30d158"
-      intensity: win.num("intensity", 1)
+      color: win.args.color || "#FFB340"
+      presence: win.num("presence", 1)
     }
 
     Notch.Island {
       id: island
-      x: win.margin
+      // `offset` shifts the bar by a fraction of a pixel, so pixel centres can
+      // land at whole-pixel distances from its edges.
+      x: win.margin + win.num("offset", 0)
       y: 0
       barWidth: win.num("w", 180)
       barHeight: win.num("h", 32)
@@ -65,8 +67,6 @@ Window {
       win.log("barWidth", island.barWidth)
       win.log("barHeight", island.barHeight)
       win.log("reach", glow.reach)
-      win.log("spread", glow.spread)
-      win.log("blurMax", glow.blurMax)
       scene.grabToImage(function(result) {
         win.log("saved", result.saveToFile(win.args.out || "glow.png"))
         Qt.exit(0)

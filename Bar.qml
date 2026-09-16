@@ -1254,11 +1254,11 @@ Item {
   //   glowScale      how far the glow reaches, relative to the resting notch's
   //                  size: scale × √(width × height) × 32/√(180×32), so 32 px
   //                  for the default notch at 1.0 (0.25–2.5, never past 80 px)
-  //   hoverAction    what hovering shows when "hover" is not in openWith:
-  //                  "none" (default), "widgets", "clock", "battery", "plugin"
-  //                  or "settings". With "hover" in openWith, hovering opens
-  //                  the notch (openAction) instead.
-  //   hoverPlugin    the bar widget id shown when hoverAction is "plugin"
+  //   hoverItems     what hovering shows when "hover" is not in openWith: any of
+  //                  "clock", "date", "media", "battery" (default none) ...
+  //   hoverPlugins   ... together with any bar widgets, by id (default none).
+  //                  With both empty, hovering does nothing; with "hover" in
+  //                  openWith, hovering opens the notch (openAction) instead.
   //   openAction     what every other trigger (click, keybind, …) opens, from
   //                  the same list (default "widgets")
   //   openPlugin     the bar widget id shown when openAction is "plugin"
@@ -1289,11 +1289,16 @@ Item {
   }
 
   readonly property var notchCompactItems: notchItems("compact", [])
-  readonly property string notchHoverAction: {
-    var v = String(notchSetting("hoverAction", "none"))
-    return ["widgets", "clock", "battery", "plugin", "settings", "none"].indexOf(v) === -1 ? "none" : v
-  }
-  readonly property string notchHoverPlugin: canonicalWidgetId(String(notchSetting("hoverPlugin", "")))
+  // Older configs said `hoverAction` ("clock", "battery", "plugin" with
+  // `hoverPlugin`); read them as the equivalent items and plugins.
+  readonly property string legacyHoverAction: String(notchSetting("hoverAction", ""))
+  readonly property var notchHoverItems: notchItems("hoverItems",
+      legacyHoverAction === "clock" ? ["clock", "date"] : legacyHoverAction === "battery" ? ["battery"] : [])
+    .filter(function(i) { return ["clock", "date", "media", "battery"].indexOf(i) !== -1 })
+  readonly property var notchHoverPlugins: notchItems("hoverPlugins",
+      legacyHoverAction === "plugin" && notchSetting("hoverPlugin", "") ? [String(notchSetting("hoverPlugin", ""))] : [])
+    .map(function(id) { return canonicalWidgetId(id) })
+  readonly property bool notchHoverShowsSomething: notchHoverItems.length > 0 || notchHoverPlugins.length > 0
   readonly property string notchOpenAction: {
     var v = String(notchSetting("openAction", "widgets"))
     return ["widgets", "clock", "battery", "plugin", "settings"].indexOf(v) === -1 ? "widgets" : v
@@ -1622,7 +1627,7 @@ Item {
     // IPC command line splits arguments on commas. Anything else is JSON if it
     // parses, a string if not.
     function set(key: string, value: string): string {
-      var lists = ["compact", "expanded", "openWith", "settingsWith", "hiddenPlugins"]
+      var lists = ["compact", "expanded", "openWith", "settingsWith", "hiddenPlugins", "hoverItems", "hoverPlugins"]
       var parsed
       if (lists.indexOf(key) !== -1 && String(value).trim().charAt(0) !== "[")
         parsed = String(value).split(/\s+/).filter(function(v) { return v !== "" })
@@ -1684,7 +1689,7 @@ Item {
     // "settings". Set when it opens and kept while it closes, so the content
     // does not change under a shrinking notch.
     property string view: "widgets"
-    // The widget shown by the "plugin" view: the hover or the open one.
+    // The widget shown by the "plugin" view (the open action's plugin).
     property string viewPlugin: ""
     // The notch grown into its settings panel (long right-click, the
     // "settings" hover action, or IPC). Stays until closed: a click outside,
@@ -1724,11 +1729,13 @@ Item {
     }
 
     // Open `requested` because of a hover or a click (any non-hover trigger).
+    // "hover" is the hover view: the hover items next to the hover plugins.
     function openView(requested, how) {
       if (requested === "none") return
+      if (requested === "hover" && !root.notchHoverShowsSomething) return
       if (requested === "settings") { openSettings(); return }
       if (settingsOpen) return
-      var plugin = how === "hover" ? root.notchHoverPlugin : root.notchOpenPlugin
+      var plugin = root.notchOpenPlugin
       if (requested === "plugin" && !plugin) requested = "widgets"
       peeking = false
       viewPlugin = requested === "plugin" ? plugin : ""
@@ -1769,7 +1776,7 @@ Item {
       onTriggered: {
         if (!islandHover.hovered || barWindow.expanded) return
         if (root.opensWith("hover")) barWindow.openView(root.notchOpenAction, "hoverOpen")
-        else barWindow.openView(root.notchHoverAction, "hover")
+        else barWindow.openView("hover", "hover")
       }
     }
 
@@ -1986,10 +1993,10 @@ Item {
         settingsOpen: barWindow.settingsOpen,
         pointer: { overNotch: islandHover.hovered, tooltip: root.tooltipShown ? root.tooltipText : "", hoveredWidgets: root.moduleSlots.filter(function(sl) { return root.slotWindow(sl) === barWindow && sl.hovered }).map(function(sl) { return sl.moduleName }) },
         view: barWindow.view,
-        hoverAction: root.notchHoverAction,
+        hoverItems: root.notchHoverItems,
         openWith: root.notchOpenWith, settingsWith: root.notchSettingsWith,
         keys: { open: root.notchOpenKey, settings: root.notchSettingsKey, applied: root.appliedKeys },
-        hiddenPlugins: root.notchHiddenPlugins, hoverPlugin: root.notchHoverPlugin, openAction: root.notchOpenAction, openPlugin: root.notchOpenPlugin, viewPlugin: barWindow.viewPlugin,
+        hiddenPlugins: root.notchHiddenPlugins, hoverPlugins: root.notchHoverPlugins, openAction: root.notchOpenAction, openPlugin: root.notchOpenPlugin, viewPlugin: barWindow.viewPlugin,
         battery: {
           percent: root.batteryPercent, mode: root.batteryMode, simulated: root.batterySimulated,
           lowThreshold: root.notchLowBattery, criticalThreshold: root.notchCriticalBattery
@@ -2088,7 +2095,7 @@ Item {
           root.setBarHovered(hovered)
           if (hovered) {
             collapseTimer.stop()
-            if (root.opensWith("hover") || root.notchHoverAction !== "none") expandTimer.restart()
+            if (root.opensWith("hover") || root.notchHoverShowsSomething) expandTimer.restart()
           } else {
             expandTimer.stop()
             collapseTimer.restart()
@@ -2181,6 +2188,16 @@ Item {
         }
 
         Glance {
+          id: hoverGlanceProbe
+          opacity: 0
+          enabled: false
+          items: root.notchHoverItems
+          batteryPercent: root.batteryPercent
+          fontFamily: root.fontFamily
+          fontSize: Style.font.body
+        }
+
+        Glance {
           id: expandedGlanceProbe
           opacity: 0
           enabled: false
@@ -2195,17 +2212,47 @@ Item {
         // widgets keep their services and their width is known before the
         // notch opens; hidden and inert while it is closed.
         //
-        // The "plugin" view is this same row with every other widget hidden,
-        // so a widget is never loaded twice.
+        // The "plugin" and "hover" views are this same row with the widgets
+        // they do not show collapsed, so a widget is never loaded twice. The
+        // filter is a space-separated list of the widget ids to keep, padded
+        // with spaces; " " keeps none, "" keeps all but the hidden ones.
         Row {
           id: widgetRow
-          readonly property string filter: barWindow.view === "plugin" ? barWindow.viewPlugin : ""
+          readonly property bool rowView: barWindow.view === "widgets" || barWindow.view === "plugin" || barWindow.view === "hover"
+          readonly property string filter: barWindow.view === "plugin" ? " " + barWindow.viewPlugin + " "
+            : barWindow.view === "hover" ? " " + root.notchHoverPlugins.join(" ") + " "
+            : ""
           x: (content.width - width) / 2
           y: 0
           height: root.notchCompactHeight
           spacing: filter ? 0 : root.notchSectionGap
-          opacity: barWindow.notchState === "expanded" && (barWindow.view === "widgets" || barWindow.view === "plugin") ? 1 : 0
-          enabled: barWindow.expanded && (barWindow.view === "widgets" || barWindow.view === "plugin")
+          opacity: barWindow.notchState === "expanded" && rowView ? 1 : 0
+          enabled: barWindow.expanded && rowView
+
+          // The hover view's time, date, media and battery, ahead of its
+          // plugins, with a gap between them when there are both.
+          Item {
+            anchors.verticalCenter: parent.verticalCenter
+            readonly property bool shown: barWindow.view === "hover" && hoverGlanceProbe.implicitWidth > 0
+            visible: shown
+            width: shown ? hoverGlance.implicitWidth + (root.notchHoverPlugins.length > 0 ? root.notchSectionGap : 0) : 0
+            height: root.notchCompactHeight
+            Glance {
+              id: hoverGlance
+              width: implicitWidth
+              height: parent.height
+              items: root.notchHoverItems
+              foreground: root.notchForeground
+              batteryPercent: root.batteryPercent
+              batteryCharging: root.batteryCharging
+              batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
+                : root.batteryMode === "full" ? root.notchFullColor
+                : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.body
+            }
+          }
+
           Behavior on opacity { NumberAnimation { duration: barWindow.expanded ? 220 : 90; easing.type: Easing.OutCubic } }
 
           LeftModules { anchors.verticalCenter: parent.verticalCenter; filter: widgetRow.filter }
@@ -2756,7 +2803,7 @@ Item {
     // loaded and visible (a hidden widget can stop measuring or drop its
     // state), but zero width, clipped and inert.
     readonly property bool filteredOut: filter !== ""
-      ? root.canonicalWidgetId(moduleName) !== filter
+      ? filter.indexOf(" " + root.canonicalWidgetId(moduleName) + " ") === -1
       : root.notchHiddenPlugins.indexOf(root.canonicalWidgetId(moduleName)) !== -1
     clip: filteredOut
     enabled: !filteredOut

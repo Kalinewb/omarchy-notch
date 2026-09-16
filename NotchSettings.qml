@@ -136,15 +136,38 @@ Item {
         }
       }
 
-      ViewRow {
+      SettingRow {
         label: "On hover"
-        // What hovering shows when hover is not one of the ways to open the
-        // notch; when it is, hovering opens the notch instead, so say that.
-        allowNothing: true
-        note: root.bar && root.bar.opensWith("hover") ? "Hover opens the notch (see Behaviour), so this is not used." : ""
-        actionKey: "hoverAction"; pluginKey: "hoverPlugin"
-        action: root.bar ? root.bar.notchHoverAction : "widgets"
-        plugin: root.bar ? root.bar.notchHoverPlugin : ""
+        ItemChips {
+          selected: root.bar ? root.bar.notchHoverItems : []
+          onPicked: function(item) { root.toggleItem("hoverItems", root.bar.notchHoverItems, item) }
+        }
+      }
+
+      StackedRow {
+        label: "Plugins on hover"
+        ChipFlow {
+          options: root.bar ? root.bar.layoutPluginChoices() : []
+          selected: root.bar ? root.bar.notchHoverPlugins : []
+          onPicked: function(value) {
+            var next = root.bar.notchHoverPlugins.slice()
+            var i = next.indexOf(value)
+            if (i === -1) next.push(value)
+            else next.splice(i, 1)
+            root.set("hoverPlugins", next)
+          }
+        }
+      }
+
+      Text {
+        visible: root.bar && root.bar.opensWith("hover")
+        width: parent.width
+        wrapMode: Text.WordWrap
+        text: "Hover opens the notch (see Behaviour), so these are not shown."
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        bottomPadding: Style.space(4)
       }
 
       ViewRow {

@@ -1253,7 +1253,10 @@ Item {
   //   batteryGlow    the charging glow (default true)
   //   glowScale      how far the glow reaches, relative to the resting notch's
   //                  size: scale × √(width × height) × 32/√(180×32), so 32 px
-  //                  for the default notch at 1.0 (0.25–2.5, never past 80 px)
+  //                  for the default notch at 1.0 (0–2.5, never past 80 px;
+  //                  0 draws no glow at all)
+  //   glowStyle      "outline" (default) or "bottom": a subtler glow only
+  //                  under the bottom edge, strongest in the middle
   //   hoverItems     what hovering shows when "hover" is not in openWith: any of
   //                  "clock", "date", "media", "battery" (default none) ...
   //   hoverPlugins   ... together with any bar widgets, by id (default none).
@@ -1405,7 +1408,10 @@ Item {
   // --- battery ---------------------------------------------------------------
 
   readonly property bool notchBatteryGlow: notchSetting("batteryGlow", true) !== false
-  readonly property real notchGlowScale: Math.max(0.25, Math.min(2.5, notchNumber("glowScale", 1)))
+  readonly property real notchGlowScale: Math.max(0, Math.min(2.5, notchNumber("glowScale", 1)))
+  // "outline" (default): the glow around the whole resting notch.
+  // "bottom": a subtler glow only under its bottom edge, strongest in the middle.
+  readonly property string notchGlowStyle: notchSetting("glowStyle", "outline") === "bottom" ? "bottom" : "outline"
   readonly property color notchChargingColor: notchSetting("chargingColor", "#FFB340")
   readonly property color notchFullColor: notchSetting("fullColor", "#30D158")
   readonly property color notchLowColor: notchSetting("lowColor", "#FF453A")
@@ -2045,7 +2051,15 @@ Item {
           mode: root.glowMode, color: String(barWindow.glowColorShown).toUpperCase(),
           presence: Number(glowPresence.toFixed(4)),
           curve: {
-            scale: root.notchGlowScale, sizeBase: Number(glow.sizeBase.toFixed(3)), size: Number(glow.reach.toFixed(3)), knots: glow.knots.map(function(n) { return { d: Number(n.d.toFixed(3)), a: n.a } }),
+            style: root.notchGlowStyle,
+          outlineDrawn: glow.visible, bottomDrawn: bottomGlow.visible,
+          bottom: {
+            strength: bottomGlow.strength, reach: Number(bottomGlow.reach.toFixed(3)),
+            alphaAt: [[0, 0], [0, 0.5], [0, 0.9], [glow.knots[1].d, 0], [glow.knots[2].d, 0], [bottomGlow.reach, 0]].map(function(p) {
+              return { d: Number(p[0].toFixed(3)), u: p[1], alpha: Number(bottomGlow.alphaAt(p[0], p[1]).toFixed(4)) }
+            })
+          },
+          scale: root.notchGlowScale, sizeBase: Number(glow.sizeBase.toFixed(3)), size: Number(glow.reach.toFixed(3)), knots: glow.knots.map(function(n) { return { d: Number(n.d.toFixed(3)), a: n.a } }),
             alphaAt: glow.knots.map(function(n) { return n.d }).concat([glow.reach + 10]).map(function(d) { return { d: Number(d.toFixed(3)), alpha: Number(glow.alphaAt(d).toFixed(4)), shown: Number((glow.alphaAt(d) * glowPresence).toFixed(4)) } })
           },
           window: { namespace: "omarchy-notch-glow", height: glowWindow.height, input: "none" },
@@ -2104,13 +2118,29 @@ Item {
         bottomRadius: Math.max(0, Math.min(root.notchBottomRadius * barWindow.emergence, barWidth / 2, barHeight / 2))
         filletRadius: Math.max(0, Math.min(root.notchFilletRadius * barWindow.emergence, barHeight - bottomRadius))
         color: barWindow.glowColorShown
-        presence: barWindow.glowPresence
+        // Drawn only in the outline style, and not at all at glow size 0.
+        presence: root.notchGlowStyle === "outline" && root.notchGlowScale > 0 ? barWindow.glowPresence : 0
         // Relative to the resting notch's size: glowScale × √(width × height),
         // calibrated so the default 180 × 32 notch reaches 32 px at 1.0 --
         // a wider or taller notch glows further. Never past the 80 px the
         // window leaves room for.
         readonly property real sizeBase: Math.sqrt(Math.max(0, barWidth) * Math.max(0, barHeight)) * 32 / Math.sqrt(180 * 32)
         size: Math.max(1, Math.min(glow.maxReach, root.notchGlowScale * sizeBase))
+      }
+
+      // The subtle style: same resting shape, size and fade, only under the
+      // bottom edge. Its own component and shader, so the outline glow is
+      // untouched.
+      BottomGlow {
+        id: bottomGlow
+        x: glow.x
+        y: 0
+        barWidth: glow.barWidth
+        barHeight: glow.barHeight
+        bottomRadius: glow.bottomRadius
+        color: barWindow.glowColorShown
+        presence: root.notchGlowStyle === "bottom" && root.notchGlowScale > 0 ? barWindow.glowPresence : 0
+        size: glow.size
       }
     }
 

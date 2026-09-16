@@ -259,6 +259,16 @@ Item {
         }
 
         SettingRow {
+          label: "Glow style"
+          ButtonGroup {
+            options: [{ value: "outline", label: "Outline" }, { value: "bottom", label: "Bottom" }]
+            value: root.bar ? root.bar.notchGlowStyle : "outline"
+            fontFamily: root.fontFamily
+            onChanged: function(value) { root.set("glowStyle", value) }
+          }
+        }
+
+        SettingRow {
           id: glowScaleRow
           label: "Glow size"
           // Relative to the resting notch's size (1.0 reaches 32 px on the
@@ -273,7 +283,7 @@ Item {
               width: Style.space(160)
               height: Style.space(24)
               bar: root.bar
-              minimum: 0.25
+              minimum: 0
               maximum: 2.5
               step: 0.05
               value: root.bar ? root.bar.notchGlowScale : 1
@@ -284,7 +294,8 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               width: Style.space(44)
               horizontalAlignment: Text.AlignRight
-              text: (glowScaleSlider.dragging ? glowScaleRow.liveScale : (root.bar ? root.bar.notchGlowScale : 1)).toFixed(2) + "×"
+              readonly property real shownScale: glowScaleSlider.dragging ? glowScaleRow.liveScale : (root.bar ? root.bar.notchGlowScale : 1)
+              text: shownScale <= 0 ? "off" : shownScale.toFixed(2) + "×"
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall

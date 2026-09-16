@@ -6,8 +6,9 @@ import Quickshell.Services.Mpris
 // is playing. Used for the compact notch (empty by default, so the notch stays
 // pitch black) and for the top row of the expanded notch.
 //
-// `items` is an ordered list of "clock", "date" and "media". An item with
-// nothing to show (media with no player) takes no space.
+// `items` is an ordered list of "clock", "date", "media" and "battery". An
+// item with nothing to show (media with no player, battery on a desktop)
+// takes no space.
 Item {
   id: root
 
@@ -20,6 +21,10 @@ Item {
   property string dateFormat: "ddd d MMM"
   property int mediaMaxWidth: 240
   property int spacing: 14
+  // Fed by the bar, so a simulated battery shows here too. -1: no battery.
+  property int batteryPercent: -1
+  property bool batteryCharging: false
+  property color batteryColor: foreground
 
   // What is playing, for the notch's own "peek" when the track changes.
   readonly property var player: pickPlayer()
@@ -70,6 +75,7 @@ Item {
         sourceComponent: modelData === "clock" ? clockItem
           : modelData === "date" ? dateItem
           : modelData === "media" ? mediaItem
+          : modelData === "battery" ? batteryItem
           : null
         visible: item !== null && item.implicitWidth > 0
         width: visible ? item.implicitWidth : 0
@@ -96,6 +102,83 @@ Item {
       color: root.dimForeground
       font.family: root.fontFamily
       font.pixelSize: root.fontSize
+    }
+  }
+
+  Component {
+    id: batteryItem
+    Item {
+      implicitWidth: root.batteryPercent >= 0 ? batteryRow.implicitWidth : 0
+      implicitHeight: batteryRow.implicitHeight
+      visible: root.batteryPercent >= 0
+
+      Row {
+        id: batteryRow
+        spacing: 6
+
+        // A drawn battery: outline, nub, fill to the charge, bolt while charging.
+        Item {
+          width: 22
+          height: 11
+          anchors.verticalCenter: parent.verticalCenter
+
+          Rectangle {
+            id: batteryCase
+            width: 20
+            height: parent.height
+            radius: 3
+            color: "transparent"
+            border.width: 1
+            border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.45)
+          }
+          Rectangle {
+            x: 20.5
+            width: 1.5
+            height: 4
+            radius: 0.75
+            anchors.verticalCenter: parent.verticalCenter
+            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.45)
+          }
+          Rectangle {
+            x: 2
+            y: 2
+            height: parent.height - 4
+            width: Math.max(1.5, (batteryCase.width - 4) * Math.max(0, Math.min(100, root.batteryPercent)) / 100)
+            radius: 1.5
+            color: root.batteryColor
+            Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+          }
+          Canvas {
+            anchors.centerIn: batteryCase
+            width: 8
+            height: 11
+            visible: root.batteryCharging
+            onVisibleChanged: requestPaint()
+            onPaint: {
+              var ctx = getContext("2d")
+              ctx.reset()
+              ctx.beginPath()
+              ctx.moveTo(5, 0); ctx.lineTo(1, 6); ctx.lineTo(4, 6)
+              ctx.lineTo(3, 11); ctx.lineTo(7, 5); ctx.lineTo(4, 5)
+              ctx.closePath()
+              ctx.fillStyle = "#ffffff"
+              ctx.strokeStyle = "#000000"
+              ctx.lineWidth = 1
+              ctx.stroke()
+              ctx.fill()
+            }
+          }
+        }
+
+        Text {
+          anchors.verticalCenter: parent.verticalCenter
+          text: root.batteryPercent + "%"
+          color: root.batteryCharging || root.batteryColor !== root.foreground ? root.batteryColor : root.dimForeground
+          font.family: root.fontFamily
+          font.pixelSize: root.fontSize
+          font.weight: Font.DemiBold
+        }
+      }
     }
   }
 

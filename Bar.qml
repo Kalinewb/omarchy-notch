@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import Quickshell.Services.UPower
 import Quickshell.Wayland
 import QtQuick
 import QtQuick.Layouts
@@ -804,7 +805,10 @@ Item {
     return source ? Util.fileUrl(source) : ""
   }
 
-  Component.onCompleted: applyBarConfig()
+  Component.onCompleted: {
+    applyBarConfig()
+    previousBatteryMode = batteryMode
+  }
 
   // Revealing the indicators widens their section, which can slide a neighbour
   // under a stationary pointer. Collapsing on that un-hover would move it back
@@ -1239,6 +1243,12 @@ Item {
   //   hoverDelay / collapseDelay   ms (default 60 / 350)
   //   peekOnTrackChange  briefly widen to show a new track (default true)
   //   peekDuration   ms (default 3500)
+  //   batteryGlow    mist glow around the notch for battery state (default true)
+  //   chargingGlow   "always" (default): glow for as long as it charges;
+  //                  "plug": only the surge when the charger goes in
+  //   chargingColor / lowColor / criticalColor   (default #30d158 / #ff9f0a / #ff453a)
+  //   lowBattery / criticalBattery   percent thresholds (default 20 / 10)
+  //   batteryPeek    widen to show the charge when plugged in or running low (default true)
   //   windowsToTop   false (default): windows stay below the resting notch.
   //                  true: windows go all the way to the top edge, under the notch.
   //                  Toggle with `quickshell ipc -p $OMARCHY_PATH/shell call notch windowsToTop toggle`.
@@ -1287,6 +1297,79 @@ Item {
   readonly property bool notchPeekOnTrackChange: notchSetting("peekOnTrackChange", true) !== false
   readonly property int notchPeekDuration: Math.max(500, notchNumber("peekDuration", 3500))
   readonly property bool notchWindowsToTop: notchSetting("windowsToTop", false) === true
+
+  // --- battery ---------------------------------------------------------------
+
+  readonly property bool notchBatteryGlow: notchSetting("batteryGlow", true) !== false
+  readonly property string notchChargingGlow: notchSetting("chargingGlow", "always") === "plug" ? "plug" : "always"
+  readonly property color notchChargingColor: notchSetting("chargingColor", "#30d158")
+  readonly property color notchLowColor: notchSetting("lowColor", "#ff9f0a")
+  readonly property color notchCriticalColor: notchSetting("criticalColor", "#ff453a")
+  readonly property int notchLowBattery: notchNumber("lowBattery", 20)
+  readonly property int notchCriticalBattery: notchNumber("criticalBattery", 10)
+  readonly property bool notchBatteryPeek: notchSetting("batteryPeek", true) !== false
+
+  // `notch simulateBattery <charging|discharging|full> <percent>` overrides the
+  // real battery, to preview the glow; `auto` hands back to UPower.
+  property string batterySimulatedState: ""
+  property int batterySimulatedPercent: -1
+  readonly property bool batterySimulated: batterySimulatedState !== ""
+
+  readonly property var batteryDevice: UPower.displayDevice
+  readonly property bool batteryPresent: batterySimulated || (!!batteryDevice && batteryDevice.isPresent)
+  readonly property int batteryPercent: batterySimulated ? batterySimulatedPercent
+    : batteryPresent ? Math.round(Number(batteryDevice.percentage || 0) * 100) : -1
+  readonly property bool batteryCharging: batterySimulated ? batterySimulatedState === "charging"
+    : batteryPresent && !UPower.onBattery
+      && (batteryDevice.state === UPowerDeviceState.Charging || batteryDevice.state === UPowerDeviceState.PendingCharge)
+  readonly property bool batteryFull: batterySimulated ? batterySimulatedState === "full"
+    : batteryPresent && !UPower.onBattery
+      && (batteryDevice.state === UPowerDeviceState.FullyCharged || batteryPercent >= 100)
+  readonly property bool batteryDischarging: batterySimulated ? batterySimulatedState === "discharging"
+    : batteryPresent && UPower.onBattery
+  // "none" | "charging" | "full" | "low" | "critical"
+  readonly property string batteryMode: !batteryPresent || batteryPercent < 0 ? "none"
+    : batteryCharging ? "charging"
+    : batteryDischarging && batteryPercent <= notchCriticalBattery ? "critical"
+    : batteryDischarging && batteryPercent <= notchLowBattery ? "low"
+    : batteryFull ? "full" : "none"
+
+  // Which glow is on. A full battery has none; with chargingGlow "plug",
+  // charging shows only the surge.
+  readonly property string glowMode: !notchBatteryGlow || batteryMode === "full" || batteryMode === "none" ? "none"
+    : batteryMode === "charging" && notchChargingGlow === "plug" ? "none"
+    : batteryMode
+  readonly property color glowColor: batteryMode === "critical" ? notchCriticalColor
+    : batteryMode === "low" ? notchLowColor : notchChargingColor
+
+  // The glow breathes: intensity = base + amplitude × breath, breath easing
+  // 0 → 1 → 0 (InOutSine) once per period. Faster and deeper as it gets urgent.
+  readonly property var glowStyles: ({
+    charging: { base: 0.45, amplitude: 0.25, period: 3200 },
+    low:      { base: 0.35, amplitude: 0.30, period: 2400 },
+    critical: { base: 0.50, amplitude: 0.45, period: 1200 }
+  })
+  readonly property var glowStyle: glowStyles[glowMode] || glowStyles.charging
+  // Plugging in plays a surge: +0.55 intensity and +10 px spread, up in 260 ms
+  // (OutCubic), back down over 1600 ms (InOutSine).
+  readonly property real glowRestSpread: 6
+  readonly property real glowSurgeSpread: 10
+  readonly property real glowSurgeIntensity: 0.55
+  readonly property int glowSurgeUp: 260
+  readonly property int glowSurgeDown: 1600
+  readonly property int glowFade: 700
+  readonly property int glowBlurMax: 48
+
+  signal batteryEvent(string kind)
+  property string previousBatteryMode: ""
+  onBatteryModeChanged: {
+    var previous = previousBatteryMode
+    previousBatteryMode = batteryMode
+    if (previous === "") return
+    if (batteryMode === "charging" && previous !== "charging") batteryEvent("plugged")
+    else if (batteryMode === "critical" && previous !== "critical") batteryEvent("critical")
+    else if (batteryMode === "low" && previous !== "low" && previous !== "critical") batteryEvent("low")
+  }
 
   // Persist a notch setting into bar.notch in shell.json; the change comes
   // back in through barConfig like any other edit.
@@ -1351,7 +1434,19 @@ Item {
       if (w.expanded) w.collapseNow()
       else w.clickExpanded = true
     }
-    function peek(): void { var w = root.focusedNotchWindow(); if (w) w.startPeek() }
+    function peek(): void { var w = root.focusedNotchWindow(); if (w) w.startPeek("media") }
+    // Preview the battery glow: state is charging, discharging, full or auto
+    // (back to the real battery). Returns the resulting battery mode.
+    function simulateBattery(state: string, percent: int): string {
+      if (state === "auto" || ["charging", "discharging", "full"].indexOf(state) === -1) {
+        root.batterySimulatedState = ""
+        root.batterySimulatedPercent = -1
+      } else {
+        root.batterySimulatedPercent = Math.max(0, Math.min(100, percent))
+        root.batterySimulatedState = state
+      }
+      return root.batteryMode
+    }
     // "true", "false" or "toggle"; saved to shell.json. Returns the new value.
     function windowsToTop(value: string): string {
       var next = value === "toggle" ? !root.notchWindowsToTop : value === "true"
@@ -1382,6 +1477,7 @@ Item {
       right: true
     }
     implicitHeight: Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + 2)
+      + (glowNeedsRoom ? Math.ceil(root.glowRestSpread + root.glowSurgeSpread + root.glowBlurMax) + 8 : 0)
     color: "transparent"
     surfaceFormat.opaque: false
     // The stock bar's namespace, so Omarchy's own layer rule (no map
@@ -1399,6 +1495,7 @@ Item {
     property bool clickExpanded: false
     property bool peeking: false
     property bool mediaReady: false
+    property string peekKind: "media"
     readonly property bool popoutHere: root.activePopout !== null && root.targetBelongsToWindow(root.activePopout, barWindow)
     readonly property bool dragHere: root.barDragSource !== null && root.barDragWindow === barWindow
     readonly property bool expanded: !root.barHidden
@@ -1412,8 +1509,9 @@ Item {
       clickExpanded = false
     }
 
-    function startPeek() {
+    function startPeek(kind) {
       if (expanded) return
+      peekKind = kind === "battery" ? "battery" : "media"
       peeking = true
       peekTimer.restart()
     }
@@ -1423,6 +1521,7 @@ Item {
       shownWidth = targetWidth * root.seedWidthFraction
       shownHeight = 0
       retarget()
+      if (glowOn) { glowFadeAnim.to = 1; glowFadeAnim.restart() }
     }
     Component.onDestruction: root.unregisterNotchWindow(barWindow)
 
@@ -1452,6 +1551,62 @@ Item {
       interval: 2000
       running: true
       onTriggered: barWindow.mediaReady = true
+    }
+
+    // --- battery glow -----------------------------------------------------------
+
+    readonly property bool glowOn: root.glowMode !== "none" && !root.barHidden
+    property real glowPresence: 0
+    property real breath: 0
+    property real surge: 0
+    // Held while the glow fades out, so it does not flash to another colour.
+    property color glowColorShown: root.glowColor
+    readonly property bool glowNeedsRoom: glowOn || glowPresence > 0 || surge > 0
+    readonly property real glowIntensity: Math.min(1,
+      glowPresence * (root.glowStyle.base + root.glowStyle.amplitude * breath)
+      + surge * root.glowSurgeIntensity)
+    readonly property real glowSpread: root.glowRestSpread + root.glowSurgeSpread * surge
+
+    onGlowOnChanged: {
+      if (glowOn) glowColorShown = Qt.binding(function() { return root.glowColor })
+      else glowColorShown = glowColorShown
+      glowFadeAnim.to = glowOn ? 1 : 0
+      glowFadeAnim.restart()
+    }
+    Behavior on glowColorShown { ColorAnimation { duration: 600; easing.type: Easing.InOutSine } }
+
+    NumberAnimation {
+      id: glowFadeAnim
+      target: barWindow; property: "glowPresence"
+      duration: root.glowFade
+      easing.type: Easing.InOutSine
+    }
+
+    SequentialAnimation {
+      running: barWindow.glowPresence > 0
+      loops: Animation.Infinite
+      NumberAnimation { target: barWindow; property: "breath"; to: 1; duration: root.glowStyle.period / 2; easing.type: Easing.InOutSine }
+      NumberAnimation { target: barWindow; property: "breath"; to: 0; duration: root.glowStyle.period / 2; easing.type: Easing.InOutSine }
+    }
+
+    SequentialAnimation {
+      id: surgeAnim
+      NumberAnimation { target: barWindow; property: "surge"; to: 1; duration: root.glowSurgeUp; easing.type: Easing.OutCubic }
+      NumberAnimation { target: barWindow; property: "surge"; to: 0; duration: root.glowSurgeDown; easing.type: Easing.InOutSine }
+    }
+
+    function playSurge() {
+      if (!root.notchBatteryGlow || root.barHidden) return
+      glowColorShown = Qt.binding(function() { return root.glowColor })
+      surgeAnim.restart()
+    }
+
+    Connections {
+      target: root
+      function onBatteryEvent(kind) {
+        if (kind === "plugged") barWindow.playSurge()
+        if (root.notchBatteryPeek) barWindow.startPeek("battery")
+      }
     }
 
     Connections {
@@ -1591,6 +1746,18 @@ Item {
           leftFillet: onScreen(island.leftFilletCentre), rightFillet: onScreen(island.rightFilletCentre),
           bottomLeft: onScreen(island.bottomLeftCentre), bottomRight: onScreen(island.bottomRightCentre)
         },
+        battery: {
+          percent: root.batteryPercent, mode: root.batteryMode, simulated: root.batterySimulated,
+          lowThreshold: root.notchLowBattery, criticalThreshold: root.notchCriticalBattery
+        },
+        glow: {
+          mode: root.glowMode, color: String(barWindow.glowColorShown),
+          presence: Number(glowPresence.toFixed(3)), breath: Number(breath.toFixed(3)), surge: Number(surge.toFixed(3)),
+          intensity: Number(glowIntensity.toFixed(3)), spread: Number(glowSpread.toFixed(3)),
+          blurMax: root.glowBlurMax, reach: Number(glow.reach.toFixed(3)),
+          style: root.glowStyle, surgeUpMs: root.glowSurgeUp, surgeDownMs: root.glowSurgeDown,
+          surgeIntensity: root.glowSurgeIntensity, surgeSpread: root.glowSurgeSpread, fadeMs: root.glowFade
+        },
         motion: {
           springDamping: root.springDamping, springPeakAt: root.springPeakAt,
           springOvershoot: Number(root.springOvershoot.toFixed(5)),
@@ -1602,6 +1769,21 @@ Item {
     }
 
     // --- the shape and what is in it ------------------------------------------
+
+    // Behind the notch, so only the halo outside it shows.
+    Glow {
+      id: glow
+      x: island.x + island.barX
+      y: 0
+      barWidth: island.barWidth
+      barHeight: island.barHeight
+      bottomRadius: island.bottomR
+      filletRadius: island.fillet
+      color: barWindow.glowColorShown
+      intensity: barWindow.glowIntensity
+      spread: barWindow.glowSpread
+      blurMax: root.glowBlurMax
+    }
 
     Island {
       id: island
@@ -1660,6 +1842,11 @@ Item {
           height: root.notchCompactHeight
           items: root.notchCompactItems
           foreground: root.notchForeground
+          batteryPercent: root.batteryPercent
+          batteryCharging: root.batteryCharging
+          batteryColor: root.batteryMode === "charging" || root.batteryMode === "full" ? root.notchChargingColor
+            : root.batteryMode === "critical" ? root.notchCriticalColor
+            : root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body
           opacity: barWindow.notchState === "compact" ? 1 : 0
@@ -1672,8 +1859,13 @@ Item {
           x: (content.width - width) / 2
           width: implicitWidth
           height: root.notchCompactHeight
-          items: root.notchCompactItems.indexOf("media") === -1 ? root.notchCompactItems.concat(["media"]) : root.notchCompactItems
+          items: root.notchCompactItems.indexOf(barWindow.peekKind) === -1 ? root.notchCompactItems.concat([barWindow.peekKind]) : root.notchCompactItems
           foreground: root.notchForeground
+          batteryPercent: root.batteryPercent
+          batteryCharging: root.batteryCharging
+          batteryColor: root.batteryMode === "charging" || root.batteryMode === "full" ? root.notchChargingColor
+            : root.batteryMode === "critical" ? root.notchCriticalColor
+            : root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body
           opacity: barWindow.notchState === "peek" ? 1 : 0
@@ -1682,7 +1874,7 @@ Item {
 
           onTrackTitleChanged: {
             if (root.notchPeekOnTrackChange && barWindow.mediaReady && hasMedia && playing)
-              barWindow.startPeek()
+              barWindow.startPeek("media")
           }
         }
 
@@ -1693,6 +1885,11 @@ Item {
           height: root.notchCompactHeight
           items: root.notchExpandedItems
           foreground: root.notchForeground
+          batteryPercent: root.batteryPercent
+          batteryCharging: root.batteryCharging
+          batteryColor: root.batteryMode === "charging" || root.batteryMode === "full" ? root.notchChargingColor
+            : root.batteryMode === "critical" ? root.notchCriticalColor
+            : root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.body
           opacity: barWindow.notchState === "expanded" ? 1 : 0

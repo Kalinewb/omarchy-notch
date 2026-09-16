@@ -20,32 +20,49 @@ Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clo
 
 | State | What you see |
 |---|---|
-| **Resting** | A black rectangle at the top centre. Empty by default; can show time, date, now playing. |
-| **Peek** | When a new track starts, the notch widens for a few seconds to show it. |
-| **Open** | On hover (or click): a top row with the glance items, and your bar widgets under it. It stays open while a widget's panel is open. |
+| **At rest** | A black rectangle at the top centre. Empty by default; can show time, date, now playing and battery. |
+| **Peek** | A new track, plugging in, unplugging or a low battery widens the notch for a few seconds. |
+| **On hover** | What `hoverAction` says: the widgets, the clock, the battery, one plugin, or the settings. |
+| **When open** | What `openAction` says, for every other way of opening it (click, keybind, …). |
+| **Settings** | The notch grows down into its settings panel -- the same surface, top edge on the screen edge. |
 | **Hidden** | `omarchy-toggle-bar` slides it up into the edge. |
 
-## Settings menu
+The open notch is one row at the resting height: it only widens. Only the settings panel makes
+it taller. The widget row is the same row for every view, so a single-plugin view shows that
+plugin's live widget and never loads a second copy.
 
-Long right-click the notch (hold for about half a second) to open its settings: how it opens,
-whether windows reach the top edge, what it shows at rest and when open, its size and corner
-radii, and the battery glow. Every change is saved to `shell.json` straight away. **Preview**
-shows the charging, low and critical glow without touching the battery, and stops when the menu
-closes. You can also open the menu with `quickshell ipc -p $OMARCHY_PATH/shell call notch settings`.
+### Ways to open it
+
+`openWith` and `settingsWith` pick the gestures for the notch and for the settings (hover, click,
+double-click, long press, right-click, long right-click, middle-click, scroll), and `openKey` and
+`settingsKey` add a keybind. A gesture belongs to one list at a time. Keybinds go into the running
+Hyprland with `hyprctl eval`, are replaced when changed, and are re-added after every config
+reload; nothing is written to your Hyprland config.
+
+## Settings panel
+
+Open the settings with a long right-click (by default) or its keybind. The notch grows into the
+panel; click outside, press Escape or ✕ to close it. Every change is saved to `shell.json` straight
+away. **Preview** shows the charging, full and low glow without touching the battery.
+
+Over IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|toggle|settings|peek|geometry`,
+`view widgets|clock|battery|plugin|settings`, `windowsToTop true|false|toggle`, and
+`simulateBattery charging|discharging|full|auto <percent>`.
 
 ## Battery glow
 
-Light falls off outward from the notch's edge. It is not a shape and not a blur: every pixel
-takes its opacity from its exact distance to the notch's outline, the fillet arcs included
-(`shaders/glow.frag`, curve in `glow.js`):
+Light falls off outward from the edge of the notch **at rest**. It keeps that shape while the notch
+is open or grown into its settings. It is not a shape and not a blur: every pixel takes its opacity
+from its exact distance to the resting notch's outline, the fillet arcs included
+(`shaders/glow.frag`, curve in `glow.js`). The curve is set relative to the notch. With
+`glowScale` 1.0 it reaches zero at the resting height (32 px by default):
 
-| Distance from the edge | 0–6 px | 20 px | 50 px | 80 px and beyond |
+| Distance from the edge (× reach / 80) | 0–6 | 20 | 50 | 80 and beyond |
 |---|---|---|---|---|
 | Opacity | 0.35 | 0.18 | 0.07 | 0 |
 
-Between those points the curve is a monotone cubic Hermite spline. Its slope is zero at 6 px and
-at 80 px, so it never steps, never rises, and meets zero without an edge. Nothing is drawn under
-the notch.
+So at the default 32 px reach: 0.35 up to 2.4 px, 0.18 at 8 px, 0.07 at 20 px, 0 from 32 px.
+Between those points the curve is a monotone cubic Hermite spline, with zero slope at both ends.
 
 | State | Colour |
 |---|---|
@@ -55,9 +72,16 @@ the notch.
 
 The glow fades in once over 800 ms (ease-out) and then stays completely still. Charging to full
 crossfades the colour over 600 ms. Unplugging fades the glow out over 800 ms, widens the notch to
-show the battery, and fades out the charging bolt. The glow has its own full-width, click-through
-window (`omarchy-notch-glow`) that is always tall enough for the whole falloff below the open
-notch, so it is never cut off and nothing resizes when it turns on or off.
+show the battery, and fades out the charging bolt. The glow has its own click-through window
+(`omarchy-notch-glow`) that never resizes.
+
+## Widget reloads
+
+When `shell.json` or a plugin changes on disk, Omarchy reloads the bar. It can hand a third-party
+bar a widget catalogue that still refers to the previous load, which leaves widgets empty until
+the shell restarts. The notch checks for that 2.5 s after loading and, if any widget is empty,
+asks for one plugin rescan, which refreshes the catalogue. It does this at most once every 30 s.
+Changes made from the settings panel don't reload the bar.
 
 ## Settings
 
@@ -69,12 +93,14 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
   "notch": {
     "compact": ["clock", "media"],
     "expanded": ["clock", "date", "media"],
-    "expandOn": "hover",
+    "openWith": ["hover", "click"],
+    "hoverAction": "clock",
+    "openAction": "widgets",
+    "settingsKey": "SUPER + ALT + N",
     "color": "#000000",
     "compactWidth": 180,
     "compactHeight": 32,
     "bottomRadius": 10,
-    "expandedBottomRadius": 18,
     "filletRadius": 10,
     "peekOnTrackChange": true,
     "windowsToTop": false
@@ -86,15 +112,21 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | Key | Default | Meaning |
 |---|---|---|
 | `compact` | `[]` | Glance items in the resting notch: `clock`, `date`, `media`, `battery`. Empty keeps it pitch black. |
-| `expanded` | `["clock","date","media"]` | Glance items on the open notch's top row. Leaves out time and date when the layout already has `omarchy.clock`. |
-| `expandOn` | `"hover"` | `"hover"` or `"click"`. In click mode, clicking outside closes it. |
+| `expanded` | `["clock","date","media"]` | Glance items added to the widget row. Leaves out time and date when the layout already has `omarchy.clock`. |
+| `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
+| `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
+| `openKey`, `settingsKey` | none | Keybinds, e.g. `"SUPER + N"`. |
+| `hoverAction`, `hoverPlugin` | `"widgets"` | What hover shows: `widgets`, `clock`, `battery`, `plugin` (with the widget id), `settings`. |
+| `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. |
+| `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. |
 | `color` / `foreground` | `#000000` / theme bar text | Notch and glance text colours. |
 | `compactWidth`, `compactHeight` | `180`, `32` | Resting size, in logical px. The height is also what windows keep clear. |
-| `bottomRadius`, `expandedBottomRadius` | `10`, `18` | Convex bottom-corner radius, resting and open. |
+| `bottomRadius` | `10` | Convex bottom-corner radius. The settings panel uses 20 % of its height, between this and 24 px. |
 | `filletRadius` | `10` | Concave fillet where the notch meets the screen edge. |
 | `hoverDelay`, `collapseDelay` | `60`, `350` | Milliseconds. |
 | `peekOnTrackChange`, `peekDuration` | `true`, `3500` | Widen briefly on a new track. |
 | `batteryGlow` | `true` | The battery glow. |
+| `glowScale` | `1.0` | Glow reach as a multiple of the resting height (0.25–2.5, at most 80 px). |
 | `chargingColor`, `fullColor`, `lowColor` | `#FFB340`, `#30D158`, `#FF453A` | Glow colours. |
 | `lowBattery`, `criticalBattery` | `20`, `10` | Percent thresholds, on battery. |
 | `batteryPeek` | `true` | Widen to show the charge on plug-in, unplug and low battery. |

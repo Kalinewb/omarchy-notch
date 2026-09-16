@@ -90,6 +90,12 @@ ipc expand >/dev/null; sleep 0.9
 room_open=$(ipc geometry | jq -r '[.glow.roomBelowBar, .glow.window.height, .window.height] | join(" ")')
 ipc simulateBattery charging 40 >/dev/null; sleep 1
 room_charging=$(ipc geometry | jq -r '[.glow.roomBelowBar, .glow.window.height, .window.height] | join(" ")')
+glow_open=$(ipc geometry | jq -c '{notch: .bar, glow: .glow.shape, size: .glow.curve.size}')
+ipc collapse >/dev/null; sleep 0.8
+glow_rest=$(ipc geometry | jq -c '{notch: .bar, glow: .glow.shape, size: .glow.curve.size}')
+ipc settings >/dev/null; sleep 1.2
+glow_panel=$(ipc geometry | jq -c '{notch: .bar, glow: .glow.shape, size: .glow.curve.size}')
+ipc settings >/dev/null; sleep 0.8
 ipc simulateBattery auto 0 >/dev/null
 kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""
 
@@ -114,7 +120,7 @@ check "…rising at every sample, never past 1" "true" \
   "$(printf '%s\n' "${fade[@]}" | jq -s '[.[].presence] as $p | all(range(1; $p|length); $p[.] >= $p[.-1]) and all($p[]; . <= 1)')"
 check "then it is completely still: six samples over 1.5 s identical" "true" \
   "$(printf '%s\n' "${still[@]}" | jq -s '[.[] | [.presence, .layers]] | unique | length == 1')"
-check "…at full presence, the default 30 px glow: α 0.35 at 2.25 px, 0.18 at 7.5, 0.07 at 18.75, 0 at 30 and 40" "[1,[0.35,0.18,0.07,0,0]]" \
+check "…at full presence, at the knots of the default glow (1.0 × 32 px): α 0.35, 0.18, 0.07, 0, and 0 past the reach" "[1,[0.35,0.18,0.07,0,0]]" \
   "$(jq -c '[.presence, .layers]' <<<"${still[0]}")"
 check "at full charge the colour is mid-crossfade at ~250 ms" "true" \
   "$(jq -r '.color != "#FFB340" and .color != "#30D158"' <<<"$mid")"
@@ -130,6 +136,21 @@ read -r room_c glow_h_c notch_h_c <<<"$room_charging"
 check "…and below the open notch ${DIM}($room_o px)${RESET}" "true" "$(awk -v r="$room_o" 'BEGIN { print (r >= 88) ? "true" : "false" }')"
 check "neither window changes height when the glow turns on ${DIM}(glow window $glow_h_o → $glow_h_c, notch window $notch_h_o → $notch_h_c)${RESET}" "$glow_h_o $notch_h_o" "$glow_h_c $notch_h_c"
 check "unplugging peeks the battery (the stopped-charging animation)" "peek" "$state_unplugged"
+echo "  ${DIM}glow shape at rest: $glow_rest${RESET}"
+echo "  ${DIM}glow shape open:    $glow_open${RESET}"
+echo "  ${DIM}glow shape, settings panel: $glow_panel${RESET}"
+check "the glow keeps the resting notch's shape and size while the notch is open" "true" \
+  "$(jq -n --argjson r "$glow_rest" --argjson o "$glow_open" '$r.glow == $o.glow and $r.size == $o.size')"
+if jq -e '.notch.height > 40' <<<"$glow_panel" >/dev/null; then
+  check "…and while it is grown into the settings panel ${DIM}(notch $(jq -r '"\(.notch.width)×\(.notch.height)"' <<<"$glow_panel"))${RESET}" "true" \
+    "$(jq -n --argjson r "$glow_rest" --argjson p "$glow_panel" '$r.glow == $p.glow and $r.size == $p.size')"
+else
+  # A second Quickshell instance loses its focus grab at once, which closes the
+  # panel; the live shell keeps it. Not a pass or a fail here.
+  echo "  ${DIM}note  the settings panel did not stay open in this throwaway instance; checked live instead${RESET}"
+fi
+check "…whose reach is glowScale 1.0 × √(width × height) × 32/√(180×32) ${DIM}($(jq -r '"\(.glow.width)×\(.glow.height) → \(.size) px"' <<<"$glow_rest"))${RESET}" "true" \
+  "$(jq -n --argjson r "$glow_rest" '(($r.glow.width * $r.glow.height | sqrt) * 32 / (180 * 32 | sqrt) - $r.size | fabs) < 0.01')"
 if grep -qE '\.qml:[0-9]+|ReferenceError|TypeError|Cannot assign|Unable to assign' "$root/qs.log"; then
   check "no QML errors while running" "none" "$(grep -E '\.qml:[0-9]+|ReferenceError|TypeError' "$root/qs.log" | head -1)"
 fi

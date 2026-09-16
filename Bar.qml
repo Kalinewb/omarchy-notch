@@ -807,6 +807,7 @@ Item {
 
   Component.onCompleted: {
     applyBarConfig()
+    Qt.callLater(applyKeybinds)
     previousBatteryMode = batteryMode
   }
 
@@ -1232,7 +1233,14 @@ Item {
   //   expanded       glance items shown in the open notch's row (default
   //                  ["clock", "date", "media"], or ["media"] when the layout
   //                  already has an omarchy.clock widget)
-  //   expandOn       "hover" (default) or "click"
+  //   openWith       what opens the notch's widgets: any of "hover", "click",
+  //                  "doubleClick", "longPress", "rightClick", "middleClick",
+  //                  "scroll" (default ["hover", "click"])
+  //   openKey        a Hyprland key combination that toggles the widgets, e.g.
+  //                  "SUPER + N" (default none)
+  //   settingsWith   what opens the settings panel, from the same list plus
+  //                  "longRightClick" (default ["longRightClick"])
+  //   settingsKey    a key combination that toggles the settings (default none)
   //   color          notch colour (default "#000000")
   //   foreground     text colour (default: the theme's bar text)
   //   compactWidth   resting width in logical px (default 180)
@@ -1243,7 +1251,18 @@ Item {
   //   peekOnTrackChange  briefly widen to show a new track (default true)
   //   peekDuration   ms (default 3500)
   //   batteryGlow    the charging glow (default true)
-  //   glowSize       how far the glow reaches before it is zero, px (default 30, 10–80)
+  //   glowScale      how far the glow reaches, relative to the resting notch's
+  //                  size: scale × √(width × height) × 32/√(180×32), so 32 px
+  //                  for the default notch at 1.0 (0.25–2.5, never past 80 px)
+  //   hoverAction    what hovering the notch shows, when "hover" opens it:
+  //                  "widgets" (default), "clock", "battery", "plugin" or
+  //                  "settings"
+  //   hoverPlugin    the bar widget id shown when hoverAction is "plugin"
+  //   openAction     what every other trigger (click, keybind, …) opens, from
+  //                  the same list (default "widgets")
+  //   openPlugin     the bar widget id shown when openAction is "plugin"
+  //   hiddenPlugins  bar widget ids left out of the open notch's widget row
+  //                  (they stay loaded, and can still be a hover/open plugin)
   //   chargingColor / fullColor / lowColor   (default #FFB340 / #30D158 / #FF453A)
   //   lowBattery / criticalBattery   percent thresholds (default 20 / 10)
   //   batteryPeek    widen to show the charge when plugged in or running low (default true)
@@ -1269,6 +1288,36 @@ Item {
   }
 
   readonly property var notchCompactItems: notchItems("compact", [])
+  readonly property string notchHoverAction: {
+    var v = String(notchSetting("hoverAction", "widgets"))
+    return ["widgets", "clock", "battery", "plugin", "settings", "none"].indexOf(v) === -1 ? "widgets" : v
+  }
+  readonly property string notchHoverPlugin: canonicalWidgetId(String(notchSetting("hoverPlugin", "")))
+  readonly property string notchOpenAction: {
+    var v = String(notchSetting("openAction", "widgets"))
+    return ["widgets", "clock", "battery", "plugin", "settings"].indexOf(v) === -1 ? "widgets" : v
+  }
+  readonly property string notchOpenPlugin: canonicalWidgetId(String(notchSetting("openPlugin", "")))
+  readonly property var notchHiddenPlugins: notchItems("hiddenPlugins", []).map(function(id) { return canonicalWidgetId(id) })
+
+  // Every widget in the bar layout, for the settings' plugin picker.
+  function layoutPluginChoices() {
+    var serial = barConfigSerial
+    var registry = barWidgetRegistry.widgets
+    var seen = {}, out = []
+    var regions = ["left", "center", "right"]
+    for (var r = 0; r < regions.length; r++) {
+      var entries = layoutEntries(regions[r])
+      for (var i = 0; i < entries.length; i++) {
+        var id = canonicalWidgetId(entryId(entries[i]))
+        if (!id || seen[id]) continue
+        seen[id] = true
+        var meta = barWidgetRegistry.metadataFor(id)
+        out.push({ value: id, label: meta && meta.displayName ? String(meta.displayName) : id })
+      }
+    }
+    return out
+  }
   // By default the open notch's top row shows time, date and media -- minus
   // time and date when the layout already has a clock widget in the row below.
   readonly property bool layoutHasClock: {
@@ -1282,7 +1331,55 @@ Item {
     return false
   }
   readonly property var notchExpandedItems: notchItems("expanded", layoutHasClock ? ["media"] : ["clock", "date", "media"])
-  readonly property string notchExpandOn: notchSetting("expandOn", "hover") === "click" ? "click" : "hover"
+  readonly property var notchTriggerNames: ["hover", "click", "doubleClick", "longPress", "rightClick", "longRightClick", "middleClick", "scroll"]
+  function notchTriggers(key, fallback) {
+    var list = notchItems(key, fallback).filter(function(t) { return notchTriggerNames.indexOf(t) !== -1 })
+    return list
+  }
+  // Settings win a trigger both lists claim; the menu does not let that happen.
+  readonly property var notchSettingsWith: notchTriggers("settingsWith", ["longRightClick"])
+  readonly property var notchOpenWith: notchTriggers("openWith",
+      notchSetting("expandOn", "") === "click" ? ["click"] : ["hover", "click"])
+    .filter(function(t) { return notchSettingsWith.indexOf(t) === -1 })
+  function opensWith(trigger) { return notchOpenWith.indexOf(trigger) !== -1 }
+  function settingsWith(trigger) { return notchSettingsWith.indexOf(trigger) !== -1 }
+  readonly property string notchOpenKey: cleanKey(notchSetting("openKey", ""))
+  readonly property string notchSettingsKey: cleanKey(notchSetting("settingsKey", ""))
+
+  // A Hyprland key combination: modifiers and a key joined by "+", letters,
+  // digits and underscores only, so it can be quoted into a Lua call safely.
+  function cleanKey(value) {
+    var parts = String(value || "").split("+").map(function(p) { return p.trim().toUpperCase() }).filter(function(p) { return p !== "" })
+    for (var i = 0; i < parts.length; i++) if (!/^[A-Z0-9_]+$/.test(parts[i])) return ""
+    return parts.join(" + ")
+  }
+
+  // Keybinds are added to the running Hyprland with `hyprctl eval`, nothing is
+  // written to its config: a bind in place is removed before a new one goes in,
+  // and both are re-added after every config reload, which clears them.
+  property var appliedKeys: ({ open: "", settings: "" })
+  readonly property string keyState: notchOpenKey + "|" + notchSettingsKey
+  onKeyStateChanged: Qt.callLater(applyKeybinds)
+  function keybindLua(key, method, description) {
+    return 'hl.bind("' + key + '", hl.dsp.exec_cmd("omarchy-shell -q notch ' + method + '"), { description = "' + description + '" })'
+  }
+  function applyKeybinds(force) {
+    var wanted = { open: notchOpenKey, settings: notchSettingsKey }
+    var lua = []
+    var names = ["open", "settings"]
+    for (var i = 0; i < names.length; i++) {
+      var n = names[i]
+      if (!force && appliedKeys[n] === wanted[n]) continue
+      if (appliedKeys[n] && !force) lua.push('hl.unbind("' + appliedKeys[n] + '")')
+      if (wanted[n]) lua.push(keybindLua(wanted[n], n === "open" ? "toggle" : "settings",
+                                         n === "open" ? "Open the notch" : "Notch settings"))
+    }
+    appliedKeys = wanted
+    if (lua.length === 0) return
+    keybindProcess.command = ["hyprctl", "eval", lua.join("; ")]
+    keybindProcess.running = true
+  }
+  Process { id: keybindProcess }
   readonly property color notchColor: notchSetting("color", "#000000")
   readonly property color notchForeground: notchSetting("foreground", themeForeground)
   readonly property real notchCompactWidth: Math.max(0, notchNumber("compactWidth", 180))
@@ -1298,7 +1395,7 @@ Item {
   // --- battery ---------------------------------------------------------------
 
   readonly property bool notchBatteryGlow: notchSetting("batteryGlow", true) !== false
-  readonly property real notchGlowSize: Math.max(10, Math.min(80, notchNumber("glowSize", 30)))
+  readonly property real notchGlowScale: Math.max(0.25, Math.min(2.5, notchNumber("glowScale", 1)))
   readonly property color notchChargingColor: notchSetting("chargingColor", "#FFB340")
   readonly property color notchFullColor: notchSetting("fullColor", "#30D158")
   readonly property color notchLowColor: notchSetting("lowColor", "#FF453A")
@@ -1361,8 +1458,54 @@ Item {
   Connections {
     target: Hyprland
     function onRawEvent(event) {
-      if (event && String(event.name) === "configreloaded") glowLayerRuleProcess.running = true
+      if (event && String(event.name) === "configreloaded") {
+        glowLayerRuleProcess.running = true
+        root.applyKeybinds(true)
+      }
     }
+  }
+
+  // Omarchy hands a third-party bar a snapshot of the widget catalogue. When
+  // the bar is reloaded because shell.json or a plugin changed on disk, that
+  // snapshot can still hold components from the previous load, which build
+  // empty widgets -- catalogue entries with no component, or items with no
+  // `bar` property and no width -- and those
+  // stay empty until the shell restarts. A plugin rescan refreshes the
+  // snapshot, so if any widget is in that state a moment after loading, ask
+  // for one: at most once every 30 s, remembered across reloads, so it can
+  // never loop.
+  PersistentProperties {
+    id: healState
+    reloadableId: "graveklar-notch-widget-heal"
+    property real lastRescan: 0
+  }
+  Timer {
+    interval: 2500
+    running: true
+    onTriggered: root.healEmptyWidgets()
+  }
+  Process { id: healProcess; command: ["omarchy-shell", "-q", "shell", "rescanPlugins"] }
+  function healEmptyWidgets() {
+    var serial = barConfigSerial
+    var entries = layoutEntries("left").length + layoutEntries("center").length + layoutEntries("right").length
+    if (entries === 0) return
+    var stale = []
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
+      var item = slot ? slot.activeItem : null
+      if (!slot || slot.customType) continue
+      var id = canonicalWidgetId(slot.moduleName)
+      var known = !!(barWidgetRegistry.widgets && barWidgetRegistry.widgets[id])
+      // Listed in the catalogue but with no component to build it from, or
+      // built from a dead component into an item that is not a widget.
+      if ((!slot.registered && known) || (slot.registered && item && !("bar" in item) && item.implicitWidth <= 0))
+        stale.push(slot.moduleName)
+    }
+    if (stale.length === 0) return
+    if (Date.now() - healState.lastRescan < 30000) return
+    healState.lastRescan = Date.now()
+    console.warn("graveklar.notch: widgets loaded empty (" + stale.join(", ") + "); rescanning plugins to refresh the widget catalogue")
+    healProcess.running = true
   }
 
   signal batteryEvent(string kind)
@@ -1433,15 +1576,18 @@ Item {
   IpcHandler {
     target: "notch"
 
-    function expand(): void { var w = root.focusedNotchWindow(); if (w) w.clickExpanded = true }
+    function expand(): void { var w = root.focusedNotchWindow(); if (w) w.openView(root.notchOpenAction, "click") }
     function collapse(): void { for (var i = 0; i < root.notchWindows.length; i++) root.notchWindows[i].collapseNow() }
     function toggle(): void {
       var w = root.focusedNotchWindow()
       if (!w) return
       if (w.expanded) w.collapseNow()
-      else w.clickExpanded = true
+      else w.openView(root.notchOpenAction, "click")
     }
     function peek(): void { var w = root.focusedNotchWindow(); if (w) w.startPeek("media") }
+    // Open one of the notch's views as if hovered: widgets, clock, battery,
+    // plugin (the hoverPlugin widget) or settings.
+    function view(name: string): void { var w = root.focusedNotchWindow(); if (w) w.openView(name, "hover") }
     // Preview the battery glow: state is charging, discharging, full or auto
     // (back to the real battery). Returns the resulting battery mode.
     function simulateBattery(state: string, percent: int): string {
@@ -1469,6 +1615,21 @@ Item {
       if (w.settingsOpen) w.settingsOpen = false
       else w.openSettings()
     }
+    // Save one notch setting the way the settings panel does (no bar reload):
+    // `set compactWidth 220`, `set hoverPlugin omarchy.clock`. List settings
+    // take space-separated values -- `set hiddenPlugins "a b"` -- because the
+    // IPC command line splits arguments on commas. Anything else is JSON if it
+    // parses, a string if not.
+    function set(key: string, value: string): string {
+      var lists = ["compact", "expanded", "openWith", "settingsWith", "hiddenPlugins"]
+      var parsed
+      if (lists.indexOf(key) !== -1 && String(value).trim().charAt(0) !== "[")
+        parsed = String(value).split(/\s+/).filter(function(v) { return v !== "" })
+      else {
+        try { parsed = JSON.parse(value) } catch (e) { parsed = value }
+      }
+      return root.setNotchSetting(key, parsed) ? "ok" : "unsaved"
+    }
     function geometry(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.geometryReport()) : "{}" }
   }
 
@@ -1490,7 +1651,16 @@ Item {
       left: true
       right: true
     }
-    implicitHeight: Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + 2)
+    // As tall as the resting notch (plus the spring's overshoot) -- panels that
+    // hang from the bar read this height. Only while the notch is grown into
+    // its settings panel is the window as tall as that panel may get; it goes
+    // back once the notch has shrunk to rest.
+    readonly property real panelMaxHeight: Math.max(root.notchCompactHeight,
+      Math.min(Style.space(620), (barWindow.screen ? barWindow.screen.height : 900) - Style.space(60)))
+    readonly property bool tall: settingsOpen || shownHeight > root.notchCompactHeight * (1 + root.springOvershoot) + 1
+    implicitHeight: tall
+      ? Math.ceil(panelMaxHeight * (1 + root.springOvershoot) + 2)
+      : Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + 2)
     color: "transparent"
     surfaceFormat.opaque: false
     // The stock bar's namespace, so Omarchy's own layer rule (no map
@@ -1509,13 +1679,20 @@ Item {
     property bool peeking: false
     property bool mediaReady: false
     property string peekKind: "media"
-    // The settings dropdown (long right-click). While it is open the notch
-    // stays at rest, so the menu hangs from the same place it was opened.
+    // What the open notch shows: "widgets", "clock", "battery", "plugin" or
+    // "settings". Set when it opens and kept while it closes, so the content
+    // does not change under a shrinking notch.
+    property string view: "widgets"
+    // The widget shown by the "plugin" view: the hover or the open one.
+    property string viewPlugin: ""
+    // The notch grown into its settings panel (long right-click, the
+    // "settings" hover action, or IPC). Stays until closed: a click outside,
+    // Escape, or the ✕.
     property bool settingsOpen: false
     readonly property bool popoutHere: root.activePopout !== null && root.targetBelongsToWindow(root.activePopout, barWindow)
     readonly property bool dragHere: root.barDragSource !== null && root.barDragWindow === barWindow
-    readonly property bool expanded: !root.barHidden && !settingsOpen
-      && (hoverExpanded || clickExpanded || popoutHere || dragHere
+    readonly property bool expanded: !root.barHidden
+      && (settingsOpen || hoverExpanded || clickExpanded || popoutHere || dragHere
           || (root.notchForcedExpanded && root.focusedNotchWindow() === barWindow))
     readonly property string notchState: root.barHidden ? "hidden" : expanded ? "expanded" : peeking ? "peek" : "compact"
 
@@ -1526,9 +1703,44 @@ Item {
     }
 
     function openSettings() {
-      collapseNow()
+      expandTimer.stop()
       peeking = false
+      view = "settings"
       settingsOpen = true
+    }
+
+    // A press on the notch: open or close the settings or the widgets,
+    // according to which trigger list claims it.
+    function trigger(name) {
+      if (root.settingsWith(name)) {
+        if (settingsOpen) settingsOpen = false
+        else openSettings()
+        return
+      }
+      if (settingsOpen || !root.opensWith(name)) return
+      if (expanded && clickExpanded) collapseNow()
+      else openView(root.notchOpenAction, "click")
+    }
+
+    // Open `requested` because of a hover or a click (any non-hover trigger).
+    function openView(requested, how) {
+      if (requested === "settings") { openSettings(); return }
+      if (settingsOpen) return
+      var plugin = how === "click" ? root.notchOpenPlugin : root.notchHoverPlugin
+      if (requested === "plugin" && !plugin) requested = "widgets"
+      peeking = false
+      viewPlugin = requested === "plugin" ? plugin : ""
+      view = requested
+      if (how === "click") clickExpanded = true
+      else hoverExpanded = true
+    }
+
+    onSettingsOpenChanged: {
+      if (settingsOpen) return
+      hoverExpanded = false
+      clickExpanded = false
+      // Leaving the settings stops any battery preview started there.
+      if (root.batterySimulated) { root.batterySimulatedState = ""; root.batterySimulatedPercent = -1 }
     }
 
     function startPeek(kind) {
@@ -1550,7 +1762,7 @@ Item {
     Timer {
       id: expandTimer
       interval: root.notchHoverDelay
-      onTriggered: if (islandHover.hovered) barWindow.hoverExpanded = true
+      onTriggered: if (islandHover.hovered && !barWindow.expanded) barWindow.openView(root.notchHoverAction, "hover")
     }
 
     Timer {
@@ -1618,9 +1830,18 @@ Item {
       }
     }
 
+    // Clicking anywhere outside the settings panel closes it; while it is open
+    // the notch takes keyboard focus, for Escape and typed numbers.
+    HyprlandFocusGrab {
+      active: barWindow.settingsOpen
+      windows: [barWindow]
+      onCleared: barWindow.settingsOpen = false
+    }
+    WlrLayershell.keyboardFocus: settingsOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
     // In click mode, clicking anywhere outside the expanded notch closes it.
     HyprlandFocusGrab {
-      active: root.notchExpandOn === "click" && barWindow.clickExpanded && !barWindow.popoutHere
+      active: barWindow.clickExpanded && !barWindow.popoutHere && !barWindow.settingsOpen
       windows: [barWindow]
       onCleared: barWindow.clickExpanded = false
     }
@@ -1632,12 +1853,22 @@ Item {
     readonly property real compactWidth: Math.max(root.notchCompactWidth,
       compactGlance.empty ? 0 : compactGlance.implicitWidth + 2 * root.notchSidePadding)
     readonly property real peekWidth: Math.max(compactWidth, peekGlance.implicitWidth + 2 * root.notchSidePadding)
-    readonly property real expandedWidth: Math.max(compactWidth, widgetRow.implicitWidth + 2 * root.notchSidePadding)
+    readonly property real rowWidth: Math.max(compactWidth, widgetRow.implicitWidth + 2 * root.notchSidePadding)
+    readonly property real clockWidth: Math.max(compactWidth, clockGlance.implicitWidth + 2 * root.notchSidePadding)
+    readonly property real batteryWidth: Math.max(compactWidth, batteryGlance.implicitWidth + 2 * root.notchSidePadding)
+    readonly property real settingsWidth: Math.max(compactWidth, settingsView.implicitWidth)
+    readonly property real settingsHeight: Math.max(root.notchCompactHeight, settingsView.implicitHeight)
+    // The open notch's width for the current view. Widgets and a single plugin
+    // are the same row (filtered), so both measure the row.
+    readonly property real expandedWidth: view === "settings" ? settingsWidth
+      : view === "clock" ? clockWidth : view === "battery" ? batteryWidth : rowWidth
 
     readonly property real targetWidth: Math.min(maxBarWidth,
       notchState === "expanded" ? expandedWidth : notchState === "peek" ? peekWidth : compactWidth)
+    // Every view but the settings is one row at the resting height; the
+    // settings panel grows the notch down, top edge still on the screen edge.
     readonly property real targetHeight: notchState === "hidden" ? 0
-      : notchState === "expanded" ? root.notchExpandedHeight : root.notchCompactHeight
+      : notchState === "expanded" && view === "settings" ? settingsHeight : root.notchCompactHeight
 
     property real shownWidth: 0
     property real shownHeight: 0
@@ -1704,8 +1935,12 @@ Item {
     readonly property real emergence: root.notchCompactHeight > 0 ? Math.max(0, Math.min(1, shownHeight / root.notchCompactHeight)) : 1
 
     // Requested radii. While the notch grows out of the edge both scale with
-    // its height, so it never passes through a pill.
-    readonly property real requestedBottomRadius: root.notchBottomRadius * emergence
+    // its height, so it never passes through a pill. Grown taller than rest
+    // (the settings panel), the bottom radius is 20 % of the height, at least
+    // the resting radius and at most 24 px.
+    readonly property real requestedBottomRadius: emergence < 1
+      ? root.notchBottomRadius * emergence
+      : Math.max(root.notchBottomRadius, Math.min(0.2 * shownHeight, 24))
     readonly property real requestedFilletRadius: root.notchFilletRadius * emergence
 
     function point(p) { return { x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)) } }
@@ -1722,7 +1957,9 @@ Item {
         widgets: {
           rowWidth: widgetRow.implicitWidth, slots: root.moduleSlots.length,
           entries: root.layoutEntries("left").length + root.layoutEntries("center").length + root.layoutEntries("right").length,
-          registered: Object.keys(root.barWidgetRegistry.widgets || {}).length
+          registered: Object.keys(root.barWidgetRegistry.widgets || {}).length,
+          emptyWidgets: root.moduleSlots.filter(function(sl) { return root.slotWindow(sl) === barWindow && sl.implicitWidth <= 0 && !sl.filteredOut })
+            .map(function(sl) { return sl.moduleName })
         },
         radii: {
           topLeft: islandBody.topLeftRadius, topRight: islandBody.topRightRadius,
@@ -1739,6 +1976,12 @@ Item {
           bottomLeft: onScreen(island.bottomLeftCentre), bottomRight: onScreen(island.bottomRightCentre)
         },
         settingsOpen: barWindow.settingsOpen,
+        pointer: { overNotch: islandHover.hovered, tooltip: root.tooltipShown ? root.tooltipText : "", hoveredWidgets: root.moduleSlots.filter(function(sl) { return root.slotWindow(sl) === barWindow && sl.hovered }).map(function(sl) { return sl.moduleName }) },
+        view: barWindow.view,
+        hoverAction: root.notchHoverAction,
+        openWith: root.notchOpenWith, settingsWith: root.notchSettingsWith,
+        keys: { open: root.notchOpenKey, settings: root.notchSettingsKey, applied: root.appliedKeys },
+        hiddenPlugins: root.notchHiddenPlugins, hoverPlugin: root.notchHoverPlugin, openAction: root.notchOpenAction, openPlugin: root.notchOpenPlugin, viewPlugin: barWindow.viewPlugin,
         battery: {
           percent: root.batteryPercent, mode: root.batteryMode, simulated: root.batterySimulated,
           lowThreshold: root.notchLowBattery, criticalThreshold: root.notchCriticalBattery
@@ -1747,11 +1990,12 @@ Item {
           mode: root.glowMode, color: String(barWindow.glowColorShown).toUpperCase(),
           presence: Number(glowPresence.toFixed(4)),
           curve: {
-            size: glow.reach, knots: glow.knots.map(function(n) { return { d: Number(n.d.toFixed(3)), a: n.a } }),
+            scale: root.notchGlowScale, sizeBase: Number(glow.sizeBase.toFixed(3)), size: Number(glow.reach.toFixed(3)), knots: glow.knots.map(function(n) { return { d: Number(n.d.toFixed(3)), a: n.a } }),
             alphaAt: glow.knots.map(function(n) { return n.d }).concat([glow.reach + 10]).map(function(d) { return { d: Number(d.toFixed(3)), alpha: Number(glow.alphaAt(d).toFixed(4)), shown: Number((glow.alphaAt(d) * glowPresence).toFixed(4)) } })
           },
           window: { namespace: "omarchy-notch-glow", height: glowWindow.height, input: "none" },
-          roomBelowBar: Number((glowWindow.height - island.barHeight).toFixed(3)),
+          roomBelowBar: Number((glowWindow.height - glow.barHeight).toFixed(3)),
+          shape: { width: Number(glow.barWidth.toFixed(3)), height: Number(glow.barHeight.toFixed(3)), bottomRadius: Number(glow.bottomRadius.toFixed(3)), fillet: Number(glow.filletRadius.toFixed(3)) },
           colours: { charging: String(root.notchChargingColor).toUpperCase(), full: String(root.notchFullColor).toUpperCase(), low: String(root.notchLowColor).toUpperCase() },
           fadeInMs: root.glowFadeIn, fadeOutMs: root.glowFadeOut, fadeEasing: "OutCubic",
           crossfadeMs: root.glowCrossfade, crossfadeEasing: "InOutQuad"
@@ -1782,7 +2026,7 @@ Item {
       anchors { top: true; left: true; right: true }
       // Sized for the largest glow the setting allows, so changing the size
       // never resizes the window either.
-      implicitHeight: Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + glow.maxReach + glow.pad + 16)
+      implicitHeight: Math.ceil(root.notchCompactHeight * (1 + root.springOvershoot) + glow.maxReach + glow.pad + 16)
       color: "transparent"
       surfaceFormat.opaque: false
       exclusionMode: ExclusionMode.Ignore
@@ -1790,17 +2034,28 @@ Item {
       WlrLayershell.layer: WlrLayer.Top
       mask: Region {}
 
+      // The glow follows the resting notch, not the open one: its width eases
+      // to the resting width, and its height is the notch's height only while
+      // that is at or below rest (so it still grows out of the edge with the
+      // notch, and slides away with it when hidden).
       Glow {
         id: glow
-        x: island.x + island.barX
+        readonly property real restWidth: Math.min(barWindow.maxBarWidth, barWindow.compactWidth)
+        Behavior on barWidth { NumberAnimation { duration: root.shrinkDuration; easing.type: Easing.OutCubic } }
+        x: (barWindow.width - barWidth) / 2
         y: 0
-        barWidth: island.barWidth
-        barHeight: island.barHeight
-        bottomRadius: island.bottomR
-        filletRadius: island.fillet
+        barWidth: restWidth
+        barHeight: Math.max(0, Math.min(barWindow.shownHeight, root.notchCompactHeight))
+        bottomRadius: Math.max(0, Math.min(root.notchBottomRadius * barWindow.emergence, barWidth / 2, barHeight / 2))
+        filletRadius: Math.max(0, Math.min(root.notchFilletRadius * barWindow.emergence, barHeight - bottomRadius))
         color: barWindow.glowColorShown
         presence: barWindow.glowPresence
-        size: root.notchGlowSize
+        // Relative to the resting notch's size: glowScale × √(width × height),
+        // calibrated so the default 180 × 32 notch reaches 32 px at 1.0 --
+        // a wider or taller notch glows further. Never past the 80 px the
+        // window leaves room for.
+        readonly property real sizeBase: Math.sqrt(Math.max(0, barWidth) * Math.max(0, barHeight)) * 32 / Math.sqrt(180 * 32)
+        size: Math.max(1, Math.min(glow.maxReach, root.notchGlowScale * sizeBase))
       }
     }
 
@@ -1809,7 +2064,10 @@ Item {
 
       x: (barWindow.width - width) / 2
       y: 0
-      visible: barHeight > 0.5
+      // Never hidden, even at zero height (where it draws nothing): widgets
+      // created inside a hidden item -- as they are when the bar is reloaded
+      // with the widget registry already filled -- measure zero wide and stay
+      // that way, which leaves the open notch with an empty row.
       barWidth: Math.max(0, barWindow.shownWidth)
       barHeight: Math.max(0, barWindow.shownHeight)
       bottomRadius: barWindow.requestedBottomRadius
@@ -1822,35 +2080,43 @@ Item {
           root.setBarHovered(hovered)
           if (hovered) {
             collapseTimer.stop()
-            if (root.notchExpandOn === "hover") expandTimer.restart()
+            if (root.opensWith("hover")) expandTimer.restart()
           } else {
             expandTimer.stop()
-            if (root.notchExpandOn === "hover") collapseTimer.restart()
+            collapseTimer.restart()
           }
         }
         Component.onDestruction: if (hovered) root.setBarHovered(false)
       }
 
-      // Tapping the resting notch opens it in either mode; tapping the top
-      // row of an open notch closes it.
+      // Presses on the notch itself (widgets take their own first). Each one
+      // goes to whichever of `openWith` / `settingsWith` claims it.
       TapHandler {
         acceptedButtons: Qt.LeftButton
-        onTapped: function(eventPoint) {
-          if (!barWindow.expanded) {
-            barWindow.clickExpanded = true
-          } else if (eventPoint.position.y < root.notchCompactHeight) {
-            barWindow.collapseNow()
-          }
-        }
+        longPressThreshold: 0.45
+        onSingleTapped: barWindow.trigger("click")
+        onDoubleTapped: barWindow.trigger("doubleClick")
+        onLongPressed: barWindow.trigger("longPress")
       }
 
-      // A long right-click anywhere on the notch opens its settings. Declared
-      // before the content, so a widget's own right-click still wins over it.
+      // Declared before the content, so a widget's own right- or middle-click
+      // still wins over these.
       MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.RightButton
+        acceptedButtons: Qt.RightButton | Qt.MiddleButton
         pressAndHoldInterval: 450
-        onPressAndHold: barWindow.openSettings()
+        onClicked: function(mouse) { barWindow.trigger(mouse.button === Qt.MiddleButton ? "middleClick" : "rightClick") }
+        onPressAndHold: function(mouse) { if (mouse.button === Qt.RightButton) barWindow.trigger("longRightClick") }
+      }
+
+      // Scrolling down opens, scrolling up closes.
+      WheelHandler {
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        onWheel: function(event) {
+          if (!root.opensWith("scroll") || barWindow.settingsOpen) return
+          if (event.angleDelta.y < 0 && !barWindow.expanded) barWindow.openView(root.notchOpenAction, "click")
+          else if (event.angleDelta.y > 0 && barWindow.expanded) barWindow.collapseNow()
+        }
       }
 
       // The bar's content is laid out at full expanded size, centred on the
@@ -1858,8 +2124,8 @@ Item {
       // resizes around them, and popups anchor to the same place every time.
       Item {
         id: content
-        width: Math.max(barWindow.expandedWidth, barWindow.peekWidth)
-        height: root.notchExpandedHeight
+        width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth, barWindow.batteryWidth, barWindow.settingsWidth)
+        height: Math.max(root.notchCompactHeight, barWindow.settingsHeight)
         x: (island.barWidth - width) / 2
         y: 0
 
@@ -1920,21 +2186,26 @@ Item {
         // the same row as the resting notch's content. Always loaded, so
         // widgets keep their services and their width is known before the
         // notch opens; hidden and inert while it is closed.
+        //
+        // The "plugin" view is this same row with every other widget hidden,
+        // so a widget is never loaded twice.
         Row {
           id: widgetRow
+          readonly property string filter: barWindow.view === "plugin" ? barWindow.viewPlugin : ""
           x: (content.width - width) / 2
           y: 0
           height: root.notchCompactHeight
-          spacing: root.notchSectionGap
-          opacity: barWindow.notchState === "expanded" ? 1 : 0
-          enabled: barWindow.expanded
+          spacing: filter ? 0 : root.notchSectionGap
+          opacity: barWindow.notchState === "expanded" && (barWindow.view === "widgets" || barWindow.view === "plugin") ? 1 : 0
+          enabled: barWindow.expanded && (barWindow.view === "widgets" || barWindow.view === "plugin")
           Behavior on opacity { NumberAnimation { duration: barWindow.expanded ? 220 : 90; easing.type: Easing.OutCubic } }
 
-          LeftModules { anchors.verticalCenter: parent.verticalCenter }
+          LeftModules { anchors.verticalCenter: parent.verticalCenter; filter: widgetRow.filter }
           ModuleList {
             anchors.verticalCenter: parent.verticalCenter
             entries: root.layoutEntries("center")
             region: "center"
+            filter: widgetRow.filter
           }
           Glance {
             id: expandedGlance
@@ -1942,7 +2213,7 @@ Item {
             // Hidden while it has nothing to show, so the row has no empty gap.
             // Whether it has anything is read from a copy outside the row: a
             // hidden item's own content measures as empty, and would stay hidden.
-            visible: expandedGlanceProbe.implicitWidth > 0
+            visible: expandedGlanceProbe.implicitWidth > 0 && !widgetRow.filter
             width: implicitWidth
             height: root.notchCompactHeight
             items: root.notchExpandedItems
@@ -1955,33 +2226,76 @@ Item {
             fontFamily: root.fontFamily
             fontSize: Style.font.body
           }
-          RightModules { anchors.verticalCenter: parent.verticalCenter }
+          RightModules { anchors.verticalCenter: parent.verticalCenter; filter: widgetRow.filter }
+        }
+
+        // While the row is not interactive (at rest, peeking, another view) this
+        // hover-only cover keeps the pointer away from its hidden widgets:
+        // being disabled does not stop their hover handlers, so they would
+        // light up and show tooltips under a closed notch. It takes no buttons,
+        // so presses still reach the notch's own handlers.
+        MouseArea {
+          x: widgetRow.x
+          y: widgetRow.y
+          width: widgetRow.width
+          height: widgetRow.height
+          visible: !widgetRow.enabled
+          hoverEnabled: true
+          acceptedButtons: Qt.NoButton
+        }
+
+        Glance {
+          id: clockGlance
+          x: (content.width - width) / 2
+          width: implicitWidth
+          height: root.notchCompactHeight
+          items: ["clock", "date"]
+          foreground: root.notchForeground
+          fontFamily: root.fontFamily
+          fontSize: Style.font.body
+          opacity: barWindow.notchState === "expanded" && barWindow.view === "clock" ? 1 : 0
+          visible: opacity > 0
+          Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        }
+
+        Glance {
+          id: batteryGlance
+          x: (content.width - width) / 2
+          width: implicitWidth
+          height: root.notchCompactHeight
+          items: ["battery"]
+          foreground: root.notchForeground
+          batteryPercent: root.batteryPercent
+          batteryCharging: root.batteryCharging
+          batteryColor: root.batteryMode === "charging" ? root.notchChargingColor
+            : root.batteryMode === "full" ? root.notchFullColor
+            : root.batteryMode === "critical" || root.batteryMode === "low" ? root.notchLowColor : root.notchForeground
+          fontFamily: root.fontFamily
+          fontSize: Style.font.body
+          opacity: barWindow.notchState === "expanded" && barWindow.view === "battery" ? 1 : 0
+          visible: opacity > 0
+          Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        }
+
+        // The settings, as the notch's own tall state. Laid out at its full
+        // size and revealed as the notch grows around it.
+        NotchSettings {
+          id: settingsView
+          x: (content.width - width) / 2
+          y: 0
+          width: implicitWidth
+          height: implicitHeight
+          bar: root
+          headerHeight: root.notchCompactHeight
+          maxHeight: barWindow.panelMaxHeight
+          opacity: barWindow.settingsOpen ? 1 : 0
+          visible: opacity > 0
+          enabled: barWindow.settingsOpen
+          Behavior on opacity { NumberAnimation { duration: barWindow.settingsOpen ? 220 : 90; easing.type: Easing.OutCubic } }
+          onCloseRequested: barWindow.settingsOpen = false
+          onEnabledChanged: if (enabled) forceActiveFocus()
         }
       }
-    }
-
-    // The dropdown hangs, centred, from the bottom of the resting notch.
-    Item {
-      id: settingsAnchor
-      x: Math.round(barWindow.width / 2)
-      y: 0
-      width: 1
-      height: root.notchCompactHeight
-    }
-
-    // The popup coordinator's owner: closing it through the bar (another
-    // panel opening, a click outside) goes through here.
-    Item {
-      id: settingsOwner
-      visible: false
-      function close() { barWindow.settingsOpen = false }
-    }
-
-    NotchSettings {
-      anchorItem: settingsAnchor
-      owner: settingsOwner
-      bar: root
-      open: barWindow.settingsOpen
     }
 
     // The Island's own bar Rectangle, for reading its corner radii back.
@@ -2369,6 +2683,8 @@ Item {
 
     property var entries: []
     property string region: ""
+    // A widget id: only that widget is shown. Empty: every widget.
+    property string filter: ""
 
     visible: entries.length > 0
     // A hidden list must not build its modules. The center section declares
@@ -2394,6 +2710,7 @@ Item {
             required property var modelData
             entry: modelData
             region: moduleListRoot.region
+            filter: moduleListRoot.filter
           }
         }
       }
@@ -2412,6 +2729,7 @@ Item {
             required property var modelData
             entry: modelData
             region: moduleListRoot.region
+            filter: moduleListRoot.filter
           }
         }
       }
@@ -2423,7 +2741,18 @@ Item {
 
     required property var entry
     property string region: ""
+    property string filter: ""
     readonly property string moduleName: root.entryId(entry)
+    // Left out of the row -- everything but the chosen widget in a
+    // single-plugin view, or a widget in `hiddenPlugins` in the full row. Kept
+    // loaded and visible (a hidden widget can stop measuring or drop its
+    // state), but zero width, clipped and inert.
+    readonly property bool filteredOut: filter !== ""
+      ? root.canonicalWidgetId(moduleName) !== filter
+      : root.notchHiddenPlugins.indexOf(root.canonicalWidgetId(moduleName)) !== -1
+    clip: filteredOut
+    enabled: !filteredOut
+    opacity: filteredOut ? 0 : 1
     readonly property var moduleSettings: root.entrySettings(entry)
     readonly property string customType: root.customModuleType(entry)
     readonly property var registryMetadata: root.barWidgetRegistry.metadataFor(root.canonicalWidgetId(moduleName))
@@ -2459,7 +2788,7 @@ Item {
       if (hint !== undefined && hint !== null && hint > 0) return Math.round(hint)
       return Math.max(Style.space(10), Math.round((root.vertical ? slot.height : slot.width) * 0.55))
     }
-    implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
+    implicitWidth: filteredOut ? 0 : activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight

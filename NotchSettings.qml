@@ -214,6 +214,14 @@ Item {
         KeyRow { label: "Keybind for settings"; key: "settingsKey"; current: root.bar ? root.bar.notchSettingsKey : "" }
 
         SettingRow {
+          label: "Hide until the pointer reaches for it"
+          ToggleSwitch {
+            checked: root.bar ? root.bar.notchAutoHide : false
+            onToggled: root.set("autoHide", !checked)
+          }
+        }
+
+        SettingRow {
           label: "Windows reach the top edge"
           ToggleSwitch {
             checked: root.bar ? root.bar.notchWindowsToTop : false

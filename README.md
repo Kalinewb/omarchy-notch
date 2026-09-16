@@ -25,7 +25,7 @@ Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clo
 | **On hover** | If hover opens the notch (`openWith`), the open view. Otherwise your hover items (time, date, media, battery) next to your hover plugins, in one row. Either closes when the pointer leaves. |
 | **When open** | What `openAction` says, for every other way of opening it (click, keybind, …). |
 | **Settings** | The notch grows down into its settings panel -- the same surface, top edge on the screen edge. |
-| **Hidden** | `omarchy-toggle-bar` slides it up into the edge. |
+| **Hidden** | `omarchy-toggle-bar` slides it up into the edge; with `autoHide`, it also hides at rest until the pointer reaches for it. |
 
 The open notch is one row at the resting height: it only widens. Only the settings panel makes
 it taller. The widget row is the same row for every view, so a single-plugin view shows that
@@ -131,6 +131,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `chargingColor`, `fullColor`, `lowColor` | `#FFB340`, `#30D158`, `#FF453A` | Glow colours. |
 | `lowBattery`, `criticalBattery` | `20`, `10` | Percent thresholds, on battery. |
 | `batteryPeek` | `true` | Widen to show the charge on plug-in, unplug and low battery. |
+| `autoHide` | `false` | The resting notch hides in the screen edge until the pointer reaches the top edge above it (a 3 px strip a little wider than the notch). Peeks, the open notch and the settings still show. Windows use the full height. |
 | `windowsToTop` | `false` | `false`: windows stay below the resting notch. `true`: windows go all the way to the top edge, under the notch. |
 
 Widgets are still placed with `omarchy bar move` and `omarchy plugin enable/disable`.

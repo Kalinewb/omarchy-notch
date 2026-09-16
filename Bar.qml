@@ -1267,6 +1267,9 @@ Item {
   //   chargingColor / fullColor / lowColor   (default #FFB340 / #30D158 / #FF453A)
   //   lowBattery / criticalBattery   percent thresholds (default 20 / 10)
   //   batteryPeek    widen to show the charge when plugged in or running low (default true)
+  //   autoHide       true: the resting notch hides in the screen edge until the
+  //                  pointer reaches the top edge above it (default false).
+  //                  Windows then use the full height.
   //   windowsToTop   false (default): windows stay below the resting notch.
   //                  true: windows go all the way to the top edge, under the notch.
   //                  Toggle with `quickshell ipc -p $OMARCHY_PATH/shell call notch windowsToTop toggle`.
@@ -1397,6 +1400,7 @@ Item {
   readonly property bool notchPeekOnTrackChange: notchSetting("peekOnTrackChange", true) !== false
   readonly property int notchPeekDuration: Math.max(500, notchNumber("peekDuration", 3500))
   readonly property bool notchWindowsToTop: notchSetting("windowsToTop", false) === true
+  readonly property bool notchAutoHide: notchSetting("autoHide", false) === true
 
   // --- battery ---------------------------------------------------------------
 
@@ -1673,10 +1677,15 @@ Item {
     // animation) and any user blur rule written for the bar still apply.
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
-    exclusionMode: root.barHidden || root.notchWindowsToTop ? ExclusionMode.Ignore : ExclusionMode.Normal
-    exclusiveZone: root.barHidden || root.notchWindowsToTop ? 0 : Math.ceil(root.notchCompactHeight)
+    // A hidden or auto-hiding notch reserves nothing: windows use the height.
+    exclusionMode: root.barHidden || root.notchWindowsToTop || root.notchAutoHide ? ExclusionMode.Ignore : ExclusionMode.Normal
+    exclusiveZone: root.barHidden || root.notchWindowsToTop || root.notchAutoHide ? 0 : Math.ceil(root.notchCompactHeight)
 
-    mask: Region { item: island }
+    // Input: the notch itself, plus the reveal strip while it auto-hides.
+    mask: Region {
+      item: island
+      Region { item: revealZone; intersection: Intersection.Combine }
+    }
 
     // --- state --------------------------------------------------------------
 
@@ -1700,7 +1709,12 @@ Item {
     readonly property bool expanded: !root.barHidden
       && (settingsOpen || hoverExpanded || clickExpanded || popoutHere || dragHere
           || (root.notchForcedExpanded && root.focusedNotchWindow() === barWindow))
-    readonly property string notchState: root.barHidden ? "hidden" : expanded ? "expanded" : peeking ? "peek" : "compact"
+    // Auto-hide: tucked into the edge at rest until the pointer reaches the
+    // strip above it. Anything that is not rest -- open, peeking, settings --
+    // still shows.
+    property bool revealed: false
+    readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking
+    readonly property string notchState: root.barHidden || autoHidden ? "hidden" : expanded ? "expanded" : peeking ? "peek" : "compact"
 
     function collapseNow() {
       expandTimer.stop()
@@ -1777,6 +1791,31 @@ Item {
         if (!islandHover.hovered || barWindow.expanded) return
         if (root.opensWith("hover")) barWindow.openView(root.notchOpenAction, "hoverOpen")
         else barWindow.openView("hover", "hover")
+      }
+    }
+
+    Timer {
+      id: autoHideTimer
+      interval: root.notchCollapseDelay
+      onTriggered: if (!islandHover.hovered && !revealHover.hovered) barWindow.revealed = false
+    }
+
+    // The top strip above the auto-hidden notch, a little wider than it:
+    // reaching for it brings the notch back.
+    Item {
+      id: revealZone
+      readonly property real span: barWindow.compactWidth + 2 * root.notchFilletRadius + Style.space(40)
+      x: (barWindow.width - width) / 2
+      y: 0
+      width: root.notchAutoHide ? span : 0
+      height: root.notchAutoHide ? Style.space(3) : 0
+      HoverHandler {
+        id: revealHover
+        enabled: root.notchAutoHide
+        onHoveredChanged: {
+          if (hovered) { autoHideTimer.stop(); barWindow.revealed = true }
+          else autoHideTimer.restart()
+        }
       }
     }
 
@@ -1991,6 +2030,7 @@ Item {
           bottomLeft: onScreen(island.bottomLeftCentre), bottomRight: onScreen(island.bottomRightCentre)
         },
         settingsOpen: barWindow.settingsOpen,
+        autoHide: { on: root.notchAutoHide, revealed: barWindow.revealed, hidden: barWindow.autoHidden, revealZone: { width: revealZone.width, height: revealZone.height } },
         pointer: { overNotch: islandHover.hovered, tooltip: root.tooltipShown ? root.tooltipText : "", hoveredWidgets: root.moduleSlots.filter(function(sl) { return root.slotWindow(sl) === barWindow && sl.hovered }).map(function(sl) { return sl.moduleName }) },
         view: barWindow.view,
         hoverItems: root.notchHoverItems,
@@ -2095,10 +2135,12 @@ Item {
           root.setBarHovered(hovered)
           if (hovered) {
             collapseTimer.stop()
+            autoHideTimer.stop()
             if (root.opensWith("hover") || root.notchHoverShowsSomething) expandTimer.restart()
           } else {
             expandTimer.stop()
             collapseTimer.restart()
+            if (root.notchAutoHide) autoHideTimer.restart()
           }
         }
         Component.onDestruction: if (hovered) root.setBarHovered(false)

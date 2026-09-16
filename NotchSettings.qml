@@ -124,213 +124,193 @@ Item {
       width: parent.width
       spacing: Style.space(2)
 
-      // --- what it shows ---------------------------------------------------------
+      // Sections fold; "What it shows" starts open. Long plugin lists fold
+      // inside them, with a summary of what is picked.
 
-      PanelSectionHeader { text: "What it shows"; fontFamily: root.fontFamily; width: parent.width }
+      Section {
+        title: "What it shows"
+        open: true
 
-      SettingRow {
-        label: "At rest"
-        ItemChips {
-          selected: root.bar ? root.bar.notchCompactItems : []
-          onPicked: function(item) { root.toggleItem("compact", root.bar.notchCompactItems, item) }
+        SettingRow {
+          label: "At rest"
+          ItemChips {
+            selected: root.bar ? root.bar.notchCompactItems : []
+            onPicked: function(item) { root.toggleItem("compact", root.bar.notchCompactItems, item) }
+          }
         }
-      }
 
-      SettingRow {
-        label: "On hover"
-        ItemChips {
-          selected: root.bar ? root.bar.notchHoverItems : []
-          onPicked: function(item) { root.toggleItem("hoverItems", root.bar.notchHoverItems, item) }
+        SettingRow {
+          label: "On hover"
+          ItemChips {
+            selected: root.bar ? root.bar.notchHoverItems : []
+            onPicked: function(item) { root.toggleItem("hoverItems", root.bar.notchHoverItems, item) }
+          }
         }
-      }
 
-      StackedRow {
-        label: "Plugins on hover"
-        ChipFlow {
-          options: root.bar ? root.bar.layoutPluginChoices() : []
+        PluginPicker {
+          label: "Plugins on hover"
+          key: "hoverPlugins"
           selected: root.bar ? root.bar.notchHoverPlugins : []
-          onPicked: function(value) {
-            var next = root.bar.notchHoverPlugins.slice()
-            var i = next.indexOf(value)
-            if (i === -1) next.push(value)
-            else next.splice(i, 1)
-            root.set("hoverPlugins", next)
-          }
         }
-      }
 
-      Text {
-        visible: root.bar && root.bar.opensWith("hover")
-        width: parent.width
-        wrapMode: Text.WordWrap
-        text: "Hover opens the notch (see Behaviour), so these are not shown."
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        bottomPadding: Style.space(4)
-      }
+        Text {
+          visible: root.bar && root.bar.opensWith("hover")
+          width: parent.width
+          wrapMode: Text.WordWrap
+          text: "Hover opens the notch (see Behaviour), so these are not shown."
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          bottomPadding: Style.space(4)
+        }
 
-      ViewRow {
-        label: "When open (click, keybind, …)"
-        actionKey: "openAction"; pluginKey: "openPlugin"
-        action: root.bar ? root.bar.notchOpenAction : "widgets"
-        plugin: root.bar ? root.bar.notchOpenPlugin : ""
-      }
+        ViewRow {
+          label: "When open (click, keybind, …)"
+          actionKey: "openAction"; pluginKey: "openPlugin"
+          action: root.bar ? root.bar.notchOpenAction : "widgets"
+          plugin: root.bar ? root.bar.notchOpenPlugin : ""
+        }
 
-      StackedRow {
-        label: "Hide from the open notch"
-        ChipFlow {
-          options: root.bar ? root.bar.layoutPluginChoices() : []
+        PluginPicker {
+          label: "Hide from the open notch"
+          key: "hiddenPlugins"
           selected: root.bar ? root.bar.notchHiddenPlugins : []
-          onPicked: function(value) {
-            var next = root.bar.notchHiddenPlugins.slice()
-            var i = next.indexOf(value)
-            if (i === -1) next.push(value)
-            else next.splice(i, 1)
-            root.set("hiddenPlugins", next)
+        }
+
+        SettingRow {
+          label: "Also in the widget row"
+          ItemChips {
+            selected: root.bar ? root.bar.notchExpandedItems : []
+            onPicked: function(item) { root.toggleItem("expanded", root.bar.notchExpandedItems, item) }
           }
         }
       }
 
-      SettingRow {
-        label: "Also in the widget row"
-        ItemChips {
-          selected: root.bar ? root.bar.notchExpandedItems : []
-          onPicked: function(item) { root.toggleItem("expanded", root.bar.notchExpandedItems, item) }
-        }
-      }
+      Section {
+        title: "Behaviour"
 
-      PanelSeparator { width: parent.width }
-
-      // --- behaviour ---------------------------------------------------------
-
-      PanelSectionHeader { text: "Behaviour"; fontFamily: root.fontFamily; width: parent.width }
-
-      StackedRow {
-        label: "Open the notch with"
-        ChipFlow {
-          options: root.openTriggers
-          selected: root.bar ? root.bar.notchOpenWith : []
-          taken: root.bar ? root.bar.notchSettingsWith : []
-          onPicked: function(value) { root.toggleTrigger("openWith", root.bar.notchOpenWith, value, false) }
-        }
-      }
-
-      KeyRow { label: "Keybind for the notch"; key: "openKey"; current: root.bar ? root.bar.notchOpenKey : "" }
-
-      StackedRow {
-        label: "Open settings with"
-        ChipFlow {
-          options: root.settingsTriggers
-          selected: root.bar ? root.bar.notchSettingsWith : []
-          taken: root.bar ? root.bar.notchOpenWith : []
-          onPicked: function(value) { root.toggleTrigger("settingsWith", root.bar.notchSettingsWith, value, true) }
-        }
-      }
-
-      KeyRow { label: "Keybind for settings"; key: "settingsKey"; current: root.bar ? root.bar.notchSettingsKey : "" }
-
-      SettingRow {
-        label: "Windows reach the top edge"
-        ToggleSwitch {
-          checked: root.bar ? root.bar.notchWindowsToTop : false
-          onToggled: root.set("windowsToTop", !checked)
-        }
-      }
-
-      SettingRow {
-        label: "Peek on a new track"
-        ToggleSwitch {
-          checked: root.bar ? root.bar.notchPeekOnTrackChange : true
-          onToggled: root.set("peekOnTrackChange", !checked)
-        }
-      }
-
-      // --- what it shows -------------------------------------------------------
-
-      // --- size and shape --------------------------------------------------------
-
-      PanelSeparator { width: parent.width }
-      PanelSectionHeader { text: "Size and shape"; fontFamily: root.fontFamily; width: parent.width }
-
-      NumberRow { label: "Width at rest"; key: "compactWidth"; value: root.bar ? root.bar.notchCompactWidth : 180; from: 100; to: 600; stepSize: 10 }
-      NumberRow { label: "Height at rest"; key: "compactHeight"; value: root.bar ? root.bar.notchCompactHeight : 32; from: 26; to: 60; stepSize: 2 }
-      NumberRow { label: "Bottom corners"; key: "bottomRadius"; value: root.bar ? root.bar.notchBottomRadius : 10; from: 0; to: 24; stepSize: 1 }
-      NumberRow { label: "Edge fillets"; key: "filletRadius"; value: root.bar ? root.bar.notchFilletRadius : 10; from: 0; to: 24; stepSize: 1 }
-
-      // --- battery -------------------------------------------------------------
-
-      PanelSeparator { width: parent.width }
-      PanelSectionHeader { text: "Battery"; fontFamily: root.fontFamily; width: parent.width }
-
-      SettingRow {
-        label: "Charging glow"
-        ToggleSwitch {
-          checked: root.bar ? root.bar.notchBatteryGlow : true
-          onToggled: root.set("batteryGlow", !checked)
-        }
-      }
-
-      SettingRow {
-        id: glowScaleRow
-        label: "Glow size"
-        // Relative to the resting notch's size (1.0 reaches 32 px on the
-        // default 180 × 32 notch, further on a bigger one; at most 80 px). The slider shows its value while it
-        // moves and saves once on release.
-        property real liveScale: root.bar ? root.bar.notchGlowScale : 1
-        Row {
-          spacing: Style.space(8)
-          PanelSlider {
-            id: glowScaleSlider
-            anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(160)
-            height: Style.space(24)
-            bar: root.bar
-            minimum: 0.25
-            maximum: 2.5
-            step: 0.05
-            value: root.bar ? root.bar.notchGlowScale : 1
-            onMoved: function(value) { glowScaleRow.liveScale = value }
-            onReleased: function(value) { root.set("glowScale", Math.round(value * 100) / 100) }
+        StackedRow {
+          label: "Open the notch with"
+          ChipFlow {
+            options: root.openTriggers
+            selected: root.bar ? root.bar.notchOpenWith : []
+            taken: root.bar ? root.bar.notchSettingsWith : []
+            onPicked: function(value) { root.toggleTrigger("openWith", root.bar.notchOpenWith, value, false) }
           }
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(44)
-            horizontalAlignment: Text.AlignRight
-            text: (glowScaleSlider.dragging ? glowScaleRow.liveScale : (root.bar ? root.bar.notchGlowScale : 1)).toFixed(2) + "×"
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+        }
+
+        KeyRow { label: "Keybind for the notch"; key: "openKey"; current: root.bar ? root.bar.notchOpenKey : "" }
+
+        StackedRow {
+          label: "Open settings with"
+          ChipFlow {
+            options: root.settingsTriggers
+            selected: root.bar ? root.bar.notchSettingsWith : []
+            taken: root.bar ? root.bar.notchOpenWith : []
+            onPicked: function(value) { root.toggleTrigger("settingsWith", root.bar.notchSettingsWith, value, true) }
+          }
+        }
+
+        KeyRow { label: "Keybind for settings"; key: "settingsKey"; current: root.bar ? root.bar.notchSettingsKey : "" }
+
+        SettingRow {
+          label: "Windows reach the top edge"
+          ToggleSwitch {
+            checked: root.bar ? root.bar.notchWindowsToTop : false
+            onToggled: root.set("windowsToTop", !checked)
+          }
+        }
+
+        SettingRow {
+          label: "Peek on a new track"
+          ToggleSwitch {
+            checked: root.bar ? root.bar.notchPeekOnTrackChange : true
+            onToggled: root.set("peekOnTrackChange", !checked)
           }
         }
       }
 
-      SettingRow {
-        label: "Peek on plug-in and low battery"
-        ToggleSwitch {
-          checked: root.bar ? root.bar.notchBatteryPeek : true
-          onToggled: root.set("batteryPeek", !checked)
-        }
+      Section {
+        title: "Size and shape"
+
+        NumberRow { label: "Width at rest"; key: "compactWidth"; value: root.bar ? root.bar.notchCompactWidth : 180; from: 100; to: 600; stepSize: 10 }
+        NumberRow { label: "Height at rest"; key: "compactHeight"; value: root.bar ? root.bar.notchCompactHeight : 32; from: 26; to: 60; stepSize: 2 }
+        NumberRow { label: "Bottom corners"; key: "bottomRadius"; value: root.bar ? root.bar.notchBottomRadius : 10; from: 0; to: 24; stepSize: 1 }
+        NumberRow { label: "Edge fillets"; key: "filletRadius"; value: root.bar ? root.bar.notchFilletRadius : 10; from: 0; to: 24; stepSize: 1 }
       }
 
-      NumberRow { label: "Low below %"; key: "lowBattery"; value: root.bar ? root.bar.notchLowBattery : 20; from: 5; to: 60; stepSize: 5 }
-      NumberRow { label: "Critical below %"; key: "criticalBattery"; value: root.bar ? root.bar.notchCriticalBattery : 10; from: 1; to: 40; stepSize: 1 }
+      Section {
+        title: "Battery"
 
-      SettingRow {
-        label: "Preview"
-        ButtonGroup {
-          readonly property string current: !root.bar || !root.bar.batterySimulated ? "real"
-            : root.bar.batterySimulatedState
-          options: [{ value: "real", label: "Off" }, { value: "charging", label: "Charging" },
-                    { value: "full", label: "Full" }, { value: "discharging", label: "Low" }]
-          value: current
-          fontFamily: root.fontFamily
-          onChanged: function(value) {
-            var b = root.bar
-            if (!b) return
-            if (value === "real") { b.batterySimulatedState = ""; b.batterySimulatedPercent = -1; return }
-            b.batterySimulatedPercent = value === "charging" ? 64 : value === "full" ? 100 : Math.max(1, b.notchLowBattery - 2)
-            b.batterySimulatedState = value
+        SettingRow {
+          label: "Charging glow"
+          ToggleSwitch {
+            checked: root.bar ? root.bar.notchBatteryGlow : true
+            onToggled: root.set("batteryGlow", !checked)
+          }
+        }
+
+        SettingRow {
+          id: glowScaleRow
+          label: "Glow size"
+          // Relative to the resting notch's size (1.0 reaches 32 px on the
+          // default 180 × 32 notch, further on a bigger one; at most 80 px). The slider shows its value while it
+          // moves and saves once on release.
+          property real liveScale: root.bar ? root.bar.notchGlowScale : 1
+          Row {
+            spacing: Style.space(8)
+            PanelSlider {
+              id: glowScaleSlider
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(160)
+              height: Style.space(24)
+              bar: root.bar
+              minimum: 0.25
+              maximum: 2.5
+              step: 0.05
+              value: root.bar ? root.bar.notchGlowScale : 1
+              onMoved: function(value) { glowScaleRow.liveScale = value }
+              onReleased: function(value) { root.set("glowScale", Math.round(value * 100) / 100) }
+            }
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(44)
+              horizontalAlignment: Text.AlignRight
+              text: (glowScaleSlider.dragging ? glowScaleRow.liveScale : (root.bar ? root.bar.notchGlowScale : 1)).toFixed(2) + "×"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+          }
+        }
+
+        SettingRow {
+          label: "Peek on plug-in and low battery"
+          ToggleSwitch {
+            checked: root.bar ? root.bar.notchBatteryPeek : true
+            onToggled: root.set("batteryPeek", !checked)
+          }
+        }
+
+        NumberRow { label: "Low below %"; key: "lowBattery"; value: root.bar ? root.bar.notchLowBattery : 20; from: 5; to: 60; stepSize: 5 }
+        NumberRow { label: "Critical below %"; key: "criticalBattery"; value: root.bar ? root.bar.notchCriticalBattery : 10; from: 1; to: 40; stepSize: 1 }
+
+        SettingRow {
+          label: "Preview"
+          ButtonGroup {
+            readonly property string current: !root.bar || !root.bar.batterySimulated ? "real"
+              : root.bar.batterySimulatedState
+            options: [{ value: "real", label: "Off" }, { value: "charging", label: "Charging" },
+                      { value: "full", label: "Full" }, { value: "discharging", label: "Low" }]
+            value: current
+            fontFamily: root.fontFamily
+            onChanged: function(value) {
+              var b = root.bar
+              if (!b) return
+              if (value === "real") { b.batterySimulatedState = ""; b.batterySimulatedPercent = -1; return }
+              b.batterySimulatedPercent = value === "charging" ? 64 : value === "full" ? 100 : Math.max(1, b.notchLowBattery - 2)
+              b.batterySimulatedState = value
+            }
           }
         }
       }
@@ -434,6 +414,115 @@ Item {
     }
   }
 
+  // A settings section whose title folds and unfolds it. Folded state lasts
+  // while the shell runs (it is not saved).
+  component Section: Column {
+    id: section
+    property string title: ""
+    property bool open: false
+    default property alias content: sectionBody.data
+    width: parent ? parent.width : 0
+
+    Item {
+      width: parent.width
+      height: Style.space(30)
+
+      Text {
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        text: (section.open ? "▾  " : "▸  ") + section.title
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        font.bold: true
+      }
+
+      MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: section.open = !section.open
+      }
+    }
+
+    Column {
+      id: sectionBody
+      visible: section.open
+      width: parent.width
+      spacing: Style.space(2)
+      bottomPadding: Style.space(8)
+    }
+
+    PanelSeparator { width: parent.width }
+  }
+
+  // A plugin list folded to one line: the label, what is picked, and a
+  // chevron; unfolded, a chip per widget in the bar layout. Many can be
+  // picked, or with `single` just one. Saves `key` on every pick.
+  component PluginPicker: Column {
+    id: picker
+    property string label: ""
+    property string key: ""
+    property var selected: []
+    property bool single: false
+    property bool open: false
+    readonly property var choices: root.bar ? root.bar.layoutPluginChoices() : []
+    readonly property string summary: {
+      var names = []
+      for (var i = 0; i < choices.length; i++)
+        if (selected.indexOf(choices[i].value) !== -1) names.push(choices[i].label)
+      if (names.length === 0) return "none"
+      return names.length <= 2 ? names.join(", ") : names.length + " picked"
+    }
+    width: parent ? parent.width : 0
+
+    Item {
+      width: parent.width
+      height: root.rowHeight
+
+      Text {
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        text: picker.label
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+
+      Text {
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        width: parent.width * 0.55
+        horizontalAlignment: Text.AlignRight
+        elide: Text.ElideRight
+        text: picker.summary + (picker.open ? "  ▾" : "  ▸")
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+
+      MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: picker.open = !picker.open
+      }
+    }
+
+    ChipFlow {
+      visible: picker.open
+      options: picker.choices
+      selected: picker.selected
+      bottomPadding: Style.space(6)
+      onPicked: function(value) {
+        if (picker.single) { root.set(picker.key, value); return }
+        var next = picker.selected.slice()
+        var i = next.indexOf(value)
+        if (i === -1) next.push(value)
+        else next.splice(i, 1)
+        root.set(picker.key, next)
+      }
+    }
+  }
+
   // What a way of opening the notch shows, and for "A plugin", which one.
   component ViewRow: Column {
     id: viewRow
@@ -468,14 +557,12 @@ Item {
       bottomPadding: Style.space(4)
     }
 
-    StackedRow {
+    PluginPicker {
       visible: viewRow.action === "plugin"
       label: "Which plugin"
-      ChipFlow {
-        options: root.bar ? root.bar.layoutPluginChoices() : []
-        selected: [viewRow.plugin]
-        onPicked: function(value) { viewRow.pick(viewRow.pluginKey, value) }
-      }
+      key: viewRow.pluginKey
+      single: true
+      selected: viewRow.plugin ? [viewRow.plugin] : []
     }
   }
 

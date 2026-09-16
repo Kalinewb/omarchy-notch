@@ -25,6 +25,30 @@ Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clo
 | **Open** | On hover (or click): a top row with the glance items, and your bar widgets under it. It stays open while a widget's panel is open. |
 | **Hidden** | `omarchy-toggle-bar` slides it up into the edge. |
 
+## Settings menu
+
+Long right-click the notch (hold for about half a second) to open its settings: how it opens,
+whether windows reach the top edge, what it shows at rest and when open, its size and corner
+radii, and the battery glow. Every change is saved to `shell.json` straight away. **Preview**
+shows the charging, low and critical glow without touching the battery, and stops when the menu
+closes. You can also open the menu with `quickshell ipc -p $OMARCHY_PATH/shell call notch settings`.
+
+## Battery glow
+
+A soft mist around the notch shows the battery state:
+
+| State | Colour | Breathing |
+|---|---|---|
+| Charging | green `#30d158` | intensity 0.45–0.70, every 3.2 s |
+| Low (≤ 20 %, on battery) | amber `#ff9f0a` | 0.35–0.65, every 2.4 s |
+| Critical (≤ 10 %, on battery) | red `#ff453a` | 0.50–0.95, every 1.2 s |
+| Full, or on battery above 20 % | none | — |
+
+Plugging in plays a surge: the mist flares (+0.55 intensity, +10 px) in 260 ms, then settles
+over 1.6 s. The notch also briefly widens to show the charge; it does the same when the battery
+goes low or critical. The mist is the notch's own outline, bar and fillets together, grown by 6 px
+and blurred (48 px), and drawn behind the notch so the notch stays pitch black.
+
 By default windows stay below the resting notch and the open notch floats over them. Set
 `windowsToTop` to let windows use the full height, or flip it (it is saved to `shell.json`):
 
@@ -32,7 +56,8 @@ By default windows stay below the resting notch and the open notch floats over t
 quickshell ipc -p $OMARCHY_PATH/shell call notch windowsToTop toggle   # or true / false
 ```
 
-Other IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|toggle|peek|geometry`.
+Other IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|toggle|peek|settings|geometry`,
+and `simulateBattery charging|discharging|full|auto <percent>` to preview the glow.
 
 ## Settings
 
@@ -60,7 +85,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 
 | Key | Default | Meaning |
 |---|---|---|
-| `compact` | `[]` | Glance items in the resting notch: `clock`, `date`, `media`. Empty keeps it pitch black. |
+| `compact` | `[]` | Glance items in the resting notch: `clock`, `date`, `media`, `battery`. Empty keeps it pitch black. |
 | `expanded` | `["clock","date","media"]` | Glance items on the open notch's top row. Leaves out time and date when the layout already has `omarchy.clock`. |
 | `expandOn` | `"hover"` | `"hover"` or `"click"`. In click mode, clicking outside closes it. |
 | `color` / `foreground` | `#000000` / theme bar text | Notch and glance text colours. |
@@ -69,6 +94,11 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `filletRadius` | `10` | Concave fillet where the notch meets the screen edge. |
 | `hoverDelay`, `collapseDelay` | `60`, `350` | Milliseconds. |
 | `peekOnTrackChange`, `peekDuration` | `true`, `3500` | Widen briefly on a new track. |
+| `batteryGlow` | `true` | The battery mist. |
+| `chargingGlow` | `"always"` | `"always"`: glow while charging. `"plug"`: only the surge on plug-in. |
+| `chargingColor`, `lowColor`, `criticalColor` | `#30d158`, `#ff9f0a`, `#ff453a` | Glow colours. |
+| `lowBattery`, `criticalBattery` | `20`, `10` | Percent thresholds, on battery. |
+| `batteryPeek` | `true` | Widen to show the charge on plug-in and low battery. |
 | `windowsToTop` | `false` | `false`: windows stay below the resting notch. `true`: windows go all the way to the top edge, under the notch. |
 
 Widgets are still placed with `omarchy bar move` and `omarchy plugin enable/disable`.
@@ -97,6 +127,11 @@ Shrinking eases out over 240 ms with no overshoot.
 Quickshell instance, reads every radius and arc centre over IPC (resting and open), checks the
 tangency arithmetic, then renders `Island.qml` offscreen at those sizes and samples the pixels
 that separate a fused bar from a pill or a notch.
+
+`dev/glow.sh` does the same for the battery glow. It simulates each battery state over IPC and
+reads back the mode, colour, intensity and surge. Then it renders the glow offscreen and samples
+the halo: the notch stays black, the mist has the right hue, fades with distance, is symmetric,
+and follows the fillets along the screen edge.
 
 ## Credits
 

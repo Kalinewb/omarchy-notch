@@ -1455,6 +1455,13 @@ Item {
     }
     // Every radius, centre and easing constant of the focused screen's notch,
     // as JSON, so the geometry can be checked numerically.
+    // Open or close the settings dropdown on the focused screen.
+    function settings(): void {
+      var w = root.focusedNotchWindow()
+      if (!w) return
+      if (w.settingsOpen) w.settingsOpen = false
+      else w.openSettings()
+    }
     function geometry(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.geometryReport()) : "{}" }
   }
 
@@ -1496,9 +1503,12 @@ Item {
     property bool peeking: false
     property bool mediaReady: false
     property string peekKind: "media"
+    // The settings dropdown (long right-click). While it is open the notch
+    // stays at rest, so the menu hangs from the same place it was opened.
+    property bool settingsOpen: false
     readonly property bool popoutHere: root.activePopout !== null && root.targetBelongsToWindow(root.activePopout, barWindow)
     readonly property bool dragHere: root.barDragSource !== null && root.barDragWindow === barWindow
-    readonly property bool expanded: !root.barHidden
+    readonly property bool expanded: !root.barHidden && !settingsOpen
       && (hoverExpanded || clickExpanded || popoutHere || dragHere
           || (root.notchForcedExpanded && root.focusedNotchWindow() === barWindow))
     readonly property string notchState: root.barHidden ? "hidden" : expanded ? "expanded" : peeking ? "peek" : "compact"
@@ -1507,6 +1517,12 @@ Item {
       expandTimer.stop()
       hoverExpanded = false
       clickExpanded = false
+    }
+
+    function openSettings() {
+      collapseNow()
+      peeking = false
+      settingsOpen = true
     }
 
     function startPeek(kind) {
@@ -1746,6 +1762,7 @@ Item {
           leftFillet: onScreen(island.leftFilletCentre), rightFillet: onScreen(island.rightFilletCentre),
           bottomLeft: onScreen(island.bottomLeftCentre), bottomRight: onScreen(island.bottomRightCentre)
         },
+        settingsOpen: barWindow.settingsOpen,
         battery: {
           percent: root.batteryPercent, mode: root.batteryMode, simulated: root.batterySimulated,
           lowThreshold: root.notchLowBattery, criticalThreshold: root.notchCriticalBattery
@@ -1823,6 +1840,15 @@ Item {
             barWindow.collapseNow()
           }
         }
+      }
+
+      // A long right-click anywhere on the notch opens its settings. Declared
+      // before the content, so a widget's own right-click still wins over it.
+      MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.RightButton
+        pressAndHoldInterval: 450
+        onPressAndHold: barWindow.openSettings()
       }
 
       // The bar's content is laid out at full expanded size, centred on the
@@ -1919,6 +1945,30 @@ Item {
           RightModules { anchors.verticalCenter: parent.verticalCenter }
         }
       }
+    }
+
+    // The dropdown hangs, centred, from the bottom of the resting notch.
+    Item {
+      id: settingsAnchor
+      x: Math.round(barWindow.width / 2)
+      y: 0
+      width: 1
+      height: root.notchCompactHeight
+    }
+
+    // The popup coordinator's owner: closing it through the bar (another
+    // panel opening, a click outside) goes through here.
+    Item {
+      id: settingsOwner
+      visible: false
+      function close() { barWindow.settingsOpen = false }
+    }
+
+    NotchSettings {
+      anchorItem: settingsAnchor
+      owner: settingsOwner
+      bar: root
+      open: barWindow.settingsOpen
     }
 
     // The Island's own bar Rectangle, for reading its corner radii back.

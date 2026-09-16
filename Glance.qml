@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Services.Mpris
 
 // The information the notch can show without any widget: time, date and what
 // is playing. Used for the compact notch (empty by default, so the notch stays
@@ -26,8 +25,10 @@ Item {
   property bool batteryCharging: false
   property color batteryColor: foreground
 
-  // What is playing, for the notch's own "peek" when the track changes.
-  readonly property var player: pickPlayer()
+  // What is playing: the notch's one media source, omarchy.media's
+  // activePlayer, handed in by the bar (the same player the stock media widget
+  // shows). Null -- no facade, or nothing playing -- means no media item.
+  property var player: null
   readonly property string trackTitle: player ? (player.trackTitle || "") : ""
   readonly property string trackArtist: player ? (player.trackArtist || "") : ""
   readonly property bool hasMedia: trackTitle !== ""
@@ -40,20 +41,6 @@ Item {
 
   function has(name) {
     return Array.isArray(items) && items.indexOf(name) !== -1
-  }
-
-  // A playing player with a title wins; otherwise the first paused one that
-  // still has a title, so a paused track stays visible.
-  function pickPlayer() {
-    var list = Mpris.players ? Mpris.players.values : []
-    var paused = null
-    for (var i = 0; i < list.length; i++) {
-      var p = list[i]
-      if (!p || !p.trackTitle) continue
-      if (p.isPlaying) return p
-      if (!paused) paused = p
-    }
-    return paused
   }
 
   SystemClock {

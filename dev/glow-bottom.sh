@@ -125,14 +125,19 @@ check "by default (greenAbove 100) charging at 93 % is amber, as before ${DIM}($
 # ---------------------------------------------------------------------------
 
 echo
-NOTCH_HARNESS_CONFIG='{"openWith":["click"],"expanded":["clock","date","media","battery"]}' quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
+# A narrow resting notch (100 px) so opening it -- to the width of the
+# clock, date and battery -- always widens it well past the 24 px handover,
+# whatever is or isn't playing on this machine.
+NOTCH_HARNESS_CONFIG='{"openWith":["click"],"compactWidth":100,"expanded":["clock","date","media","battery"]}' quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
 qs_pid=$!
 for _ in $(seq 1 40); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
 sleep 0.8
 ipc simulateBattery charging 60 >/dev/null; sleep 1.5
 snap() { ipc geometry | jq -c '{notch: {w: .bar.width, h: .bar.height, r: .radii.bottomLeft}, widen: .glow.curve.widen, outline: .glow.curve.outlineDrawn, bottom: .glow.curve.bottomDrawn, open: .glow.curve.openDrawn, openShape: .glow.curve.open, window: .glow.window.height}'; }
 w_rest=$(snap)
-ipc expand >/dev/null; sleep 1
+# `view widgets` opens it without the click-outside focus grab, which a second
+# Quickshell instance can lose at once (closing the notch before it is sampled).
+ipc view widgets >/dev/null; sleep 1
 w_open=$(snap)
 ipc collapse >/dev/null; sleep 1
 w_back=$(snap)
@@ -147,7 +152,7 @@ echo "  ${DIM}settings panel: $w_panel${RESET}"
 check "at rest the resting glow is drawn, not the open-notch glow" "0 true false" "$(jq -r '"\(.widen) \(.outline) \(.open)"' <<<"$w_rest")"
 check "when the notch widens the glow moves to its bottom: only the open-notch glow is drawn" "1 false false true" "$(jq -r '"\(.widen) \(.outline) \(.bottom) \(.open)"' <<<"$w_open")"
 check "…following the widened notch's width and bottom radius ${DIM}($(jq -r '"\(.openShape.width)×\(.openShape.height)"' <<<"$w_open"))${RESET}" "true" \
-  "$(jq -r '.openShape.width == .notch.w and .openShape.height == .notch.h and .openShape.bottomRadius == .notch.r and .notch.w > 200' <<<"$w_open")"
+  "$(jq -r '.openShape.width == .notch.w and .openShape.height == .notch.h and .openShape.bottomRadius == .notch.r and .notch.w >= 124' <<<"$w_open")"
 check "…at full strength" "1" "$(jq -r .openShape.presence <<<"$w_open")"
 check "back at rest the resting glow returns" "0 true false" "$(jq -r '"\(.widen) \(.outline) \(.open)"' <<<"$w_back")"
 if jq -e '.notch.h > 100' <<<"$w_panel" >/dev/null; then

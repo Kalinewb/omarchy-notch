@@ -135,7 +135,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. |
 | `color` / `foreground` | `#000000` / theme bar text | Notch and glance text colours. |
 | `compactWidth`, `compactHeight` | `180`, `32` | Resting size, in logical px. The height is also what windows keep clear. |
-| `bottomRadius` | `10` | Convex bottom-corner radius. The settings panel uses 20 % of its height, between this and 24 px. |
+| `bottomRadius` | `10` | Convex bottom-corner radius, in every state including the settings panel. |
 | `filletRadius` | `10` | Concave fillet where the notch meets the screen edge. |
 | `hoverDelay`, `collapseDelay` | `60`, `350` | Milliseconds. |
 | `peekOnTrackChange`, `peekDuration` | `true`, `3500` | Widen briefly on a new track. |

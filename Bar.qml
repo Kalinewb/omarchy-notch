@@ -1174,7 +1174,7 @@ Item {
   // anywhere else (a test harness) ignores it, as it ignores keybinds, unless
   // NOTCH_HONOR_BAR_OFF=1. The host sets `shell` after creating the bar, so the
   // probe runs again when it arrives.
-  readonly property bool hostedBar: !!root.shell || Quickshell.env("NOTCH_HONOR_BAR_OFF") === "1"
+  readonly property bool hostedBar: (!!root.shell && !root.harnessed) || Quickshell.env("NOTCH_HONOR_BAR_OFF") === "1"
   onShellChanged: barHiddenProbe.running = true
   Process {
     id: barHiddenProbe
@@ -1392,7 +1392,10 @@ Item {
   // running anywhere else (a test harness) would otherwise reconcile the live
   // notch's binds away; NOTCH_FORCE_KEYBINDS=1 lets a keybind test opt in.
   readonly property bool keybindsDisabled: Quickshell.env("NOTCH_NO_KEYBINDS") === "1"
-    || (!root.shell && Quickshell.env("NOTCH_FORCE_KEYBINDS") !== "1")
+    || ((!root.shell || root.harnessed) && Quickshell.env("NOTCH_FORCE_KEYBINDS") !== "1")
+  // NOTCH_HARNESS=1: a test harness, even one that hands the bar a fake shell
+  // facade. Treated as unhosted for keybinds and the bar-off flag.
+  readonly property bool harnessed: Quickshell.env("NOTCH_HARNESS") === "1"
   // Appended to every keybind description. Test harnesses set it, so a test
   // notch's binds are distinct and its reconcile can never touch the live
   // notch's binds (which it would otherwise see as stale notch binds).
@@ -1570,6 +1573,20 @@ Item {
     healState.lastRescan = Date.now()
     console.warn("graveklar.notch: widgets loaded empty (" + stale.join(", ") + "); rescanning plugins to refresh the widget catalogue")
     healProcess.running = true
+  }
+
+  // The notch's one media source: omarchy.media's activePlayer, through the
+  // facade the host gives this bar -- the same player the stock media widget
+  // in the row shows (it asks bar.shell for the same proxy). omarchy.media
+  // picks it by cross-checking MPRIS players against live PipeWire streams.
+  // No facade or no active player means no media anywhere in the notch; there
+  // is deliberately no direct-MPRIS fallback, since two sources picking
+  // different players is exactly the bug this replaces.
+  readonly property var mediaService: root.shell && typeof root.shell.firstPartyServiceFor === "function"
+    ? root.shell.firstPartyServiceFor("omarchy.media") : null
+  readonly property var mediaPlayer: mediaService && mediaService.activePlayer ? mediaService.activePlayer : null
+  function mediaPlayerKey(player) {
+    return mediaService && player && typeof mediaService.playerKey === "function" ? String(mediaService.playerKey(player)) : ""
   }
 
   signal batteryEvent(string kind)
@@ -1913,6 +1930,9 @@ Item {
       (shownWidth - Math.min(maxBarWidth, compactWidth)) / 24,
       (shownHeight - root.notchCompactHeight) / 24)))
     property real glowPresence: 0
+    // When the current fade began (ms since epoch), for the report: the fade's
+    // progress measured inside the notch, free of IPC latency.
+    property real glowFadeStartedAt: 0
     // Follows the glow's colour while it is on, crossfading on a change; held
     // while it fades out, so it does not flash to another colour on the way.
     property color glowColorShown: root.glowColor
@@ -1923,6 +1943,7 @@ Item {
       else glowColorShown = glowColorShown
       glowCrossfade.enabled = true
       glowFadeAnim.stop()
+      glowFadeStartedAt = Date.now()
       glowFadeAnim.to = glowOn ? 1 : 0
       glowFadeAnim.duration = glowOn ? root.glowFadeIn : root.glowFadeOut
       glowFadeAnim.start()
@@ -2057,12 +2078,9 @@ Item {
     readonly property real emergence: root.notchCompactHeight > 0 ? Math.max(0, Math.min(1, shownHeight / root.notchCompactHeight)) : 1
 
     // Requested radii. While the notch grows out of the edge both scale with
-    // its height, so it never passes through a pill. Grown taller than rest
-    // (the settings panel), the bottom radius is 20 % of the height, at least
-    // the resting radius and at most 24 px.
-    readonly property real requestedBottomRadius: emergence < 1
-      ? root.notchBottomRadius * emergence
-      : Math.max(root.notchBottomRadius, Math.min(0.2 * shownHeight, 24))
+    // its height, so it never passes through a pill. Otherwise the bottom
+    // corners follow the setting in every state, the settings panel included.
+    readonly property real requestedBottomRadius: root.notchBottomRadius * emergence
     readonly property real requestedFilletRadius: root.notchFilletRadius * emergence
 
     function point(p) { return { x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)) } }
@@ -2140,6 +2158,15 @@ Item {
           bottomLeft: onScreen(island.bottomLeftCentre), bottomRight: onScreen(island.bottomRightCentre)
         },
         settingsOpen: barWindow.settingsOpen,
+        media: {
+          facade: !!root.mediaService,
+          activeKey: root.mediaPlayerKey(root.mediaPlayer),
+          glance: { key: root.mediaPlayerKey(compactGlance.player), title: compactGlance.trackTitle, hasMedia: compactGlance.hasMedia, playing: compactGlance.playing, width: compactGlance.implicitWidth },
+          peekKey: root.mediaPlayerKey(peekGlance.player),
+          mediaPeek: barWindow.peeking && barWindow.peekKind === "media",
+          widgets: root.moduleSlots.filter(function(sl) { return root.slotWindow(sl) === barWindow && root.canonicalWidgetId(sl.moduleName) === "omarchy.media" })
+            .map(function(sl) { var it = sl.activeItem; return { key: it && it.activePlayer !== undefined ? root.mediaPlayerKey(it.activePlayer) : null, title: it && it.title !== undefined ? it.title : null } })
+        },
         autoHide: { on: root.notchAutoHide, revealed: barWindow.revealed, hidden: barWindow.autoHidden, revealZone: { width: revealZone.width, height: revealZone.height } },
         pointer: { overNotch: islandHover.hovered, tooltip: root.tooltipShown ? root.tooltipText : "", hoveredWidgets: root.moduleSlots.filter(function(sl) { return root.slotWindow(sl) === barWindow && sl.hovered }).map(function(sl) { return sl.moduleName }) },
         view: barWindow.view,
@@ -2154,6 +2181,7 @@ Item {
         },
         glow: {
           mode: root.glowMode, color: String(barWindow.glowColorShown).toUpperCase(),
+          fadeElapsedMs: glowFadeStartedAt > 0 ? Date.now() - glowFadeStartedAt : -1,
           presence: Number(glowPresence.toFixed(4)),
           curve: {
             style: root.notchGlowStyle,
@@ -2341,6 +2369,7 @@ Item {
         y: 0
 
         Glance {
+          player: root.mediaPlayer
           id: compactGlance
           x: (content.width - width) / 2
           width: implicitWidth
@@ -2360,6 +2389,7 @@ Item {
         }
 
         Glance {
+          player: root.mediaPlayer
           id: peekGlance
           x: (content.width - width) / 2
           width: implicitWidth
@@ -2377,13 +2407,18 @@ Item {
           visible: opacity > 0
           Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
+          // Read the player itself, not hasMedia/playing: those are bindings on
+          // the same change and can still hold the previous player's values
+          // when this runs -- which made a player going away (null) peek.
           onTrackTitleChanged: {
-            if (root.notchPeekOnTrackChange && barWindow.mediaReady && hasMedia && playing)
+            var p = player
+            if (root.notchPeekOnTrackChange && barWindow.mediaReady && p && p.trackTitle && p.isPlaying)
               barWindow.startPeek("media")
           }
         }
 
         Glance {
+          player: root.mediaPlayer
           id: hoverGlanceProbe
           opacity: 0
           enabled: false
@@ -2394,6 +2429,7 @@ Item {
         }
 
         Glance {
+          player: root.mediaPlayer
           id: expandedGlanceProbe
           opacity: 0
           enabled: false
@@ -2434,6 +2470,7 @@ Item {
             width: shown ? hoverGlance.implicitWidth + (root.notchHoverPlugins.length > 0 ? root.notchSectionGap : 0) : 0
             height: root.notchCompactHeight
             Glance {
+              player: root.mediaPlayer
               id: hoverGlance
               width: implicitWidth
               height: parent.height
@@ -2459,6 +2496,7 @@ Item {
             filter: widgetRow.filter
           }
           Glance {
+            player: root.mediaPlayer
             id: expandedGlance
             anchors.verticalCenter: parent.verticalCenter
             // Hidden while it has nothing to show, so the row has no empty gap.
@@ -2496,6 +2534,7 @@ Item {
         }
 
         Glance {
+          player: root.mediaPlayer
           id: clockGlance
           x: (content.width - width) / 2
           width: implicitWidth
@@ -2510,6 +2549,7 @@ Item {
         }
 
         Glance {
+          player: root.mediaPlayer
           id: batteryGlance
           x: (content.width - width) / 2
           width: implicitWidth

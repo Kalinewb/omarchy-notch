@@ -112,6 +112,53 @@ if ! diff -q <(jq -S . "$BASE/local/user-shell-bar.json") <(jq -S '.bar | {layou
   user=$(jq -c '{user}' <<<"$current")
 fi
 
+# ---------------------------------------------------------------------------
+# The contract itself (no slots yet)
+# ---------------------------------------------------------------------------
+
+failures=0; checks=0
+check() { # check <description> <expected> <actual>
+  checks=$((checks + 1))
+  if [[ $2 == "$3" ]]; then echo "  ${GREEN}pass${RESET}  $1"
+  else echo "  ${RED}FAIL${RESET}  $1 ${DIM}(expected '$2', got '$3')${RESET}"; failures=$((failures + 1)); fi
+}
+
+echo; echo "${BOLD}Contract${RESET}"
+DECLARE='{"acme.beta":{"hideable":false,"priority":"transient","groupable":false,"preferredHeight":120},"acme.gamma":{"priority":"bogus","hideable":"no","preferredHeight":-4,"closedView":"nonsense"}}'
+BAR="{\"layout\":$LAYOUT,\"notch\":{\"hiddenPlugins\":[\"acme.beta\",\"acme.delta\"],\"compact\":[\"clock\",\"battery\"],\"hoverItems\":[\"media\"]}}"
+NOTCH_HARNESS=1 NOTCH_HARNESS_BAR="$BAR" NOTCH_HARNESS_DECLARE="$DECLARE" quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
+qs_pid=$!
+for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc contract) == \{* ]] && break; done
+sleep 1.5
+ct=$(ipc contract)
+ipc view widgets >/dev/null; sleep 0.9
+sn=$(ipc snapshot)
+kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""
+p() { jq -c --arg id "$1" '.plugins[] | select(.id == $id)' <<<"$ct"; }
+
+check "built-ins are registered under reserved ids, first, in order" "notch.clock notch.date notch.media notch.battery notch.settings" \
+  "$(jq -r '[.plugins[] | select(.kind == "builtin") | .id] | join(" ")' <<<"$ct")"
+check "every layout widget is registered once, in layout order, by its layout id" "acme.alpha acme.beta omarchy.clock acme.gamma omarchy.spacer acme.delta acme.epsilon" \
+  "$(jq -r '[.plugins[] | select(.kind == "widget") | .id] | join(" ")' <<<"$ct")"
+check "short names resolve to reserved ids at read time (config keeps its format)" '["notch.clock","notch.battery"] ["notch.media"]' \
+  "$(jq -c '.shortNames.compact' <<<"$ct") $(jq -c '.shortNames.hover' <<<"$ct")"
+check "notch.settings is a plugin: expandedView \"settings\", hideable false" "settings false builtin" "$(p notch.settings | jq -r '"\(.expandedView) \(.hideable) \(.kind)"')"
+check "…and the settings panel renders through the expanded-view host (has a size)" "true" "$(jq -r '.settingsPanel.width > 0 and .settingsPanel.height > 32' <<<"$sn")"
+check "an undeclared widget gets the adapter defaults" "widget null persistent-low true true false" \
+  "$(p acme.alpha | jq -r '"\(.closedView) \(.expandedView) \(.priority) \(.groupable) \(.hideable) \(.declared)"')"
+check "a widget's notch property overrides the defaults field by field" "transient false false 120 true" \
+  "$(p acme.beta | jq -r '"\(.priority) \(.groupable) \(.hideable) \(.preferredHeight) \(.declared)"')"
+check "invalid declared values fall back to the defaults, and are reported" "persistent-low true widget 32 closedView,hideable,preferredHeight,priority" \
+  "$(p acme.gamma | jq -r '"\(.priority) \(.hideable) \(.closedView) \(.preferredHeight) \(.invalid | sort_by(.) | join(","))"')" 
+check "hideable: false — a widget in hiddenPlugins that declares it is not hidden" '["acme.beta","acme.delta"] ["acme.delta"]' \
+  "$(jq -c '.hiddenConfigured' <<<"$ct") $(jq -c '.hiddenEffective' <<<"$ct")"
+check "…so it stays in the open row, while the hideable one is left out" "true false" \
+  "$(jq -r '[(.row | map(split(":")[0]) | index("acme.beta") != null), (.row | map(split(":")[0]) | index("acme.delta") != null)] | map(tostring) | join(" ")' <<<"$sn")"
+check "…and the hide picker still lists it (locked, not removed)" "true" "$(jq -r '[.pickers[].value] | index("acme.beta") != null' <<<"$sn")"
+if grep -qE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log"; then
+  check "no QML errors" "none" "$(grep -E 'TypeError|ReferenceError' "$root/qs.log" | head -1)"
+fi
+
 baseline=$(jq -s -c '.[0] + .[1]' "$BASE/synthetic.json" "$BASE/local/user.json")
 report=$(python3 - "$baseline" "$current" <<'PY'
 import json, sys
@@ -137,10 +184,15 @@ PY
 n=$(jq -r '.diffs | length' <<<"$report")
 echo
 echo "  ${DIM}$(jq -r '"\(.cases) cases, \(.views) view snapshots, \(.compared) recorded values compared"' <<<"$report")${RESET}"
+checks=$((checks + 1))
 if (( n == 0 )); then
   echo "  ${GREEN}pass${RESET}  every recorded value matches the baseline exactly"
-  exit 0
+else
+  echo "  ${RED}FAIL${RESET}  $n values differ from the baseline:"
+  jq -r '.diffs[] | "        \(.path): baseline \(.baseline | tojson) → now \(.now | tojson)"' <<<"$report" | head -60
+  failures=$((failures + 1))
 fi
-echo "  ${RED}FAIL${RESET}  $n values differ from the baseline:"
-jq -r '.diffs[] | "        \(.path): baseline \(.baseline | tojson) → now \(.now | tojson)"' <<<"$report" | head -60
-exit 1
+echo
+if ((failures == 0)); then echo "${GREEN}All $checks checks pass.${RESET}"
+else echo "${RED}$failures of $checks checks failed.${RESET}"; fi
+exit $((failures > 0))

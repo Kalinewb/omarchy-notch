@@ -176,6 +176,8 @@ Item {
           label: "Hide from the open notch"
           key: "hiddenPlugins"
           selected: root.bar ? root.bar.notchHiddenPlugins : []
+          // A plugin declaring hideable: false can't be hidden.
+          locked: root.bar ? root.bar.notchPlugins.list.filter(function(p) { return p.hideable === false }).map(function(p) { return p.id }) : []
         }
 
         SettingRow {
@@ -488,6 +490,8 @@ Item {
     property var selected: []
     property bool single: false
     property bool open: false
+    // Ids shown but not pickable.
+    property var locked: []
     readonly property var choices: root.bar ? root.bar.layoutPluginChoices() : []
     readonly property string summary: {
       var names = []
@@ -534,6 +538,7 @@ Item {
       visible: picker.open
       options: picker.choices
       selected: picker.selected
+      taken: picker.locked
       bottomPadding: Style.space(6)
       onPicked: function(value) {
         if (picker.single) { root.set(picker.key, value); return }

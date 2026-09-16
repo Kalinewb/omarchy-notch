@@ -9,6 +9,7 @@ import qs.Commons
 import qs.Ui
 import "BarModel.js" as BarModel
 import "spring.js" as Spring
+import "contract.js" as Contract
 
 Item {
   id: root
@@ -1320,25 +1321,55 @@ Item {
     return ["widgets", "clock", "battery", "plugin", "settings"].indexOf(v) === -1 ? "widgets" : v
   }
   readonly property string notchOpenPlugin: canonicalWidgetId(String(notchSetting("openPlugin", "")))
+  // The hide list as configured (widget ids, unchanged format)...
   readonly property var notchHiddenPlugins: notchItems("hiddenPlugins", []).map(function(id) { return canonicalWidgetId(id) })
+  // ...and what it actually hides: plugins declaring hideable: false stay.
+  readonly property var notchEffectiveHidden: Contract.effectiveHidden(notchHiddenPlugins, notchPlugins.byId)
 
-  // Every widget in the bar layout, for the settings' plugin picker.
-  function layoutPluginChoices() {
+  // --- the plugin contract (contract.js) --------------------------------------
+  //
+  // One registry of everything the notch can show: its built-ins under
+  // reserved "notch." ids, then every widget in the bar layout, in layout
+  // order, described by the adapter -- defaults, overridden by the widget's
+  // own `notch` property when it has one. Pickers, the hide list and the
+  // expanded-view host all read this; nothing reaches a widget another way.
+  readonly property var notchPlugins: {
     var serial = barConfigSerial
     var registry = barWidgetRegistry.widgets
-    var seen = {}, out = []
+    var declared = {}
+    var slots = root.moduleSlots
+    for (var s = 0; s < slots.length; s++) {
+      var slot = slots[s]
+      var item = slot ? slot.activeItem : null
+      var notch = item && ("notch" in item) ? item.notch : null
+      var sid = slot ? canonicalWidgetId(slot.moduleName) : ""
+      if (sid && notch && typeof notch === "object" && !declared[sid]) declared[sid] = notch
+    }
+    var list = [], byId = {}
+    for (var b = 0; b < Contract.BUILTINS.length; b++) {
+      var bd = Contract.builtin(Contract.BUILTINS[b], notchCompactHeight)
+      list.push(bd); byId[bd.id] = bd
+    }
     var regions = ["left", "center", "right"]
     for (var r = 0; r < regions.length; r++) {
       var entries = layoutEntries(regions[r])
       for (var i = 0; i < entries.length; i++) {
         var id = canonicalWidgetId(entryId(entries[i]))
-        if (!id || seen[id]) continue
-        seen[id] = true
+        if (!id || byId[id]) continue
         var meta = barWidgetRegistry.metadataFor(id)
-        out.push({ value: id, label: meta && meta.displayName ? String(meta.displayName) : id })
+        var wd = Contract.widget(id, meta && meta.displayName ? String(meta.displayName) : id, declared[id] || null, notchCompactHeight)
+        list.push(wd); byId[id] = wd
       }
     }
-    return out
+    return { list: list, byId: byId }
+  }
+
+  // Every widget in the bar layout, for the settings' plugin pickers: the
+  // registry's widget plugins, in layout order.
+  function layoutPluginChoices() {
+    return notchPlugins.list
+      .filter(function(p) { return p.kind === "widget" })
+      .map(function(p) { return { value: p.id, label: p.label } })
   }
   // By default the open notch's top row shows time, date and media -- minus
   // time and date when the layout already has a clock widget in the row below.
@@ -1719,6 +1750,20 @@ Item {
     }
     // Read-only: what the focused notch shows and how its settings resolve,
     // for dev/contract.sh to compare before and after the plugin contract.
+    // The plugin registry as the notch sees it: every descriptor (without its
+    // Components), the effective hide list, and short names resolved to ids.
+    function contract(): string {
+      return JSON.stringify({
+        plugins: root.notchPlugins.list.map(function(p) { return Contract.plain(p) }),
+        hiddenConfigured: root.notchHiddenPlugins,
+        hiddenEffective: root.notchEffectiveHidden,
+        shortNames: {
+          compact: root.notchCompactItems.map(Contract.shortToId),
+          expanded: root.notchExpandedItems.map(Contract.shortToId),
+          hover: root.notchHoverItems.map(Contract.shortToId)
+        }
+      })
+    }
     function snapshot(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.contractSnapshot()) : "{}" }
     function geometry(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.geometryReport()) : "{}" }
   }
@@ -1999,8 +2044,8 @@ Item {
     readonly property real rowWidth: Math.max(compactWidth, widgetRow.implicitWidth + 2 * root.notchSidePadding)
     readonly property real clockWidth: Math.max(compactWidth, clockGlance.implicitWidth + 2 * root.notchSidePadding)
     readonly property real batteryWidth: Math.max(compactWidth, batteryGlance.implicitWidth + 2 * root.notchSidePadding)
-    readonly property real settingsWidth: Math.max(compactWidth, settingsView.implicitWidth)
-    readonly property real settingsHeight: Math.max(root.notchCompactHeight, settingsView.implicitHeight)
+    readonly property real settingsWidth: Math.max(compactWidth, expandedHost.item ? expandedHost.item.implicitWidth : 0)
+    readonly property real settingsHeight: Math.max(root.notchCompactHeight, expandedHost.item ? expandedHost.item.implicitHeight : 0)
     // The open notch's width for the current view. Widgets and a single plugin
     // are the same row (filtered), so both measure the row.
     readonly property real expandedWidth: view === "settings" ? settingsWidth
@@ -2568,24 +2613,38 @@ Item {
           Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         }
 
-        // The settings, as the notch's own tall state. Laid out at its full
-        // size and revealed as the notch grows around it.
-        NotchSettings {
-          id: settingsView
+        // The expanded-view host: renders a plugin's expandedView inside the
+        // notch, which grows around it. One host for every plugin -- a
+        // Component a plugin declares, or a built-in key the notch resolves
+        // (builtinExpandedViews). Today only notch.settings has one. Laid out
+        // at full size and revealed as the notch grows.
+        Loader {
+          id: expandedHost
+          readonly property var plugin: root.notchPlugins.byId["notch.settings"] || null
+          readonly property var view: plugin ? plugin.expandedView : null
           x: (content.width - width) / 2
           y: 0
-          width: implicitWidth
-          height: implicitHeight
-          bar: root
-          headerHeight: root.notchCompactHeight
-          maxHeight: barWindow.panelMaxHeight
+          width: item ? item.implicitWidth : 0
+          height: item ? item.implicitHeight : 0
+          sourceComponent: typeof view === "string" ? (barWindow.builtinExpandedViews[view] || null) : view
           opacity: barWindow.settingsOpen ? 1 : 0
           visible: opacity > 0
           enabled: barWindow.settingsOpen
           Behavior on opacity { NumberAnimation { duration: barWindow.settingsOpen ? 220 : 90; easing.type: Easing.OutCubic } }
-          onCloseRequested: barWindow.settingsOpen = false
-          onEnabledChanged: if (enabled) forceActiveFocus()
+          onEnabledChanged: if (enabled && item) item.forceActiveFocus()
         }
+      }
+    }
+
+    // Built-in expandedView keys, resolved by the expanded-view host.
+    readonly property var builtinExpandedViews: ({ settings: settingsExpandedView })
+    Component {
+      id: settingsExpandedView
+      NotchSettings {
+        bar: root
+        headerHeight: root.notchCompactHeight
+        maxHeight: barWindow.panelMaxHeight
+        onCloseRequested: barWindow.settingsOpen = false
       }
     }
 
@@ -3040,7 +3099,7 @@ Item {
     // state), but zero width, clipped and inert.
     readonly property bool filteredOut: filter !== ""
       ? filter.indexOf(" " + root.canonicalWidgetId(moduleName) + " ") === -1
-      : root.notchHiddenPlugins.indexOf(root.canonicalWidgetId(moduleName)) !== -1
+      : root.notchEffectiveHidden.indexOf(root.canonicalWidgetId(moduleName)) !== -1
     clip: filteredOut
     enabled: !filteredOut
     opacity: filteredOut ? 0 : 1

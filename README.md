@@ -54,6 +54,29 @@ Over IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|togg
 `view widgets|clock|battery|plugin|settings`, `windowsToTop true|false|toggle`, and
 `simulateBattery charging|discharging|full|auto <percent>`.
 
+## Plugin contract
+
+Everything the notch shows is a plugin described by one descriptor (`contract.js`): `id`, `kind`,
+`label`, `closedView`, `expandedView`, `preferredHeight` (a request; the notch decides),
+`priority` (`transient`, `persistent`, `persistent-low`), `groupable` and `hideable`.
+
+- **Built-ins** use reserved ids: `notch.clock`, `notch.date`, `notch.media`, `notch.battery`,
+  and `notch.settings`, which has `hideable: false` and whose `expandedView` is the settings panel.
+- **Bar widgets** keep the id your layout already uses. An adapter describes every one with
+  defaults (`persistent-low`, groupable, hideable, the live widget as its closed view), so a widget
+  needs no changes.
+- **Opting in:** a widget can expose a `notch` property, a plain object with any of those fields,
+  to override the defaults. Invalid values fall back to the default and are reported.
+- **Your config doesn't change format:** settings keep short names (`"clock"`) and widget ids;
+  short names map to reserved ids only when read.
+- **Expanded views:** every one renders through the same host inside the notch.
+- **Hiding:** `hiddenPlugins` has no effect on a plugin that declares `hideable: false`, and the
+  picker shows it locked.
+
+`quickshell ipc -p $OMARCHY_PATH/shell call notch contract` prints the registry.
+`dev/contract.sh` checks the migration against a baseline recorded before it (synthetic configs plus
+your own `shell.json`, kept in the gitignored `dev/baselines/local/`), and checks the contract itself.
+
 ## Battery glow
 
 Light falls off outward from the edge of the notch **at rest**. It keeps that shape while the notch

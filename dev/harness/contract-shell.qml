@@ -11,6 +11,9 @@ ShellRoot {
   id: shellRoot
 
   readonly property var barJson: JSON.parse(Quickshell.env("NOTCH_HARNESS_BAR") || "{}")
+  // Optional per-id `notch` declarations for the fake widgets, as a widget
+  // opting into the contract would expose them: {"<id>": {hideable: false, ...}}
+  readonly property var declarations: JSON.parse(Quickshell.env("NOTCH_HARNESS_DECLARE") || "{}")
 
   // A stable width per id: 18 + (sum of char codes mod 47) px.
   function widthFor(id) {
@@ -39,6 +42,7 @@ ShellRoot {
       property var bar
       property string moduleName: ""
       property var settings
+      readonly property var notch: moduleName && shellRoot.declarations[moduleName] ? shellRoot.declarations[moduleName] : null
       implicitWidth: moduleName ? shellRoot.widthFor(moduleName) : 0
       implicitHeight: 26
     }

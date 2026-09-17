@@ -74,8 +74,15 @@ edge, square top corners and radius, and no extra window exists).
 - **Nothing reloads, flashes, pops or jumps.** A flash, a reload-looking frame or a jump in
   layout is a bug against this rule. It is never "just a glitch".
 
+- **No surface showing the notch is ever resized.** Hyprland draws a resized layer's old
+  image stretched for a few frames, which blinks. The bar window keeps one height. Tall shapes
+  (the settings, the menu, the update notice) draw in a panel window sized once, handing over
+  at the resting size where both shapes match.
+
 Checked by: `dev/geometry.sh` (the easing constants and spring curve), `dev/glow.sh` (the
-fades, timed).
+fades, timed), `dev/motion.sh` (corners stay rounded while moving), `dev/surface.sh` (every
+layer keeps one size and address, sampled from Hyprland's socket; the handoff never leaves a
+gap).
 
 ## 5. One radius
 

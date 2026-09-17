@@ -276,6 +276,16 @@ Item {
         KeyRow { label: "Keybind for auto-hide"; key: "autoHideKey"; current: root.bar ? root.bar.notchAutoHideKey : "" }
 
         SettingRow {
+          label: "Keep the notch open"
+          Switch {
+            checked: root.bar ? root.bar.notchStayOpen : false
+            onToggled: root.set("stayOpen", !checked)
+          }
+        }
+
+        KeyRow { label: "Keybind to keep it open"; key: "stayOpenKey"; current: root.bar ? root.bar.notchStayOpenKey : "" }
+
+        SettingRow {
           label: "Windows reach the top edge"
           Switch {
             checked: root.bar ? root.bar.notchWindowsToTop : false
@@ -736,8 +746,8 @@ Item {
     // Every notch keybind, so one combination can't be recorded twice.
     function usedBy(combo) {
       if (!root.bar) return ""
-      var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey, menuKey: root.bar.notchMenuKey }
-      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide", menuKey: "the menu" }
+      var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey, menuKey: root.bar.notchMenuKey, stayOpenKey: root.bar.notchStayOpenKey }
+      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide", menuKey: "the menu", stayOpenKey: "keep open" }
       for (var k in others) if (k !== keyRow.key && others[k] === combo) return labels[k]
       return ""
     }

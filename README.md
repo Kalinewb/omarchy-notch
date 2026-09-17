@@ -68,7 +68,15 @@ Omarchy menu (hover, click, double-click, long press, right-click, long right-cl
 scroll; the menu takes no hover or scroll). `openKey`, `settingsKey`, `menuKey` and `autoHideKey`
 add keybinds for opening the notch, the settings and the menu, and for toggling auto-hide. In the settings each has a **Record** button: press it, then the combination
 (Escape cancels). Plain letters need SUPER, CTRL or ALT; F-keys work alone. A gesture belongs to one list at a time
-(the settings win, then the menu). Keybinds go into the running
+(the settings win, then the menu).
+
+The open keybind works from any state. From the settings or the menu it goes straight to the
+open view, or just closes the panel when the open action is that panel. A view opened by a
+keybind stays until you press the keybind again, or until the pointer has been over the notch
+and left. It doesn't rely on Hyprland's click-outside grab, which unrelated focus changes clear.
+
+**Keep the notch open** (`stayOpen`, with `stayOpenKey`) keeps the open view up whatever the
+pointer does. The settings and the menu still open over it, and it comes back when they close. Keybinds go into the running
 Hyprland with `hyprctl eval`, are replaced when changed, and are re-added after every config
 reload; nothing is written to your Hyprland config. Hyprland keeps runtime binds across a shell
 restart, so every apply reconciles with Hyprland's own bind list (`bin/notch-keybinds`): a bind
@@ -246,6 +254,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `lowBattery`, `criticalBattery` | `20`, `10` | Percent thresholds, on battery. |
 | `greenAbove` | `100` | Charging at or above this percentage already shows the full colour (green). 100 means only a full battery does. |
 | `batteryPeek` | `true` | Widen to show the charge on plug-in, unplug and low battery. |
+| `stayOpen`, `stayOpenKey` | `false`, none | Keep the notch open on its open view (the widgets when the open action is a panel). The keybind toggles it. |
 | `autoHide` | `false` | The resting notch hides in the screen edge until the pointer reaches the top edge above it (a 3 px strip a little wider than the notch). Peeks, the open notch and the settings still show, over the windows. |
 | `windowsToTop` | same as `autoHide` | `false`: windows stay below the resting notch. `true`: windows go all the way to the top edge, under the notch. Follows `autoHide` unless you set it. The space kept clear never changes while you use the notch, so windows don't resize when it opens, peeks, hides or reveals. |
 

@@ -10,7 +10,8 @@
 //   kind             "builtin" (the notch's own) or "widget" (a bar widget)
 //   label            what pickers show
 //   closedView       what the resting notch shows for it: a Component, or
-//                    "widget" (the live bar widget item) / "glance:<item>"
+//                    "widget" (the live bar widget item) / "glance:<item>" /
+//                    "notice:<item>" (a notice the resting notch pops down into)
 //   expandedView     full content, or null: a Component, or a built-in key
 //                    ("settings", "menu") that the notch resolves to its own Component.
 //                    Every expanded view renders through the same host type.
@@ -47,7 +48,8 @@ var BUILTINS = [
   { id: "notch.media",    short: "media",    label: "Media",    closedView: "glance:media",   expandedView: null,       priority: "persistent-low", groupable: true,  hideable: true },
   { id: "notch.battery",  short: "battery",  label: "Battery",  closedView: "glance:battery", expandedView: null,       priority: "persistent-low", groupable: true,  hideable: true },
   { id: "notch.settings", short: "settings", label: "Settings", closedView: null,             expandedView: "settings", priority: "persistent",     groupable: false, hideable: false },
-  { id: "notch.menu",     short: "menu",     label: "Menu",     closedView: null,             expandedView: "menu",     priority: "persistent",     groupable: false, hideable: false }
+  { id: "notch.menu",     short: "menu",     label: "Menu",     closedView: null,             expandedView: "menu",     priority: "persistent",     groupable: false, hideable: false },
+  { id: "notch.update",   short: "update",   label: "Updates",  closedView: "notice:update",  expandedView: null,       priority: "transient",      groupable: false, hideable: false }
 ]
 
 var SHORT_NAMES = (function() {

@@ -1,0 +1,174 @@
+#!/bin/bash
+# The notch's own updates.
+#
+#   notch-update check              print the update state as one line of JSON
+#   notch-update run <status file>  update the live checkout, then restart the shell;
+#                                   progress goes to <status file> as JSON
+#   notch-update ack <status file>  mark a finished job as seen
+#   notch-update snooze <file> <sha>  remember that the user said Later to <sha>
+#
+# The plugin folder is a git checkout (`omarchy plugin add`). `check` only
+# fetches origin's HEAD into .git, which Omarchy's plugin watcher ignores, so
+# checking never reloads anything. States:
+#   current    HEAD is origin's HEAD
+#   available  origin is ahead and HEAD fast-forwards to it
+#   ahead      HEAD has commits origin doesn't (a local dev install)
+#   diverged   neither contains the other
+#   dirty      tracked files have local edits: an update would refuse
+#   not-git    the plugin isn't a git checkout
+#   offline    origin couldn't be reached
+#
+# `run` changes the plugin folder, which reloads every plugin and destroys the
+# notch that started it, so the notch launches it detached (its own
+# `systemd-run --user` unit when available) and the rebuilt notch reads the
+# status file. Success is decided from the checkout afterwards, never from an
+# exit code alone. The status file lives outside the plugins folder.
+#
+# Test hooks (dev/update.sh): NOTCH_UPDATE_DIR (the checkout),
+# NOTCH_UPDATE_APPLY (command run instead of `omarchy plugin update <id> --yes`),
+# NOTCH_UPDATE_RESTART (instead of `omarchy restart shell`; "none" skips it).
+
+set -uo pipefail
+
+ID="graveklar.notch"
+DIR="${NOTCH_UPDATE_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
+export GIT_TERMINAL_PROMPT=0 GIT_OPTIONAL_LOCKS=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
+
+now_ms() { date +%s%3N; }
+version_at() { git -C "$DIR" show "$1:manifest.json" 2>/dev/null | jq -r '.version // ""' 2>/dev/null; }
+
+check() {
+  local state local_sha="" remote_sha="" behind=0 ahead=0 subject="" remote_version="" local_version=""
+  if [[ ! -d $DIR/.git ]]; then
+    jq -nc --arg checkedAt "$(now_ms)" '{state: "not-git", checkedAt: ($checkedAt | tonumber)}'
+    return 0
+  fi
+  local_sha=$(git -C "$DIR" rev-parse HEAD 2>/dev/null)
+  local_version=$(version_at HEAD)
+  if ! timeout 20 git -C "$DIR" fetch --quiet origin HEAD 2>/dev/null; then
+    state=offline
+  else
+    remote_sha=$(git -C "$DIR" rev-parse FETCH_HEAD 2>/dev/null)
+    remote_version=$(version_at "$remote_sha")
+    subject=$(git -C "$DIR" log -1 --format=%s "$remote_sha" 2>/dev/null)
+    if [[ -n $(git -C "$DIR" status --porcelain --untracked-files=no 2>/dev/null) ]]; then
+      state=dirty
+    elif [[ $local_sha == "$remote_sha" ]]; then
+      state=current
+    elif git -C "$DIR" merge-base --is-ancestor "$local_sha" "$remote_sha" 2>/dev/null; then
+      state=available
+    elif git -C "$DIR" merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+      state=ahead
+    else
+      state=diverged
+    fi
+    behind=$(git -C "$DIR" rev-list --count "$local_sha..$remote_sha" 2>/dev/null || echo 0)
+    ahead=$(git -C "$DIR" rev-list --count "$remote_sha..$local_sha" 2>/dev/null || echo 0)
+  fi
+  jq -nc --arg state "$state" --arg local "$local_sha" --arg remote "$remote_sha" \
+    --arg localVersion "$local_version" --arg remoteVersion "$remote_version" --arg subject "$subject" \
+    --argjson behind "${behind:-0}" --argjson ahead "${ahead:-0}" --arg checkedAt "$(now_ms)" \
+    '{state: $state, local: $local, remote: $remote, localVersion: $localVersion, remoteVersion: $remoteVersion,
+      subject: $subject, behind: $behind, ahead: $ahead, checkedAt: ($checkedAt | tonumber)}'
+}
+
+# write <status file> [jq --arg/--argjson options...] <filter over the current status>:
+# the result replaces the file atomically.
+write() {
+  local file=$1; shift
+  local filter=${*: -1}
+  local options=("${@:1:$#-1}")
+  local current tmp
+  current=$(cat "$file" 2>/dev/null) || current='{}'
+  jq -e . >/dev/null 2>&1 <<<"$current" || current='{}'
+  tmp=$(mktemp "$file.XXXXXX") || return 1
+  if jq -c "${options[@]}" --argjson now "$(now_ms)" "$filter" <<<"$current" >"$tmp"; then
+    mv -f "$tmp" "$file"
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+
+run() {
+  local status=${1:-} job from to rc output message version
+  [[ -n $status ]] || { echo "notch-update: run needs a status file" >&2; return 2; }
+  umask 077
+  mkdir -p "$(dirname "$status")"
+  LOCK="$status.lock"
+  if ! mkdir "$LOCK" 2>/dev/null; then
+    if [[ -f $LOCK/pid ]] && kill -0 "$(cat "$LOCK/pid" 2>/dev/null)" 2>/dev/null; then
+      LOCK=""; echo "notch-update: an update is already running" >&2; return 1
+    fi
+    rm -rf "$LOCK"; mkdir "$LOCK" || { LOCK=""; return 1; }
+  fi
+  echo $$ >"$LOCK/pid"
+  trap '[[ -n ${LOCK:-} ]] && rm -rf "$LOCK"' EXIT
+
+  job="$(now_ms)-$$"
+  from=$(git -C "$DIR" rev-parse HEAD 2>/dev/null)
+  write "$status" --arg job "$job" --arg from "$from" --argjson pid $$ \
+    '{job: $job, phase: "updating", from: $from, to: "", version: "", message: "", startedAt: $now, finishedAt: 0, pid: $pid, seen: false}'
+
+  if command -v omarchy-hyprland-session-locked >/dev/null && omarchy-hyprland-session-locked; then
+    write "$status" '.phase = "failed" | .message = "The session is locked." | .finishedAt = $now'
+    return 1
+  fi
+
+  if [[ -n ${NOTCH_UPDATE_DIR:-} && -z ${NOTCH_UPDATE_APPLY:-} ]]; then
+    # A sandbox checkout with the real updater would update the live plugin.
+    write "$status" '.phase = "failed" | .message = "NOTCH_UPDATE_DIR is set without NOTCH_UPDATE_APPLY." | .finishedAt = $now'
+    return 2
+  fi
+  if [[ -n ${NOTCH_UPDATE_APPLY:-} ]]; then
+    output=$(bash -c "$NOTCH_UPDATE_APPLY" 2>&1); rc=$?
+  else
+    output=$(omarchy plugin update "$ID" --yes 2>&1); rc=$?
+  fi
+  to=$(git -C "$DIR" rev-parse HEAD 2>/dev/null)
+  version=$(version_at HEAD)
+  message=$(tail -n 1 <<<"$output" | cut -c1-200)
+
+  # Decided from where the checkout is now, not from the exit code alone: a
+  # rescan that fails after the merge still exits 1 with the update applied.
+  if [[ $to == "$from" ]]; then
+    if (( rc == 0 )); then
+      write "$status" --arg to "$to" --arg version "$version" \
+        '.phase = "done" | .to = $to | .version = $version | .message = "Already up to date." | .finishedAt = $now'
+      return 0
+    fi
+    write "$status" --arg to "$to" --arg version "$version" --arg message "${message:-Update failed.}" \
+      '.phase = "failed" | .to = $to | .version = $version | .message = $message | .finishedAt = $now'
+    return 1
+  fi
+
+  write "$status" --arg to "$to" --arg version "$version" \
+    '.phase = "done" | .to = $to | .version = $version | .message = "" | .finishedAt = $now'
+
+  # A rescan reloads the entry point but not the rest of the notch's QML;
+  # restarting the shell loads every file of the new version.
+  local restart=${NOTCH_UPDATE_RESTART:-omarchy restart shell}
+  [[ $restart == none ]] || bash -c "$restart" >/dev/null 2>&1
+  return 0
+}
+
+ack() {
+  local status=$1
+  [[ -f $status ]] || return 0
+  write "$status" '.seen = true'
+}
+
+snooze() {
+  local file=${1:-} sha=${2:-} tmp
+  [[ -n $file && $sha =~ ^[0-9a-f]{7,64}$ ]] || { echo "notch-update: snooze needs a file and a commit" >&2; return 2; }
+  mkdir -p "$(dirname "$file")"
+  tmp=$(mktemp "$file.XXXXXX") && printf '%s\n' "$sha" >"$tmp" && mv -f "$tmp" "$file"
+}
+
+case "${1:-}" in
+  check) check ;;
+  run) run "${2:-}" ;;
+  ack) ack "${2:-}" ;;
+  snooze) snooze "${2:-}" "${3:-}" ;;
+  *) echo "usage: notch-update check | run <status file> | ack <status file> | snooze <file> <sha>" >&2; exit 2 ;;
+esac

@@ -37,6 +37,27 @@ Item {
   readonly property color dim: bar ? bar.notchSecondaryText : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
   // How far the glow reaches now, in px (for the preview's hint).
   property real glowReach: 32
+  // Where the notch's own updates stand, in words.
+  readonly property string updateStatus: {
+    var b = bar
+    if (!b) return ""
+    if (!b.updatesEnabled) return "This notch doesn't update itself."
+    if (b.updateNotice === "updating") return "Updating…"
+    var c = b.updateCheckResult || {}
+    var version = c.localVersion ? " (" + c.localVersion + ")" : ""
+    switch (c.state) {
+      case "unchecked": return "Not checked yet" + version + "."
+      case "current": return "Up to date" + version + "."
+      case "available": return (c.remoteVersion && c.remoteVersion !== c.localVersion ? c.remoteVersion : (c.behind === 1 ? "1 change" : c.behind + " changes")) + " available."
+      case "ahead": return "Ahead of GitHub (a development install)."
+      case "diverged": return "Differs from GitHub: update by hand."
+      case "dirty": return "The plugin folder has local edits: update by hand."
+      case "not-git": return "Not a git install, so it can't update itself."
+      case "offline": return "Couldn't reach GitHub."
+      default: return "Couldn't check for updates."
+    }
+  }
+
   // The notch's radius for a control this tall (DESIGN-PHILOSOPHY.md, 5).
   function radiusFor(height) { return bar ? bar.radiusFor(height) : Math.max(0, Math.min(10, height / 2)) }
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -394,6 +415,50 @@ Item {
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
           bottomPadding: Style.space(4)
+        }
+      }
+
+      Section {
+        title: "Updates"
+
+        SettingRow {
+          label: "Check for updates"
+          Switch {
+            checked: root.bar ? root.bar.notchUpdateCheck : true
+            onToggled: root.set("updateCheck", !checked)
+          }
+        }
+
+        SettingRow {
+          label: root.updateStatus
+          Row {
+            spacing: Style.space(6)
+            Button {
+              visible: root.bar && root.bar.updateNotice === "" && root.bar.updateCheckResult && root.bar.updateCheckResult.state === "available"
+              text: "Update"
+              bordered: true
+              selected: true
+              foreground: root.foreground
+              accent: root.accent
+              radius: root.radiusFor(Math.min(width, height))
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              horizontalPadding: Style.space(7)
+              onClicked: root.bar.startUpdate()
+            }
+            Button {
+              text: root.bar && root.bar.updateCheckRunning ? "Checking…" : "Check now"
+              enabled: root.bar && root.bar.updatesEnabled && !root.bar.updateCheckRunning
+              bordered: true
+              foreground: root.foreground
+              accent: root.accent
+              radius: root.radiusFor(Math.min(width, height))
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              horizontalPadding: Style.space(7)
+              onClicked: root.bar.checkForUpdates()
+            }
+          }
         }
       }
 

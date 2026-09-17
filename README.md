@@ -10,9 +10,18 @@ It replaces `omarchy.bar` as a full `bar` plugin, and hosts the same widgets and
 ## Install
 
 ```sh
-./install.sh              # copy into ~/.config/omarchy/plugins, restart the shell, make it the bar
-./install.sh --no-enable  # copy only
+omarchy plugin add https://github.com/Kalinewb/omarchy-notch --yes
+omarchy plugin enable graveklar.notch
 ```
+
+That installs a git checkout, so `omarchy plugin update graveklar.notch` updates it.
+
+**Developing:** commit in this repo, then run `./install.sh`. It fast-forwards the live
+checkout to your committed HEAD and restarts the shell, without changing where the checkout
+pulls from; push when the change is ready. It refuses while there are uncommitted changes, which
+would otherwise silently not be installed. `./install.sh --no-enable` leaves the active bar alone.
+`./install.sh --swap-to-git` turns an old copied install into a checkout once, and moves the copy
+to `~/.local/state/graveklar.notch/backups/` first.
 
 Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clone).
 
@@ -50,7 +59,9 @@ carries a bind of your own is never touched.
 
 Open the settings with a long right-click (by default) or its keybind. The notch grows into the
 panel; click outside, press Escape or ✕ to close it. Every change is saved to `shell.json` straight
-away. **Preview** shows the charging, full and low glow without touching the battery.
+away. **Preview** (under Battery) shows the charging, full and low glow without touching the battery,
+until you pick Off or close the settings. It shows the glow at your current glow size. At a tiny size
+(under 4 px) or with the glow off there is nothing to see, and a note under Preview says so.
 
 Over IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|toggle|settings|peek|geometry`,
 `view widgets|clock|battery|plugin|settings`, `menu <route>`, `windowsToTop true|false|toggle`, and
@@ -201,7 +212,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |
 | `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. `openAction` can also be `"settings"` or `"menu"`. |
 | `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. |
-| `color` / `foreground` | `#000000` / theme bar text | Notch and glance text colours. |
+| `color` / `foreground` | `#000000` / Apple white | Notch colour, and the colour of text on it. Text is Apple white (`#FFFFFF`, secondary `#EBEBF5` at 60 %) on a dark notch and black on a light one, whatever the theme. Widgets in the notch, the settings and the menu use it too. |
 | `compactWidth`, `compactHeight` | `180`, `32` | Resting size, in logical px. The height is also what windows keep clear. |
 | `bottomRadius` | `10` | Convex bottom-corner radius, in every state including the settings panel. |
 | `filletRadius` | `10` | Concave fillet where the notch meets the screen edge. |
@@ -214,8 +225,8 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `lowBattery`, `criticalBattery` | `20`, `10` | Percent thresholds, on battery. |
 | `greenAbove` | `100` | Charging at or above this percentage already shows the full colour (green). 100 means only a full battery does. |
 | `batteryPeek` | `true` | Widen to show the charge on plug-in, unplug and low battery. |
-| `autoHide` | `false` | The resting notch hides in the screen edge until the pointer reaches the top edge above it (a 3 px strip a little wider than the notch). Peeks, the open notch and the settings still show. Windows use the full height. |
-| `windowsToTop` | `false` | `false`: windows stay below the resting notch. `true`: windows go all the way to the top edge, under the notch. |
+| `autoHide` | `false` | The resting notch hides in the screen edge until the pointer reaches the top edge above it (a 3 px strip a little wider than the notch). Peeks, the open notch and the settings still show, over the windows. |
+| `windowsToTop` | same as `autoHide` | `false`: windows stay below the resting notch. `true`: windows go all the way to the top edge, under the notch. Follows `autoHide` unless you set it. The space kept clear never changes while you use the notch, so windows don't resize when it opens, peeks, hides or reveals. |
 
 Widgets are still placed with `omarchy bar move` and `omarchy plugin enable/disable`.
 

@@ -1,0 +1,242 @@
+#!/bin/bash
+# The menu companion: the small plugin that lets the notch be the Omarchy menu.
+#
+#   notch-companion status                    one line of JSON about the installed copy
+#   notch-companion install <status file>     copy it in and enable it
+#   notch-companion sync [--force] [<status file>]
+#                                             copy it in again when the files differ
+#   notch-companion remove <status file>      hand it to `omarchy plugin remove --yes`
+#
+# The companion is graveklar.notch-menu: a manifest that says
+# `clonedFrom: omarchy.menu`, a go-between (Facade.qml) and Omarchy's own menu
+# button under this plugin's id. Omarchy then routes every menu call to the
+# go-between, which asks the notch first and falls back to Omarchy's own menu.
+# Enabling it swaps omarchy.menu's button in the bar layout for the identical
+# one, in place; disabling or removing it puts omarchy.menu back exactly.
+#
+# Copying into the plugins folder reloads every plugin and destroys the notch
+# that started this, so the notch runs these detached and reads the status file
+# afterwards, as it does for its own updates (bin/notch-update).
+#
+# Nothing here is privileged, and nothing here is a git clone: the files come
+# from the notch's own folder.
+#
+# Test hooks (dev/menu-replace.sh). All of them need NOTCH_COMPANION_DIR set,
+# or the command refuses with reason `sandbox`, so a half-set test can never
+# reach the live plugins folder:
+#   NOTCH_COMPANION_DIR             the plugins folder (default $HOME/.config/omarchy/plugins)
+#   NOTCH_COMPANION_SOURCE          the folder to copy from
+#   NOTCH_COMPANION_LIST            instead of `omarchy plugin list --json`
+#   NOTCH_COMPANION_ENABLE          instead of `omarchy plugin enable`
+#   NOTCH_COMPANION_REMOVE          instead of `omarchy plugin remove`
+#   NOTCH_COMPANION_VALIDATE        instead of `omarchy plugin validate`
+#   NOTCH_COMPANION_SESSION_LOCKED  instead of `omarchy-hyprland-session-locked`
+#   NOTCH_COMPANION_STATE_DIR       where backups go
+#   NOTCH_COMPANION_DISCOVER_MS     how long install waits for the shell to see it (10000)
+
+set -uo pipefail
+
+ID="graveklar.notch-menu"
+SOURCE_ID="omarchy.menu"
+REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+SOURCE="${NOTCH_COMPANION_SOURCE:-$REPO/companion/$ID}"
+# The fixed path the shell scans; never XDG_CONFIG_HOME (PluginRegistry.qml).
+PLUGINS_DIR="${NOTCH_COMPANION_DIR:-$HOME/.config/omarchy/plugins}"
+DEST="$PLUGINS_DIR/$ID"
+BACKUPS="${NOTCH_COMPANION_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/graveklar.notch}/backups"
+SANDBOXED=0
+[[ -n ${NOTCH_COMPANION_DIR:-} ]] && SANDBOXED=1
+
+read -ra LIST_CMD <<<"${NOTCH_COMPANION_LIST:-omarchy plugin list --json}"
+read -ra ENABLE_CMD <<<"${NOTCH_COMPANION_ENABLE:-omarchy plugin enable}"
+read -ra REMOVE_CMD <<<"${NOTCH_COMPANION_REMOVE:-omarchy plugin remove}"
+read -ra VALIDATE_CMD <<<"${NOTCH_COMPANION_VALIDATE:-omarchy plugin validate}"
+
+now_ms() { date +%s%3N; }
+
+# Any hook without NOTCH_COMPANION_DIR would mix stand-ins with the live folder.
+check_hooks() {
+  local hook
+  for hook in NOTCH_COMPANION_SOURCE NOTCH_COMPANION_LIST NOTCH_COMPANION_ENABLE NOTCH_COMPANION_REMOVE \
+              NOTCH_COMPANION_VALIDATE NOTCH_COMPANION_SESSION_LOCKED NOTCH_COMPANION_DISCOVER_MS; do
+    if [[ -n ${!hook:-} && -z ${NOTCH_COMPANION_DIR:-} ]]; then
+      echo "notch-companion: $hook needs NOTCH_COMPANION_DIR" >&2
+      return 1
+    fi
+  done
+  return 0
+}
+
+version_of() { jq -r '.version // ""' "$1/manifest.json" 2>/dev/null; }
+
+session_locked() {
+  if [[ -n ${NOTCH_COMPANION_SESSION_LOCKED:-} ]]; then bash -c "$NOTCH_COMPANION_SESSION_LOCKED"; return $?; fi
+  command -v omarchy-hyprland-session-locked >/dev/null || return 1
+  omarchy-hyprland-session-locked
+}
+
+plugin_list() { timeout 10 "${LIST_CMD[@]}" 2>/dev/null </dev/null; }
+
+# Another enabled plugin claiming omarchy.menu would fight this one for every
+# menu call, and Omarchy resolves whichever it finds first.
+conflict_id() {
+  local list dir other
+  list=$(plugin_list) || return 0
+  while read -r other; do
+    [[ -z $other || $other == "$ID" ]] && continue
+    dir="$PLUGINS_DIR/$other"
+    [[ -f $dir/manifest.json ]] || continue
+    [[ $(jq -r '.omarchy.clonedFrom // ""' "$dir/manifest.json" 2>/dev/null) == "$SOURCE_ID" ]] && { printf '%s' "$other"; return 0; }
+  done < <(jq -r '.[] | select(.enabled == true) | .id' <<<"$list" 2>/dev/null)
+  return 0
+}
+
+status() {
+  local installed=false version="" insync=null enabled=false conflict=""
+  [[ -d $DEST ]] && installed=true && version=$(version_of "$DEST")
+  if [[ $installed == true ]]; then
+    if diff -rq "$SOURCE" "$DEST" >/dev/null 2>&1; then insync=true; else insync=false; fi
+    enabled=$(plugin_list | jq -r --arg id "$ID" '[.[] | select(.id == $id) | .enabled] | first // false' 2>/dev/null)
+    [[ $enabled == true ]] || enabled=false
+  fi
+  conflict=$(conflict_id)
+  jq -nc --argjson installed "$installed" --arg version "$version" --arg sourceVersion "$(version_of "$SOURCE")" \
+    --argjson inSync "$insync" --argjson enabled "$enabled" --arg conflict "$conflict" --arg dest "$DEST" \
+    '{installed: $installed, version: $version, sourceVersion: $sourceVersion, inSync: $inSync,
+      enabled: $enabled, conflict: $conflict, dest: $dest}'
+}
+
+# write <status file> [jq options...] <filter>: atomic replace, as bin/notch-update does.
+write() {
+  local file=$1; shift
+  local filter=${*: -1}
+  local options=("${@:1:$#-1}")
+  local current tmp
+  [[ -n $file ]] || return 0
+  mkdir -p "$(dirname "$file")"
+  current=$(cat "$file" 2>/dev/null) || current='{}'
+  jq -e . >/dev/null 2>&1 <<<"$current" || current='{}'
+  tmp=$(mktemp "$file.XXXXXX") || return 1
+  if jq -c "${options[@]}" --argjson now "$(now_ms)" "$filter" <<<"$current" >"$tmp"; then mv -f "$tmp" "$file"
+  else rm -f "$tmp"; return 1; fi
+}
+
+fail() { # fail <status file> <message>
+  write "$1" --arg message "$2" '.phase = "failed" | .message = $message | .finishedAt = $now'
+  echo "notch-companion: $2" >&2
+  return 1
+}
+
+done_ok() { # done_ok <status file> <message>
+  write "$1" --arg message "$2" '.phase = "done" | .message = $message | .finishedAt = $now'
+}
+
+begin() { # begin <status file> <verb>
+  write "$1" --arg verb "$2" --argjson pid $$ \
+    '{job: ($now | tostring), verb: $verb, phase: "working", message: "", startedAt: $now, finishedAt: 0, pid: $pid, seen: false}'
+}
+
+# Copy the notch's copy into the plugins folder. Staged under a dot name, which
+# Omarchy's one-level plugin scan ignores, then moved into place: one change,
+# one plugin reload.
+sync_files() { # sync_files <force 0|1> <status file>
+  local force=$1 status=${2:-}
+  [[ -d $SOURCE ]] || { fail "$status" "the notch has no companion folder at $SOURCE"; return 1; }
+  if [[ ! -d $DEST && $force -ne 1 ]]; then
+    done_ok "$status" "The companion isn't installed."
+    return 2
+  fi
+  if [[ -d $DEST ]] && diff -rq "$SOURCE" "$DEST" >/dev/null 2>&1; then
+    done_ok "$status" "The companion is already up to date."
+    return 2
+  fi
+  mkdir -p "$PLUGINS_DIR" || { fail "$status" "no plugins folder at $PLUGINS_DIR"; return 1; }
+  local stage
+  stage=$(mktemp -d "$PLUGINS_DIR/.$ID.new.XXXXXX") || { fail "$status" "could not stage the companion"; return 1; }
+  cp -a --no-dereference "$SOURCE/." "$stage/" || { rm -rf "$stage"; fail "$status" "could not copy the companion"; return 1; }
+  if [[ -n $(find "$stage" -type l -print -quit) ]]; then
+    rm -rf "$stage"; fail "$status" "the companion folder has symlinks"; return 1
+  fi
+  if [[ -n ${VALIDATE_CMD[*]} ]] && ! "${VALIDATE_CMD[@]}" "$stage" >/dev/null 2>&1; then
+    rm -rf "$stage"; fail "$status" "the companion failed plugin validation"; return 1
+  fi
+  if [[ -d $DEST ]]; then
+    mkdir -p "$BACKUPS"
+    mv "$DEST" "$BACKUPS/$(date -u +%Y%m%dT%H%M%SZ)-notch-menu" || { rm -rf "$stage"; fail "$status" "could not back up the installed companion"; return 1; }
+  fi
+  mv -T "$stage" "$DEST" || { rm -rf "$stage"; fail "$status" "could not move the companion into place"; return 1; }
+  return 0
+}
+
+# Wait for the shell to notice a new plugin folder before enabling it.
+await_discovery() {
+  local deadline=$(( $(now_ms) + ${NOTCH_COMPANION_DISCOVER_MS:-10000} ))
+  while (( $(now_ms) < deadline )); do
+    plugin_list | jq -e --arg id "$ID" 'any(.[]; .id == $id)' >/dev/null 2>&1 && return 0
+    sleep 0.2
+  done
+  return 1
+}
+
+install_companion() { # install_companion <status file>
+  local status=$1 conflict rc
+  begin "$status" install
+  session_locked && { fail "$status" "The session is locked."; return 1; }
+  conflict=$(conflict_id)
+  [[ -n $conflict ]] && { fail "$status" "$conflict already replaces Omarchy's menu."; return 1; }
+  sync_files 1 "$status"; rc=$?
+  (( rc == 1 )) && return 1
+  write "$status" '.step = "enabling"'
+  if ! await_discovery; then
+    done_ok "$status" "Installed. Turn it on with: omarchy plugin enable $ID"
+    return 0
+  fi
+  if ! "${ENABLE_CMD[@]}" "$ID" >/dev/null 2>&1; then
+    done_ok "$status" "Installed, but turning it on failed. Try: omarchy plugin enable $ID"
+    return 0
+  fi
+  done_ok "$status" "The menu companion is set up."
+}
+
+sync_companion() { # sync_companion <force> <status file>
+  local force=$1 status=$2 rc
+  begin "$status" sync
+  sync_files "$force" "$status"; rc=$?
+  (( rc == 1 )) && return 1
+  (( rc == 2 )) && return 0
+  done_ok "$status" "The menu companion is up to date."
+}
+
+remove_companion() { # remove_companion <status file>
+  local status=$1 output
+  begin "$status" remove
+  [[ -d $DEST ]] || { done_ok "$status" "The companion wasn't installed."; return 0; }
+  output=$("${REMOVE_CMD[@]}" "$ID" --yes 2>&1); rc=$?
+  if [[ -d $DEST ]]; then
+    fail "$status" "$(tail -n 1 <<<"$output" | cut -c1-200)"
+    return 1
+  fi
+  done_ok "$status" "The menu companion is gone; Omarchy's own menu is back."
+}
+
+check_hooks || { echo '{"error":"sandbox"}'; exit 2; }
+
+case "${1:-}" in
+  status) status ;;
+  install) [[ -n ${2:-} ]] || { echo "notch-companion: install needs a status file" >&2; exit 2; }; install_companion "$2" ;;
+  sync)
+    shift
+    force=0
+    while [[ ${1:-} == --* ]]; do
+      case "$1" in
+        --force) force=1 ;;
+        --from) SOURCE=${2:-$SOURCE}; shift ;;
+        *) echo "notch-companion: unknown option $1" >&2; exit 2 ;;
+      esac
+      shift
+    done
+    sync_companion "$force" "${1:-}"
+    ;;
+  remove) [[ -n ${2:-} ]] || { echo "notch-companion: remove needs a status file" >&2; exit 2; }; remove_companion "$2" ;;
+  *) echo "usage: notch-companion status | install <status file> | sync [--force] [<status file>] | remove <status file>" >&2; exit 2 ;;
+esac

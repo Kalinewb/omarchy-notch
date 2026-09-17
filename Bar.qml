@@ -797,6 +797,16 @@ Item {
     return Util.canonicalWidgetId(name)
   }
 
+  // Enabling the menu companion swaps omarchy.menu's button in the layout for
+  // the companion's identical one, so settings that name one id keep working
+  // when only the other is registered. Nothing is written to the config.
+  function menuAliasId(id) {
+    var widgets = (barWidgetRegistry && barWidgetRegistry.widgets) || {}
+    if (id === "omarchy.menu" && !widgets["omarchy.menu"] && widgets["graveklar.notch-menu"]) return "graveklar.notch-menu"
+    if (id === "graveklar.notch-menu" && !widgets["graveklar.notch-menu"] && widgets["omarchy.menu"]) return "omarchy.menu"
+    return id
+  }
+
   function expandPath(path) {
     return BarModel.expandPath(path, home)
   }
@@ -1335,15 +1345,15 @@ Item {
     .filter(function(i) { return ["clock", "date", "media", "battery"].indexOf(i) !== -1 })
   readonly property var notchHoverPlugins: notchItems("hoverPlugins",
       legacyHoverAction === "plugin" && notchSetting("hoverPlugin", "") ? [String(notchSetting("hoverPlugin", ""))] : [])
-    .map(function(id) { return canonicalWidgetId(id) })
+    .map(function(id) { return menuAliasId(canonicalWidgetId(id)) })
   readonly property bool notchHoverShowsSomething: notchHoverItems.length > 0 || notchHoverPlugins.length > 0
   readonly property string notchOpenAction: {
     var v = String(notchSetting("openAction", "widgets"))
     return ["widgets", "clock", "battery", "plugin", "settings", "menu"].indexOf(v) === -1 ? "widgets" : v
   }
-  readonly property string notchOpenPlugin: canonicalWidgetId(String(notchSetting("openPlugin", "")))
+  readonly property string notchOpenPlugin: menuAliasId(canonicalWidgetId(String(notchSetting("openPlugin", ""))))
   // The hide list as configured (widget ids, unchanged format)...
-  readonly property var notchHiddenPlugins: notchItems("hiddenPlugins", []).map(function(id) { return canonicalWidgetId(id) })
+  readonly property var notchHiddenPlugins: notchItems("hiddenPlugins", []).map(function(id) { return menuAliasId(canonicalWidgetId(id)) })
   // ...and what it actually hides: plugins declaring hideable: false stay.
   readonly property var notchEffectiveHidden: Contract.effectiveHidden(notchHiddenPlugins, notchPlugins.byId)
 
@@ -1755,6 +1765,10 @@ Item {
   // Test notches never check or update unless NOTCH_FORCE_UPDATES=1; dev/update.sh
   // also points NOTCH_UPDATE_DIR / _STATE_DIR / _APPLY / _RESTART at a sandbox.
   readonly property bool notchUpdateCheck: notchSetting("updateCheck", true) !== false
+  // Replace the Omarchy menu: every way into Omarchy's menu opens the notch's
+  // menu instead, through the companion plugin (MenuCompanion.qml). Off means
+  // Omarchy's own menu window, exactly as before.
+  readonly property bool notchReplaceMenu: notchSetting("replaceMenu", false) === true
   readonly property bool updatesEnabled: (!!root.shell && !root.harnessed) || Quickshell.env("NOTCH_FORCE_UPDATES") === "1"
   readonly property string updateScript: String(Qt.resolvedUrl("bin/notch-update")).replace(/^file:\/\//, "")
   readonly property string updateStateDir: Quickshell.env("NOTCH_UPDATE_STATE_DIR") || ""
@@ -2310,6 +2324,11 @@ Item {
     onTriggered: root.ackPluginJob()
   }
 
+  // The menu companion: the bridge registration, its folder's state, and the
+  // jobs that install or update it.
+  MenuCompanion { id: menuCompanionHelper; bar: root }
+  readonly property var menuCompanion: menuCompanionHelper
+
   function setNotchSetting(key, value) {
     if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
     return root.shell.mutateShellConfig(function(config) {
@@ -2350,6 +2369,38 @@ Item {
 
   function unregisterNotchWindow(window) {
     notchWindows = notchWindows.filter(function(w) { return w !== window })
+  }
+
+  // --- the Omarchy menu, when the notch is it -----------------------------------
+  //
+  // MenuCompanion.qml hands these to the companion plugin (and nothing else).
+  readonly property bool anyMenuOpen: {
+    for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].menuOpen) return true
+    return false
+  }
+
+  // Take an Omarchy menu request (a route, or a select/input picker) into the
+  // notch. False means "not now": the setting is off, the bar is hidden, no
+  // notch window has focus, or its menu hasn't loaded -- the companion then
+  // opens Omarchy's own menu, so the request is never dropped.
+  function openMenuPayload(payloadJson) {
+    if (!notchReplaceMenu || barHidden) return false
+    var w = focusedNotchWindow()
+    if (!w || !w.menuHostItem) return false
+    for (var i = 0; i < notchWindows.length; i++)
+      if (notchWindows[i] !== w) notchWindows[i].menuOpen = false
+    return w.openMenuRequest(payloadJson)
+  }
+
+  function closeMenus() {
+    for (var i = 0; i < notchWindows.length; i++) notchWindows[i].menuOpen = false
+  }
+
+  function refreshMenus() {
+    for (var i = 0; i < notchWindows.length; i++) {
+      var item = notchWindows[i].menuHostItem
+      if (item && typeof item.refresh === "function") item.refresh()
+    }
   }
 
   function focusedNotchWindow() {
@@ -2694,6 +2745,12 @@ Item {
     // Open the menu at `route` (a menu id or alias; "" is the root menu). A
     // route that names an action runs it without the menu staying open.
     function openMenu(route) {
+      openMenuRequest(JSON.stringify({ menu: route || "root" }))
+    }
+
+    // Open the menu for a whole Omarchy menu request: a route, or a select or
+    // input picker with the files its caller waits on.
+    function openMenuRequest(payloadJson) {
       expandTimer.stop()
       peeking = false
       settingsOpen = false
@@ -2701,10 +2758,15 @@ Item {
       view = "menu"
       menuOpen = true
       var menu = menuHost.item
-      if (!menu) return
-      menu.open(JSON.stringify({ menu: route || "root" }))
+      if (!menu) return false
+      menu.open(payloadJson)
+      // A route that names an action runs it and never opens.
       if (!menu.opened) menuOpen = false
+      return true
     }
+
+    // The menu inside this notch, once its host has loaded it.
+    readonly property var menuHostItem: menuHost.item
 
     // Open the Plugins page, at the entry `focusId` ("" for the top).
     function openPlugins(focusId) {
@@ -3139,7 +3201,13 @@ Item {
             m.background.b * (1 - m.selectedBackground.a) + m.selectedBackground.b * m.selectedBackground.a, 1), m.background).toFixed(3))
         } : null,
         appLibrary: m ? { present: !!m.appLibrary, own: m.appLibrary === m.ownLibrary } : null,
-        menuWith: root.notchMenuWith, menuKey: root.notchMenuKey
+        menuWith: root.notchMenuWith, menuKey: root.notchMenuKey,
+        // Replacing Omarchy's menu: the setting, whether a companion is talking
+        // to this notch, and what it last did.
+        replace: { setting: root.notchReplaceMenu, bridged: root.menuCompanion.bridged,
+                   companion: root.menuCompanion.companionState, facadeRoute: root.menuCompanion.facadeRoute,
+                   anyOpen: root.anyMenuOpen, status: root.menuCompanion.statusKey,
+                   actionsEnabled: root.menuCompanion.actionsEnabled, job: root.menuCompanion.job }
       }
     }
 

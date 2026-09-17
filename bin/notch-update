@@ -145,6 +145,10 @@ run() {
   write "$status" --arg to "$to" --arg version "$version" \
     '.phase = "done" | .to = $to | .version = $version | .message = "" | .finishedAt = $now'
 
+  # An installed menu companion is a copy of the notch's companion/ folder:
+  # bring it along, before the shell restarts.
+  [[ -x $DIR/bin/notch-companion ]] && "$DIR/bin/notch-companion" sync >/dev/null 2>&1
+
   # A rescan reloads the entry point but not the rest of the notch's QML;
   # restarting the shell loads every file of the new version.
   local restart=${NOTCH_UPDATE_RESTART:-omarchy restart shell}

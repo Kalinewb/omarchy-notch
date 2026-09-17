@@ -37,6 +37,24 @@ Item {
   readonly property color dim: bar ? bar.notchSecondaryText : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
   // How far the glow reaches now, in px (for the preview's hint).
   property real glowReach: 32
+  // Where replacing the Omarchy menu stands, in words.
+  readonly property string menuReplaceStatus: {
+    var b = bar
+    if (!b) return ""
+    var companion = b.menuCompanion
+    if (!companion.actionsEnabled && companion.statusKey !== "active-on" && companion.statusKey !== "active-off")
+      return "A test notch doesn't set the companion up."
+    switch (companion.statusKey) {
+      case "working": return "Setting up…"
+      case "failed": return String((companion.job || {}).message || "That didn't work.")
+      case "absent": return "Needs the menu companion (one-time)."
+      case "outdated": return "The menu companion is out of date."
+      case "hidden-bar": return "While the bar is hidden, Omarchy's own menu opens."
+      case "active-on": return "SUPER + SPACE, the menu button and pickers open in the notch."
+      default: return "Omarchy's own menu opens. Nothing else changes."
+    }
+  }
+
   // Where the notch's own updates stand, in words.
   readonly property string updateStatus: {
     var b = bar
@@ -279,6 +297,41 @@ Item {
         }
 
         KeyRow { label: "Keybind for the menu"; key: "menuKey"; current: root.bar ? root.bar.notchMenuKey : "" }
+
+        SettingRow {
+          label: "Replace the Omarchy menu"
+          Switch {
+            checked: root.bar ? root.bar.notchReplaceMenu : false
+            onToggled: root.set("replaceMenu", !checked)
+          }
+        }
+
+        SettingRow {
+          label: root.menuReplaceStatus
+          Row {
+            spacing: Style.space(6)
+            Button {
+              readonly property string key: root.bar ? root.bar.menuCompanion.statusKey : ""
+              visible: key === "absent" || key === "outdated" || key === "failed"
+              enabled: root.bar && root.bar.menuCompanion.actionsEnabled
+              opacity: enabled ? 1 : 0.35
+              text: key === "absent" ? "Set up" : key === "outdated" ? "Update" : "Dismiss"
+              bordered: true
+              selected: key !== "failed"
+              foreground: root.foreground
+              accent: root.accent
+              radius: root.radiusFor(Math.min(width, height))
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              horizontalPadding: Style.space(7)
+              onClicked: {
+                if (key === "absent") root.bar.menuCompanion.setUp()
+                else if (key === "outdated") root.bar.menuCompanion.update()
+                else root.bar.menuCompanion.dismiss()
+              }
+            }
+          }
+        }
 
         SettingRow {
           label: "Hide until the pointer reaches for it"

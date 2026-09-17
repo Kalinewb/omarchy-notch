@@ -103,6 +103,13 @@ if command -v omarchy-hyprland-session-locked >/dev/null && omarchy-hyprland-ses
   exit 0
 fi
 
+# An installed menu companion is a copy of the notch's companion/ folder, so it
+# follows the notch. Run the installed copy's own script, which syncs from the
+# checkout that was just fast-forwarded. Nothing happens when it isn't installed.
+if [[ -d "$PLUGINS/graveklar.notch-menu" && -x "$DEST/bin/notch-companion" ]]; then
+  "$DEST/bin/notch-companion" sync >/dev/null 2>&1 && say "synced the menu companion"
+fi
+
 # A rescan reloads the entry point but not the other QML files, so restart the
 # shell: the honest way to see every file's change.
 omarchy restart shell >/dev/null 2>&1 && say "restarted the shell"

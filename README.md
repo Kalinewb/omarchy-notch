@@ -159,16 +159,25 @@ edge stays on the screen edge. It grows and shrinks with the spring as you move 
   directly.
 - **Close it** by picking a row, pressing Escape, clicking outside, or using the same trigger or
   call again.
-- **Omarchy's own menu doesn't change.** SUPER + SPACE (and the menu keybinds that go with it),
-  `omarchy menu` and the stock bar's menu button still open Omarchy's window. If you record
-  SUPER + SPACE as `menuKey`, both menus open: the notch never removes a bind it didn't make. To
-  have SUPER + SPACE open only the notch's menu, point that binding in your Hyprland config at
-  `omarchy-shell -q notch menu root` instead.
+- **Replace the Omarchy menu** (Settings → Behaviour) makes every way into Omarchy's menu open
+  the notch's: SUPER + SPACE and the other menu keybinds, `omarchy menu`, the bar's menu button,
+  the screen-recording indicator and every picker. Off, they open Omarchy's own window, exactly
+  as before. The switch takes effect on the next open, with no restart.
+  - It needs a one-time **Set up**, which installs a small companion plugin
+    (`graveklar.notch-menu`, the folder in `companion/`). Omarchy routes menu calls to whichever
+    plugin says `clonedFrom: omarchy.menu`; the companion's go-between then asks the notch first
+    and falls back to Omarchy's own menu, loaded from `$OMARCHY_PATH`, so nothing is a copy.
+    Enabling it swaps the menu button in your bar layout for its identical one, in place.
+  - **When the notch can't show it** (the bar is hidden, the notch isn't running or isn't the
+    bar), Omarchy's own menu opens instead. A picker is never left hanging: if no menu can take
+    it, its caller is released.
+  - **To undo:** turn the switch off, or `omarchy plugin disable graveklar.notch-menu` from a
+    terminal, which puts `omarchy.menu` back exactly.
 - **Menu entries come from the same files** as Omarchy's menu:
   `$OMARCHY_PATH/default/omarchy/omarchy-menu.jsonc` and your
   `~/.config/omarchy/extensions/omarchy-menu.jsonc`. Both are watched for changes.
-- **Pickers still open in Omarchy's window.** Some rows start a script that asks Omarchy's menu for
-  a choice (emoji, keybindings, timezone, sharing). Those pickers appear there, not in the notch.
+- **Pickers** (emoji, keybindings, timezone, sharing) open in the notch when Replace the Omarchy
+  menu is on, and in Omarchy's window when it is off.
 - **The Apps list** needs an app library. A bar plugin isn't given one, so the menu loads its own
   copy of the shell's `AppLibrary` the first time it opens.
 
@@ -285,6 +294,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `expanded` | `["clock","date","media"]` | Glance items added to the widget row. Leaves out time and date when the layout already has `omarchy.clock`. |
 | `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
+| `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu (needs the one-time Set up in Settings → Behaviour). |
 | `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |
 | `openKey`, `settingsKey`, `menuKey`, `autoHideKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. |
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |

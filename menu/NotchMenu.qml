@@ -32,6 +32,10 @@ import "MenuModel.js" as MenuModel
 //   - NOTCH_MENU_DRY_RUN=1 (test harnesses) records what a picked row would
 //     run in lastAction instead of running it, and a few read-only properties
 //     feed the notch's report
+//   - a select/input request that is superseded or destroyed is released, so
+//     the script waiting on it (omarchy-menu-select polls with no timeout)
+//     carries on instead of hanging for ever. Upstream has the same bug
+//     (Menu.qml:795-839)
 // MenuModel.js is upstream's, unchanged.
 Item {
   id: root
@@ -185,6 +189,27 @@ Item {
     if (root.opened && root.rowsCeiling < 0) root.rowsCeiling = root.visibleRowsHeight
   }
 
+  // Let go of an active select/input request without answering it: the caller
+  // sees its done file and exits, rather than waiting for ever. Detached, not
+  // resultProc: a second start on a busy Process is lost, and resultProc's
+  // onExited would close the menu the new request just opened.
+  function releaseRequest() {
+    if (root.requestActive && root.doneFile)
+      Quickshell.execDetached(["bash", "-c", ": > " + Util.shellQuote(root.doneFile)])
+    root.requestActive = false
+    root.selectionFile = ""
+    root.doneFile = ""
+  }
+
+  // The last command handed to resultProc, so a menu destroyed mid-write can
+  // run it again (writing the same files twice is harmless).
+  property var lastResultCommand: []
+
+  Component.onDestruction: {
+    root.releaseRequest()
+    if (resultProc.running && root.lastResultCommand.length > 0) Quickshell.execDetached(root.lastResultCommand)
+  }
+
   function finishRequest(selection) {
     if (!root.requestActive || !root.doneFile) {
       root.opened = false
@@ -202,6 +227,7 @@ Item {
     } else {
       resultProc.command = ["bash", "-c", "printf '%s\\n' " + Util.shellQuote(selection) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
     }
+    root.lastResultCommand = resultProc.command
     resultProc.running = true
   }
 
@@ -863,6 +889,7 @@ Item {
   }
 
   function openExistingMenu(initialMenu) {
+    root.releaseRequest()
     requestSerial += 1
     mode = "menu"
     requestActive = false
@@ -887,6 +914,7 @@ Item {
   }
 
   function openDmenu(payload) {
+    root.releaseRequest()
     requestSerial += 1
     mode = payload.mode === "input" ? "input" : "select"
     dmenuPrompt = String(payload.prompt || (mode === "input" ? "Input" : "Select"))

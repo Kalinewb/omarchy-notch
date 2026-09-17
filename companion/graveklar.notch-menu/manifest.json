@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "graveklar.notch-menu",
+  "name": "Omarchy menu (notch)",
+  "version": "1.0.0",
+  "author": "graveklar",
+  "license": "MIT",
+  "description": "Opens Omarchy's menu inside the notch while the notch's \"Replace the Omarchy menu\" setting is on; otherwise Omarchy's own menu, unchanged.",
+  "kinds": ["menu", "bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": { "menu": "Facade.qml", "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "Omarchy menu",
+    "description": "Launches the Omarchy menu",
+    "category": "Compositor",
+    "allowMultiple": false
+  },
+  "omarchy": { "clonedFrom": "omarchy.menu" }
+}

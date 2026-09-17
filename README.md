@@ -25,19 +25,21 @@ Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clo
 | **On hover** | If hover opens the notch (`openWith`), the open view. Otherwise your hover items (time, date, media, battery) next to your hover plugins, in one row. Either closes when the pointer leaves. |
 | **When open** | What `openAction` says, for every other way of opening it (click, keybind, …). |
 | **Settings** | The notch grows down into its settings panel -- the same surface, top edge on the screen edge. |
+| **Menu** | The notch grows down into the Omarchy menu, black like the rest of the notch. See [Omarchy menu](#omarchy-menu). |
 | **Hidden** | `omarchy-toggle-bar` slides it up into the edge; with `autoHide`, it also hides at rest until the pointer reaches for it. |
 
-The open notch is one row at the resting height: it only widens. Only the settings panel makes
-it taller. The widget row is the same row for every view, so a single-plugin view shows that
+The open notch is one row at the resting height: it only widens. Only the settings panel and the
+menu make it taller. The widget row is the same row for every view, so a single-plugin view shows that
 plugin's live widget and never loads a second copy.
 
 ### Ways to open it
 
-`openWith` and `settingsWith` pick the gestures for the notch and for the settings (hover, click,
-double-click, long press, right-click, long right-click, middle-click, scroll). `openKey`,
-`settingsKey` and `autoHideKey` add keybinds for opening the notch, opening the settings and
-toggling auto-hide. In the settings each has a **Record** button: press it, then the combination
-(Escape cancels). Plain letters need SUPER, CTRL or ALT; F-keys work alone. A gesture belongs to one list at a time. Keybinds go into the running
+`openWith`, `settingsWith` and `menuWith` pick the gestures for the notch, the settings and the
+Omarchy menu (hover, click, double-click, long press, right-click, long right-click, middle-click,
+scroll; the menu takes no hover or scroll). `openKey`, `settingsKey`, `menuKey` and `autoHideKey`
+add keybinds for opening the notch, the settings and the menu, and for toggling auto-hide. In the settings each has a **Record** button: press it, then the combination
+(Escape cancels). Plain letters need SUPER, CTRL or ALT; F-keys work alone. A gesture belongs to one list at a time
+(the settings win, then the menu). Keybinds go into the running
 Hyprland with `hyprctl eval`, are replaced when changed, and are re-added after every config
 reload; nothing is written to your Hyprland config. Hyprland keeps runtime binds across a shell
 restart, so every apply reconciles with Hyprland's own bind list (`bin/notch-keybinds`): a bind
@@ -51,8 +53,48 @@ panel; click outside, press Escape or ✕ to close it. Every change is saved to 
 away. **Preview** shows the charging, full and low glow without touching the battery.
 
 Over IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|toggle|settings|peek|geometry`,
-`view widgets|clock|battery|plugin|settings`, `windowsToTop true|false|toggle`, and
+`view widgets|clock|battery|plugin|settings`, `menu <route>`, `windowsToTop true|false|toggle`, and
 `simulateBattery charging|discharging|full|auto <percent>`.
+
+## Omarchy menu
+
+The notch has its own copy of Omarchy's menu (`menu/NotchMenu.qml`). When you open it, the notch
+grows down into the menu. Same rows, search, submenus, Apps list and actions, and the same size
+as Omarchy's menu card. The difference: it's drawn inside the notch in the notch's colour (black
+by default), with no window of its own, no scrim over the screen and no border. The notch's top
+edge stays on the screen edge. It grows and shrinks with the spring as you move between menus.
+
+- **Open it** with a gesture from `menuWith`, the `menuKey` keybind, `"openAction": "menu"`, or
+  `quickshell ipc -p $OMARCHY_PATH/shell call notch menu root`. Instead of `root`, you can pass
+  any menu id or alias (`system`, `power-menu`, `style.font`). An alias for an action runs it
+  directly.
+- **Close it** by picking a row, pressing Escape, clicking outside, or using the same trigger or
+  call again.
+- **Omarchy's own menu doesn't change.** SUPER + SPACE (and the menu keybinds that go with it),
+  `omarchy menu` and the stock bar's menu button still open Omarchy's window. If you record
+  SUPER + SPACE as `menuKey`, both menus open: the notch never removes a bind it didn't make. To
+  have SUPER + SPACE open only the notch's menu, point that binding in your Hyprland config at
+  `omarchy-shell -q notch menu root` instead.
+- **Menu entries come from the same files** as Omarchy's menu:
+  `$OMARCHY_PATH/default/omarchy/omarchy-menu.jsonc` and your
+  `~/.config/omarchy/extensions/omarchy-menu.jsonc`. Both are watched for changes.
+- **Pickers still open in Omarchy's window.** Some rows start a script that asks Omarchy's menu for
+  a choice (emoji, keybindings, timezone, sharing). Those pickers appear there, not in the notch.
+- **The Apps list** needs an app library. A bar plugin isn't given one, so the menu loads its own
+  copy of the shell's `AppLibrary` the first time it opens.
+
+**Keeping up with Omarchy.** `dev/upstream/menu/` holds Omarchy 4.0.3's `Menu.qml` and
+`MenuModel.js` exactly as released. `menu/MenuModel.js` is identical to that copy.
+`menu/NotchMenu.qml` keeps upstream's structure and names, and its header lists every change. After
+an Omarchy update, compare the installed files with the saved copies:
+
+```sh
+diff -u dev/upstream/menu/Menu.qml $OMARCHY_PATH/shell/plugins/menu/Menu.qml
+diff -u dev/upstream/menu/MenuModel.js $OMARCHY_PATH/shell/plugins/menu/MenuModel.js
+```
+
+Port any changes to the fork, then copy the new files into `dev/upstream/menu/`. `dev/menu.sh`
+tests the result.
 
 ## Plugin contract
 
@@ -61,7 +103,8 @@ Everything the notch shows is a plugin described by one descriptor (`contract.js
 `priority` (`transient`, `persistent`, `persistent-low`), `groupable` and `hideable`.
 
 - **Built-ins** use reserved ids: `notch.clock`, `notch.date`, `notch.media`, `notch.battery`,
-  and `notch.settings`, which has `hideable: false` and whose `expandedView` is the settings panel.
+  `notch.settings` and `notch.menu`. Both of the last two have `hideable: false`, and their
+  `expandedView` is the settings panel or the menu.
 - **Bar widgets** keep the id your layout already uses. An adapter describes every one with
   defaults (`persistent-low`, groupable, hideable, the live widget as its closed view), so a widget
   needs no changes.
@@ -69,7 +112,7 @@ Everything the notch shows is a plugin described by one descriptor (`contract.js
   to override the defaults. Invalid values fall back to the default and are reported.
 - **Your config doesn't change format:** settings keep short names (`"clock"`) and widget ids;
   short names map to reserved ids only when read.
-- **Expanded views:** every one renders through the same host inside the notch.
+- **Expanded views:** each one renders through the same host type inside the notch.
 - **Hiding:** `hiddenPlugins` has no effect on a plugin that declares `hideable: false`, and the
   picker shows it locked.
 
@@ -134,6 +177,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
     "hoverPlugins": ["quickshell.spotify"],
     "openAction": "widgets",
     "settingsKey": "SUPER + ALT + N",
+    "menuWith": ["middleClick"],
     "color": "#000000",
     "compactWidth": 180,
     "compactHeight": 32,
@@ -152,9 +196,10 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `expanded` | `["clock","date","media"]` | Glance items added to the widget row. Leaves out time and date when the layout already has `omarchy.clock`. |
 | `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
-| `openKey`, `settingsKey`, `autoHideKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. |
+| `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |
+| `openKey`, `settingsKey`, `menuKey`, `autoHideKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. |
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |
-| `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. |
+| `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. `openAction` can also be `"settings"` or `"menu"`. |
 | `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. |
 | `color` / `foreground` | `#000000` / theme bar text | Notch and glance text colours. |
 | `compactWidth`, `compactHeight` | `180`, `32` | Resting size, in logical px. The height is also what windows keep clear. |
@@ -207,7 +252,7 @@ pixel's distance to the outline by brute force and checks each pixel's opacity a
 ## Credits
 
 `Bar.qml` and `BarModel.js` start from Omarchy's `omarchy.bar` (MIT), with the full-width
-strip replaced by the notch. The island shape and spring curve come from graveklar.face.
+strip replaced by the notch. `menu/` is Omarchy's `omarchy.menu` (MIT), drawn inside the notch. The island shape and spring curve come from graveklar.face.
 
 ## Checks
 

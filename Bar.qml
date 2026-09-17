@@ -10,6 +10,7 @@ import qs.Ui
 import "BarModel.js" as BarModel
 import "spring.js" as Spring
 import "contract.js" as Contract
+import "menu"
 
 Item {
   id: root
@@ -1249,6 +1250,11 @@ Item {
   //   settingsWith   what opens the settings panel, from the same list plus
   //                  "longRightClick" (default ["longRightClick"])
   //   settingsKey    a key combination that toggles the settings (default none)
+  //   menuWith       what opens the Omarchy menu inside the notch: any of "click",
+  //                  "doubleClick", "longPress", "rightClick", "longRightClick",
+  //                  "middleClick" (default none). Settings win a trigger both
+  //                  claim, then the menu, then openWith.
+  //   menuKey        a key combination that toggles the menu (default none)
   //   autoHideKey    a key combination that toggles autoHide (default none)
   //   color          notch colour (default "#000000")
   //   foreground     text colour (default: the theme's bar text)
@@ -1271,8 +1277,9 @@ Item {
   //   hoverPlugins   ... together with any bar widgets, by id (default none).
   //                  With both empty, hovering does nothing; with "hover" in
   //                  openWith, hovering opens the notch (openAction) instead.
-  //   openAction     what every other trigger (click, keybind, …) opens, from
-  //                  the same list (default "widgets")
+  //   openAction     what every other trigger (click, keybind, …) opens:
+  //                  "widgets", "clock", "battery", "plugin", "settings" or
+  //                  "menu" (default "widgets")
   //   openPlugin     the bar widget id shown when openAction is "plugin"
   //   hiddenPlugins  bar widget ids left out of the open notch's widget row
   //                  (they stay loaded, and can still be a hover/open plugin)
@@ -1318,7 +1325,7 @@ Item {
   readonly property bool notchHoverShowsSomething: notchHoverItems.length > 0 || notchHoverPlugins.length > 0
   readonly property string notchOpenAction: {
     var v = String(notchSetting("openAction", "widgets"))
-    return ["widgets", "clock", "battery", "plugin", "settings"].indexOf(v) === -1 ? "widgets" : v
+    return ["widgets", "clock", "battery", "plugin", "settings", "menu"].indexOf(v) === -1 ? "widgets" : v
   }
   readonly property string notchOpenPlugin: canonicalWidgetId(String(notchSetting("openPlugin", "")))
   // The hide list as configured (widget ids, unchanged format)...
@@ -1389,15 +1396,21 @@ Item {
     var list = notchItems(key, fallback).filter(function(t) { return notchTriggerNames.indexOf(t) !== -1 })
     return list
   }
-  // Settings win a trigger both lists claim; the menu does not let that happen.
+  // Settings win a trigger more than one list claims, then the menu, then
+  // opening the notch; the settings panel does not let that happen.
   readonly property var notchSettingsWith: notchTriggers("settingsWith", ["longRightClick"])
+  // Hover and scroll never open the menu: it takes the keyboard.
+  readonly property var notchMenuWith: notchTriggers("menuWith", [])
+    .filter(function(t) { return t !== "hover" && t !== "scroll" && notchSettingsWith.indexOf(t) === -1 })
   readonly property var notchOpenWith: notchTriggers("openWith",
       notchSetting("expandOn", "") === "click" ? ["click"] : ["hover", "click"])
-    .filter(function(t) { return notchSettingsWith.indexOf(t) === -1 })
+    .filter(function(t) { return notchSettingsWith.indexOf(t) === -1 && notchMenuWith.indexOf(t) === -1 })
   function opensWith(trigger) { return notchOpenWith.indexOf(trigger) !== -1 }
   function settingsWith(trigger) { return notchSettingsWith.indexOf(trigger) !== -1 }
+  function menuWith(trigger) { return notchMenuWith.indexOf(trigger) !== -1 }
   readonly property string notchOpenKey: cleanKey(notchSetting("openKey", ""))
   readonly property string notchSettingsKey: cleanKey(notchSetting("settingsKey", ""))
+  readonly property string notchMenuKey: cleanKey(notchSetting("menuKey", ""))
   readonly property string notchAutoHideKey: cleanKey(notchSetting("autoHideKey", ""))
 
   // A Hyprland key combination: modifiers and a key joined by "+", letters,
@@ -1417,8 +1430,8 @@ Item {
   // every bind is a notch bind. Config reloads clear runtime binds; the apply
   // after `configreloaded` adds them back. NOTCH_NO_KEYBINDS=1 turns it off
   // (test harnesses).
-  property var appliedKeys: ({ open: "", settings: "", autoHide: "" })
-  readonly property string keyState: notchOpenKey + "|" + notchSettingsKey + "|" + notchAutoHideKey
+  property var appliedKeys: ({ open: "", settings: "", autoHide: "", menu: "" })
+  readonly property string keyState: notchOpenKey + "|" + notchSettingsKey + "|" + notchAutoHideKey + "|" + notchMenuKey
   // Only the notch Omarchy's shell is hosting touches Hyprland's binds. A notch
   // running anywhere else (a test harness) would otherwise reconcile the live
   // notch's binds away; NOTCH_FORCE_KEYBINDS=1 lets a keybind test opt in.
@@ -1434,7 +1447,8 @@ Item {
   readonly property var keybindActions: ({
     open: { method: "toggle", description: "Open the notch" + keybindTag },
     settings: { method: "settings", description: "Notch settings" + keybindTag },
-    autoHide: { method: "autoHide toggle", description: "Toggle notch auto-hide" + keybindTag }
+    autoHide: { method: "autoHide toggle", description: "Toggle notch auto-hide" + keybindTag },
+    menu: { method: "menu root", description: "Notch menu" + keybindTag }
   })
   onKeyStateChanged: Qt.callLater(applyKeybinds)
   // Keybinds are skipped until the host has set `shell` (see keybindsDisabled);
@@ -1446,8 +1460,8 @@ Item {
   property bool keybindRerun: false
   function applyKeybinds() {
     if (keybindsDisabled) return
-    var wanted = { open: notchOpenKey, settings: notchSettingsKey, autoHide: notchAutoHideKey }
-    var names = ["open", "settings", "autoHide"]
+    var wanted = { open: notchOpenKey, settings: notchSettingsKey, autoHide: notchAutoHideKey, menu: notchMenuKey }
+    var names = ["open", "settings", "autoHide", "menu"]
     var list = []
     for (var i = 0; i < names.length; i++) {
       var n = names[i]
@@ -1733,13 +1747,22 @@ Item {
       if (w.settingsOpen) w.settingsOpen = false
       else w.openSettings()
     }
+    // Open the Omarchy menu inside the focused screen's notch at a route --
+    // "root", a menu id such as "system", or an alias such as "power" -- or
+    // close it if it is open there.
+    function menu(route: string): void {
+      var w = root.focusedNotchWindow()
+      if (!w) return
+      if (w.menuOpen) w.menuOpen = false
+      else w.openMenu(route)
+    }
     // Save one notch setting the way the settings panel does (no bar reload):
     // `set compactWidth 220`, `set hoverPlugin omarchy.clock`. List settings
     // take space-separated values -- `set hiddenPlugins "a b"` -- because the
     // IPC command line splits arguments on commas. Anything else is JSON if it
     // parses, a string if not.
     function set(key: string, value: string): string {
-      var lists = ["compact", "expanded", "openWith", "settingsWith", "hiddenPlugins", "hoverItems", "hoverPlugins"]
+      var lists = ["compact", "expanded", "openWith", "settingsWith", "menuWith", "hiddenPlugins", "hoverItems", "hoverPlugins"]
       var parsed
       if (lists.indexOf(key) !== -1 && String(value).trim().charAt(0) !== "[")
         parsed = String(value).split(/\s+/).filter(function(v) { return v !== "" })
@@ -1768,6 +1791,25 @@ Item {
     function geometry(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.geometryReport()) : "{}" }
   }
 
+  // Renders one plugin's expandedView: its Component, or the built-in one its
+  // key names. Faded in while shown; only then does it take input and focus.
+  component ExpandedHost: Loader {
+    id: host
+    property var plugin: null
+    property var builtins: ({})
+    property bool shown: false
+    readonly property var view: plugin ? plugin.expandedView : null
+    y: 0
+    width: item ? item.implicitWidth : 0
+    height: item ? item.implicitHeight : 0
+    sourceComponent: typeof view === "string" ? (builtins[view] || null) : view
+    opacity: shown ? 1 : 0
+    visible: opacity > 0
+    enabled: shown
+    Behavior on opacity { NumberAnimation { duration: host.shown ? 220 : 90; easing.type: Easing.OutCubic } }
+    onEnabledChanged: if (enabled && item) item.forceActiveFocus()
+  }
+
   component BarPanel: PanelWindow {
     id: barWindow
 
@@ -1788,11 +1830,11 @@ Item {
     }
     // As tall as the resting notch (plus the spring's overshoot) -- panels that
     // hang from the bar read this height. Only while the notch is grown into
-    // its settings panel is the window as tall as that panel may get; it goes
-    // back once the notch has shrunk to rest.
+    // its settings or the menu is the window as tall as that panel may get; it
+    // goes back once the notch has shrunk to rest.
     readonly property real panelMaxHeight: Math.max(root.notchCompactHeight,
       Math.min(Style.space(620), (barWindow.screen ? barWindow.screen.height : 900) - Style.space(60)))
-    readonly property bool tall: settingsOpen || shownHeight > root.notchCompactHeight * (1 + root.springOvershoot) + 1
+    readonly property bool tall: panelOpen || shownHeight > root.notchCompactHeight * (1 + root.springOvershoot) + 1
     implicitHeight: tall
       ? Math.ceil(panelMaxHeight * (1 + root.springOvershoot) + 2)
       : Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + 2)
@@ -1819,9 +1861,9 @@ Item {
     property bool peeking: false
     property bool mediaReady: false
     property string peekKind: "media"
-    // What the open notch shows: "widgets", "clock", "battery", "plugin" or
-    // "settings". Set when it opens and kept while it closes, so the content
-    // does not change under a shrinking notch.
+    // What the open notch shows: "widgets", "clock", "battery", "plugin",
+    // "settings" or "menu". Set when it opens and kept while it closes, so the
+    // content does not change under a shrinking notch.
     property string view: "widgets"
     // The widget shown by the "plugin" view (the open action's plugin).
     property string viewPlugin: ""
@@ -1829,10 +1871,15 @@ Item {
     // "settings" hover action, or IPC). Stays until closed: a click outside,
     // Escape, or the ✕.
     property bool settingsOpen: false
+    // The notch grown into the Omarchy menu (menuWith, the menu keybind, the
+    // "menu" open action, or IPC). Like the settings, it stays until closed:
+    // a picked row, Escape, or a click outside. At most one of the two is open.
+    property bool menuOpen: false
+    readonly property bool panelOpen: settingsOpen || menuOpen
     readonly property bool popoutHere: root.activePopout !== null && root.targetBelongsToWindow(root.activePopout, barWindow)
     readonly property bool dragHere: root.barDragSource !== null && root.barDragWindow === barWindow
     readonly property bool expanded: !root.barHidden
-      && (settingsOpen || hoverExpanded || clickExpanded || popoutHere || dragHere
+      && (panelOpen || hoverExpanded || clickExpanded || popoutHere || dragHere
           || (root.notchForcedExpanded && root.focusedNotchWindow() === barWindow))
     // Auto-hide: tucked into the edge at rest until the pointer reaches the
     // strip above it. Anything that is not rest -- open, peeking, settings --
@@ -1850,19 +1897,39 @@ Item {
     function openSettings() {
       expandTimer.stop()
       peeking = false
+      menuOpen = false
       view = "settings"
       settingsOpen = true
     }
 
-    // A press on the notch: open or close the settings or the widgets,
-    // according to which trigger list claims it.
+    // Open the menu at `route` (a menu id or alias; "" is the root menu). A
+    // route that names an action runs it without the menu staying open.
+    function openMenu(route) {
+      expandTimer.stop()
+      peeking = false
+      settingsOpen = false
+      view = "menu"
+      menuOpen = true
+      var menu = menuHost.item
+      if (!menu) return
+      menu.open(JSON.stringify({ menu: route || "root" }))
+      if (!menu.opened) menuOpen = false
+    }
+
+    // A press on the notch: open or close the settings, the menu or the
+    // widgets, according to which trigger list claims it.
     function trigger(name) {
       if (root.settingsWith(name)) {
         if (settingsOpen) settingsOpen = false
         else openSettings()
         return
       }
-      if (settingsOpen || !root.opensWith(name)) return
+      if (root.menuWith(name)) {
+        if (menuOpen) menuOpen = false
+        else openMenu("root")
+        return
+      }
+      if (panelOpen || !root.opensWith(name)) return
       if (expanded && clickExpanded) collapseNow()
       else openView(root.notchOpenAction, "click")
     }
@@ -1873,7 +1940,8 @@ Item {
       if (requested === "none") return
       if (requested === "hover" && !root.notchHoverShowsSomething) return
       if (requested === "settings") { openSettings(); return }
-      if (settingsOpen) return
+      if (requested === "menu") { openMenu("root"); return }
+      if (panelOpen) return
       var plugin = root.notchOpenPlugin
       if (requested === "plugin" && !plugin) requested = "widgets"
       peeking = false
@@ -1889,6 +1957,14 @@ Item {
       clickExpanded = false
       // Leaving the settings stops any battery preview started there.
       if (root.batterySimulated) { root.batterySimulatedState = ""; root.batterySimulatedPercent = -1 }
+    }
+
+    onMenuOpenChanged: {
+      if (menuOpen) return
+      hoverExpanded = false
+      clickExpanded = false
+      // Closed from outside the menu (a click outside, a trigger, IPC).
+      if (menuHost.item && menuHost.item.opened) menuHost.item.close()
     }
 
     function startPeek(kind) {
@@ -2018,18 +2094,20 @@ Item {
       }
     }
 
-    // Clicking anywhere outside the settings panel closes it; while it is open
-    // the notch takes keyboard focus, for Escape and typed numbers.
+    // Clicking anywhere outside the settings panel or the menu closes it. While
+    // either is open the notch takes keyboard focus -- for Escape, typed
+    // numbers, and the menu's search -- which the grab hands it straight away.
+    // (Not WlrKeyboardFocus.Exclusive, as Omarchy's menu window uses: Hyprland
+    // clears a focus grab that starts in the same frame as an exclusive claim.)
     HyprlandFocusGrab {
-      active: barWindow.settingsOpen
+      active: barWindow.panelOpen
       windows: [barWindow]
-      onCleared: barWindow.settingsOpen = false
     }
-    WlrLayershell.keyboardFocus: settingsOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: panelOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
     // In click mode, clicking anywhere outside the expanded notch closes it.
     HyprlandFocusGrab {
-      active: barWindow.clickExpanded && !barWindow.popoutHere && !barWindow.settingsOpen
+      active: barWindow.clickExpanded && !barWindow.popoutHere && !barWindow.panelOpen
       windows: [barWindow]
       onCleared: barWindow.clickExpanded = false
     }
@@ -2046,17 +2124,20 @@ Item {
     readonly property real batteryWidth: Math.max(compactWidth, batteryGlance.implicitWidth + 2 * root.notchSidePadding)
     readonly property real settingsWidth: Math.max(compactWidth, expandedHost.item ? expandedHost.item.implicitWidth : 0)
     readonly property real settingsHeight: Math.max(root.notchCompactHeight, expandedHost.item ? expandedHost.item.implicitHeight : 0)
+    readonly property real menuWidth: Math.max(compactWidth, menuHost.item ? menuHost.item.implicitWidth : 0)
+    readonly property real menuHeight: Math.max(root.notchCompactHeight, menuHost.item ? menuHost.item.implicitHeight : 0)
     // The open notch's width for the current view. Widgets and a single plugin
     // are the same row (filtered), so both measure the row.
-    readonly property real expandedWidth: view === "settings" ? settingsWidth
+    readonly property real expandedWidth: view === "settings" ? settingsWidth : view === "menu" ? menuWidth
       : view === "clock" ? clockWidth : view === "battery" ? batteryWidth : rowWidth
 
     readonly property real targetWidth: Math.min(maxBarWidth,
       notchState === "expanded" ? expandedWidth : notchState === "peek" ? peekWidth : compactWidth)
-    // Every view but the settings is one row at the resting height; the
-    // settings panel grows the notch down, top edge still on the screen edge.
+    // Every view but the settings and the menu is one row at the resting
+    // height; those grow the notch down, top edge still on the screen edge.
     readonly property real targetHeight: notchState === "hidden" ? 0
-      : notchState === "expanded" && view === "settings" ? settingsHeight : root.notchCompactHeight
+      : notchState === "expanded" && view === "settings" ? settingsHeight
+      : notchState === "expanded" && view === "menu" ? menuHeight : root.notchCompactHeight
 
     property real shownWidth: 0
     property real shownHeight: 0
@@ -2172,6 +2253,35 @@ Item {
       }
     }
 
+    // The menu inside the notch, as numbers: whether it is open, where it is,
+    // how its card is measured, and what the notch does around it.
+    function menuReport() {
+      var m = menuHost.item
+      return {
+        open: menuOpen, loaded: !!m, opened: m ? m.opened : false,
+        plugin: menuHost.plugin ? Contract.plain(menuHost.plugin) : null,
+        rowsLoaded: m ? m.rowsLoaded : false, activeMenu: m ? m.activeMenu : "",
+        rows: m ? m.rowCount : 0, filter: m ? m.filterText : "", lastAction: m ? m.lastAction : "", dryRun: m ? m.dryRun : false,
+        selectedIndex: m ? m.selectedIndex : -1,
+        rowLabels: m ? m.rowLabels() : [],
+        card: m ? {
+          width: m.cardWidth, height: m.cardHeight, rowsHeight: m.visibleRowsHeight, rowsCeiling: m.rowsCeiling,
+          contentMargin: m.contentMargin, headerHeight: m.headerHeight, contentSpacing: m.contentSpacing,
+          baseRowHeight: m.baseRowHeight, rowSpacing: m.rowSpacing, maxWidth: m.maxWidth, maxHeight: m.maxHeight
+        } : null,
+        host: { opacity: Number(menuHost.opacity.toFixed(3)), enabled: menuHost.enabled, width: menuHost.width, height: menuHost.height },
+        // keyboard: what the layer asks for; windowActive: the compositor
+        // actually gave the notch keyboard focus; keys: the menu's key
+        // handler has Qt's focus inside the notch.
+        focus: { keyboard: barWindow.WlrLayershell.keyboardFocus === WlrKeyboardFocus.Exclusive ? "exclusive"
+                   : barWindow.WlrLayershell.keyboardFocus === WlrKeyboardFocus.OnDemand ? "onDemand" : "none",
+                 windowActive: menuHost.Window.active, keys: m ? m.keysFocused : false },
+        background: m ? String(m.background).toUpperCase() : "", notchColor: String(root.notchColor).toUpperCase(),
+        appLibrary: m ? { present: !!m.appLibrary, own: m.appLibrary === m.ownLibrary } : null,
+        menuWith: root.notchMenuWith, menuKey: root.notchMenuKey
+      }
+    }
+
     function geometryReport() {
       var bx = island.x + island.barX
       function onScreen(p) { return { x: Number((bx + p.x).toFixed(3)), y: Number((island.y + p.y).toFixed(3)) } }
@@ -2203,6 +2313,7 @@ Item {
           bottomLeft: onScreen(island.bottomLeftCentre), bottomRight: onScreen(island.bottomRightCentre)
         },
         settingsOpen: barWindow.settingsOpen,
+        menu: menuReport(),
         media: {
           facade: !!root.mediaService,
           activeKey: root.mediaPlayerKey(root.mediaPlayer),
@@ -2397,7 +2508,7 @@ Item {
       WheelHandler {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         onWheel: function(event) {
-          if (!root.opensWith("scroll") || barWindow.settingsOpen) return
+          if (!root.opensWith("scroll") || barWindow.panelOpen) return
           if (event.angleDelta.y < 0 && !barWindow.expanded) barWindow.openView(root.notchOpenAction, "click")
           else if (event.angleDelta.y > 0 && barWindow.expanded) barWindow.collapseNow()
         }
@@ -2408,8 +2519,8 @@ Item {
       // resizes around them, and popups anchor to the same place every time.
       Item {
         id: content
-        width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth, barWindow.batteryWidth, barWindow.settingsWidth)
-        height: Math.max(root.notchCompactHeight, barWindow.settingsHeight)
+        width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth, barWindow.batteryWidth, barWindow.settingsWidth, barWindow.menuWidth)
+        height: Math.max(root.notchCompactHeight, barWindow.settingsHeight, barWindow.menuHeight)
         x: (island.barWidth - width) / 2
         y: 0
 
@@ -2613,31 +2724,30 @@ Item {
           Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         }
 
-        // The expanded-view host: renders a plugin's expandedView inside the
-        // notch, which grows around it. One host for every plugin -- a
-        // Component a plugin declares, or a built-in key the notch resolves
-        // (builtinExpandedViews). Today only notch.settings has one. Laid out
-        // at full size and revealed as the notch grows.
-        Loader {
+        // The expanded-view hosts: each renders one plugin's expandedView
+        // inside the notch, which grows around it -- a Component a plugin
+        // declares, or a built-in key the notch resolves
+        // (builtinExpandedViews). notch.settings and notch.menu have one.
+        // Laid out at full size and revealed as the notch grows.
+        ExpandedHost {
           id: expandedHost
-          readonly property var plugin: root.notchPlugins.byId["notch.settings"] || null
-          readonly property var view: plugin ? plugin.expandedView : null
+          plugin: root.notchPlugins.byId["notch.settings"] || null
+          builtins: barWindow.builtinExpandedViews
+          shown: barWindow.settingsOpen
           x: (content.width - width) / 2
-          y: 0
-          width: item ? item.implicitWidth : 0
-          height: item ? item.implicitHeight : 0
-          sourceComponent: typeof view === "string" ? (barWindow.builtinExpandedViews[view] || null) : view
-          opacity: barWindow.settingsOpen ? 1 : 0
-          visible: opacity > 0
-          enabled: barWindow.settingsOpen
-          Behavior on opacity { NumberAnimation { duration: barWindow.settingsOpen ? 220 : 90; easing.type: Easing.OutCubic } }
-          onEnabledChanged: if (enabled && item) item.forceActiveFocus()
+        }
+        ExpandedHost {
+          id: menuHost
+          plugin: root.notchPlugins.byId["notch.menu"] || null
+          builtins: barWindow.builtinExpandedViews
+          shown: barWindow.menuOpen
+          x: (content.width - width) / 2
         }
       }
     }
 
-    // Built-in expandedView keys, resolved by the expanded-view host.
-    readonly property var builtinExpandedViews: ({ settings: settingsExpandedView })
+    // Built-in expandedView keys, resolved by the expanded-view hosts.
+    readonly property var builtinExpandedViews: ({ settings: settingsExpandedView, menu: menuExpandedView })
     Component {
       id: settingsExpandedView
       NotchSettings {
@@ -2645,6 +2755,15 @@ Item {
         headerHeight: root.notchCompactHeight
         maxHeight: barWindow.panelMaxHeight
         onCloseRequested: barWindow.settingsOpen = false
+      }
+    }
+    Component {
+      id: menuExpandedView
+      NotchMenu {
+        bar: root
+        maxWidth: barWindow.maxBarWidth - 2 * root.notchSidePadding
+        maxHeight: barWindow.panelMaxHeight
+        onCloseRequested: barWindow.menuOpen = false
       }
     }
 

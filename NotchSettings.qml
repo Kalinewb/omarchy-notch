@@ -60,6 +60,11 @@ Item {
     { value: "doubleClick", label: "Double-click" }, { value: "longPress", label: "Long press" },
     { value: "middleClick", label: "Middle-click" }
   ]
+  readonly property var menuTriggers: [
+    { value: "click", label: "Click" }, { value: "doubleClick", label: "Double-click" },
+    { value: "longPress", label: "Long press" }, { value: "rightClick", label: "Right-click" },
+    { value: "longRightClick", label: "Long right-click" }, { value: "middleClick", label: "Middle-click" }
+  ]
 
   // Add or remove one trigger. The settings keep at least one way in: their
   // last trigger cannot be removed unless a keybind opens them.
@@ -197,7 +202,7 @@ Item {
           ChipFlow {
             options: root.openTriggers
             selected: root.bar ? root.bar.notchOpenWith : []
-            taken: root.bar ? root.bar.notchSettingsWith : []
+            taken: root.bar ? root.bar.notchSettingsWith.concat(root.bar.notchMenuWith) : []
             onPicked: function(value) { root.toggleTrigger("openWith", root.bar.notchOpenWith, value, false) }
           }
         }
@@ -209,12 +214,24 @@ Item {
           ChipFlow {
             options: root.settingsTriggers
             selected: root.bar ? root.bar.notchSettingsWith : []
-            taken: root.bar ? root.bar.notchOpenWith : []
+            taken: root.bar ? root.bar.notchOpenWith.concat(root.bar.notchMenuWith) : []
             onPicked: function(value) { root.toggleTrigger("settingsWith", root.bar.notchSettingsWith, value, true) }
           }
         }
 
         KeyRow { label: "Keybind for settings"; key: "settingsKey"; current: root.bar ? root.bar.notchSettingsKey : "" }
+
+        StackedRow {
+          label: "Open the Omarchy menu with"
+          ChipFlow {
+            options: root.menuTriggers
+            selected: root.bar ? root.bar.notchMenuWith : []
+            taken: root.bar ? root.bar.notchOpenWith.concat(root.bar.notchSettingsWith) : []
+            onPicked: function(value) { root.toggleTrigger("menuWith", root.bar.notchMenuWith, value, false) }
+          }
+        }
+
+        KeyRow { label: "Keybind for the menu"; key: "menuKey"; current: root.bar ? root.bar.notchMenuKey : "" }
 
         SettingRow {
           label: "Hide until the pointer reaches for it"
@@ -570,7 +587,7 @@ Item {
       ChipFlow {
         options: [{ value: "widgets", label: "Widgets" }, { value: "clock", label: "Clock" },
                   { value: "battery", label: "Battery" }, { value: "plugin", label: "A plugin" },
-                  { value: "settings", label: "Settings" }].concat(viewRow.allowNothing ? [{ value: "none", label: "Nothing" }] : [])
+                  { value: "settings", label: "Settings" }, { value: "menu", label: "Menu" }].concat(viewRow.allowNothing ? [{ value: "none", label: "Nothing" }] : [])
         selected: [viewRow.action]
         onPicked: function(value) { viewRow.pick(viewRow.actionKey, value) }
       }
@@ -608,8 +625,8 @@ Item {
     // Every notch keybind, so one combination can't be recorded twice.
     function usedBy(combo) {
       if (!root.bar) return ""
-      var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey }
-      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide" }
+      var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey, menuKey: root.bar.notchMenuKey }
+      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide", menuKey: "the menu" }
       for (var k in others) if (k !== keyRow.key && others[k] === combo) return labels[k]
       return ""
     }

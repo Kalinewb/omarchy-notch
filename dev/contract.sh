@@ -136,7 +136,7 @@ sn=$(ipc snapshot)
 kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""
 p() { jq -c --arg id "$1" '.plugins[] | select(.id == $id)' <<<"$ct"; }
 
-check "built-ins are registered under reserved ids, first, in order" "notch.clock notch.date notch.media notch.battery notch.settings" \
+check "built-ins are registered under reserved ids, first, in order" "notch.clock notch.date notch.media notch.battery notch.settings notch.menu" \
   "$(jq -r '[.plugins[] | select(.kind == "builtin") | .id] | join(" ")' <<<"$ct")"
 check "every layout widget is registered once, in layout order, by its layout id" "acme.alpha acme.beta omarchy.clock acme.gamma omarchy.spacer acme.delta acme.epsilon" \
   "$(jq -r '[.plugins[] | select(.kind == "widget") | .id] | join(" ")' <<<"$ct")"

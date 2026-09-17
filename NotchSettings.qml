@@ -29,8 +29,16 @@ Item {
   implicitWidth: Style.space(400)
   implicitHeight: Math.min(maxHeight, headerHeight + column.implicitHeight + padding)
 
-  readonly property color foreground: Color.foreground
-  readonly property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
+  // Drawn on the notch, so colours come from the notch: text that reads on the
+  // notch colour whatever the theme (see Bar.qml, "colours on the notch").
+  readonly property color foreground: bar ? bar.notchForeground : Color.foreground
+  readonly property color accent: bar ? bar.notchAccent : Color.accent
+  readonly property color surface: bar ? bar.notchColor : Color.background
+  readonly property color dim: bar ? bar.notchSecondaryText : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
+  // How far the glow reaches now, in px (for the preview's hint).
+  property real glowReach: 32
+  // The notch's radius for a control this tall (DESIGN-PHILOSOPHY.md, 5).
+  function radiusFor(height) { return bar ? bar.radiusFor(height) : Math.max(0, Math.min(10, height / 2)) }
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property int rowHeight: Style.space(34)
 
@@ -106,6 +114,9 @@ Item {
     }
 
     Button {
+      foreground: root.foreground
+      accent: root.accent
+      radius: root.radiusFor(Math.min(width, height))
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
       text: "✕"
@@ -235,7 +246,7 @@ Item {
 
         SettingRow {
           label: "Hide until the pointer reaches for it"
-          ToggleSwitch {
+          Switch {
             checked: root.bar ? root.bar.notchAutoHide : false
             onToggled: root.set("autoHide", !checked)
           }
@@ -245,15 +256,26 @@ Item {
 
         SettingRow {
           label: "Windows reach the top edge"
-          ToggleSwitch {
+          Switch {
             checked: root.bar ? root.bar.notchWindowsToTop : false
             onToggled: root.set("windowsToTop", !checked)
           }
         }
 
+        Text {
+          visible: root.bar && root.bar.notchAutoHide && !root.bar.notchWindowsToTopSet
+          width: parent.width
+          wrapMode: Text.WordWrap
+          text: "On while the notch auto-hides. Switch it off to keep windows below the notch."
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          bottomPadding: Style.space(4)
+        }
+
         SettingRow {
           label: "Peek on a new track"
-          ToggleSwitch {
+          Switch {
             checked: root.bar ? root.bar.notchPeekOnTrackChange : true
             onToggled: root.set("peekOnTrackChange", !checked)
           }
@@ -274,7 +296,7 @@ Item {
 
         SettingRow {
           label: "Charging glow"
-          ToggleSwitch {
+          Switch {
             checked: root.bar ? root.bar.notchBatteryGlow : true
             onToggled: root.set("batteryGlow", !checked)
           }
@@ -282,7 +304,7 @@ Item {
 
         SettingRow {
           label: "Glow style"
-          ButtonGroup {
+          Choice {
             options: [{ value: "outline", label: "Outline" }, { value: "bottom", label: "Bottom" }]
             value: root.bar ? root.bar.notchGlowStyle : "outline"
             fontFamily: root.fontFamily
@@ -327,7 +349,7 @@ Item {
 
         SettingRow {
           label: "Peek on plug-in and low battery"
-          ToggleSwitch {
+          Switch {
             checked: root.bar ? root.bar.notchBatteryPeek : true
             onToggled: root.set("batteryPeek", !checked)
           }
@@ -339,7 +361,7 @@ Item {
 
         SettingRow {
           label: "Preview"
-          ButtonGroup {
+          Choice {
             readonly property string current: !root.bar || !root.bar.batterySimulated ? "real"
               : root.bar.batterySimulatedState
             options: [{ value: "real", label: "Off" }, { value: "charging", label: "Charging" },
@@ -355,15 +377,36 @@ Item {
             }
           }
         }
+
+        // The preview shows the real glow, so at a tiny glow size there is
+        // nothing to see: say so rather than look broken.
+        Text {
+          visible: text !== ""
+          width: parent.width
+          wrapMode: Text.WordWrap
+          text: !root.bar ? ""
+            : !root.bar.notchBatteryGlow ? "The battery glow is switched off, so the preview has nothing to show."
+            : root.bar.notchGlowScale <= 0 ? "Glow size is off, so the preview has nothing to show. Raise Glow size to see it."
+            : root.glowReach < 4 ? "Glow size " + root.bar.notchGlowScale.toFixed(2) + "× reaches only " + root.glowReach.toFixed(1) + " px, too small to see. Raise Glow size to see the preview."
+            : root.bar.batterySimulated ? "Previewing: while the settings are open the glow sits under the panel's bottom edge. It stops when the settings close."
+            : ""
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          bottomPadding: Style.space(4)
+        }
       }
 
-      PanelSeparator { width: parent.width }
+      PanelSeparator { width: parent.width; foreground: root.foreground }
 
       Item {
         width: parent.width
         height: resetButton.implicitHeight + Style.space(8)
         Button {
           id: resetButton
+          foreground: root.foreground
+          accent: root.accent
+          radius: root.radiusFor(Math.min(width, height))
           anchors.right: parent.right
           anchors.bottom: parent.bottom
           text: "Reset to defaults"
@@ -442,6 +485,9 @@ Item {
     Repeater {
       model: flow.options
       Button {
+        foreground: root.foreground
+        accent: root.accent
+        radius: root.radiusFor(Math.min(width, height))
         required property var modelData
         text: modelData.label
         selected: flow.selected.indexOf(modelData.value) !== -1
@@ -494,7 +540,7 @@ Item {
       bottomPadding: Style.space(8)
     }
 
-    PanelSeparator { width: parent.width }
+    PanelSeparator { width: parent.width; foreground: root.foreground }
   }
 
   // A plugin list folded to one line: the label, what is picked, and a
@@ -648,6 +694,9 @@ Item {
       }
 
       Button {
+        foreground: root.foreground
+        accent: root.accent
+        radius: root.radiusFor(Math.min(width, height))
         text: keyRow.recording ? "Cancel" : "Record"
         bordered: true
         fontFamily: root.fontFamily
@@ -662,6 +711,9 @@ Item {
       }
 
       Button {
+        foreground: root.foreground
+        accent: root.accent
+        radius: root.radiusFor(Math.min(width, height))
         visible: keyRow.current !== "" && !keyRow.recording
         text: "✕"
         bordered: true
@@ -700,12 +752,93 @@ Item {
     property int to: 100
     property int stepSize: 1
     NumberField {
+      id: numberField
+      foreground: root.foreground
+      accent: root.accent
+      // NumberField takes its corner from the theme; give its box the notch's.
+      // Its box and its up/down buttons take their corners from the theme; give
+      // them the notch's.
+      Component.onCompleted: {
+        if (!field) return
+        var parts = [field.background, field.up ? field.up.indicator : null, field.down ? field.down.indicator : null]
+        parts.forEach(function(part) {
+          if (part && part.radius !== undefined)
+            part.radius = Qt.binding(function() { return root.radiusFor(Math.min(part.height, part.width)) })
+        })
+      }
       value: numberRow.value
       from: numberRow.from
       to: numberRow.to
       stepSize: numberRow.stepSize
       fontFamily: root.fontFamily
       onModified: function(value) { root.set(numberRow.key, value) }
+    }
+  }
+
+  // Omarchy's ButtonGroup, with the notch's colours and radius: one of N.
+  component Choice: Row {
+    id: choice
+    property var options: []
+    property string value: ""
+    property string fontFamily: root.fontFamily
+    signal changed(string value)
+    spacing: Style.spacing.md
+    Repeater {
+      model: choice.options
+      Button {
+        required property var modelData
+        text: modelData.label
+        selected: modelData.value === choice.value
+        bordered: true
+        foreground: root.foreground
+        background: root.surface
+        accent: root.accent
+        radius: root.radiusFor(Math.min(width, height))
+        fontFamily: choice.fontFamily
+        onClicked: choice.changed(modelData.value)
+      }
+    }
+  }
+
+  // Omarchy's ToggleSwitch, with the notch's colours and radius. `toggled`
+  // fires before `checked` changes, as ToggleSwitch's does.
+  component Switch: Item {
+    id: toggle
+    property bool checked: false
+    signal toggled()
+    readonly property int trackHeight: Math.max(22, Math.round(Style.spacing.controlHeight * 0.55))
+    readonly property int trackWidth: Math.round(trackHeight * 1.9)
+    readonly property int knobSize: Math.max(6, Math.round(trackHeight * 0.72))
+    readonly property int knobInset: Math.max(1, Math.round((trackHeight - knobSize) / 2))
+    implicitWidth: trackWidth
+    implicitHeight: trackHeight
+
+    BorderSurface {
+      id: track
+      anchors.fill: parent
+      radius: root.radiusFor(Math.min(width, height))
+      color: toggle.checked ? Style.selectedFillFor(root.foreground, root.accent) : Style.normalFillFor(root.foreground, root.accent)
+      borderSpec: Border.controlSpec(toggle.checked ? "selected" : (switchMouse.containsMouse ? "hover-cursor" : "normal"), root.foreground, root.accent)
+      Behavior on color { ColorAnimation { duration: 120 } }
+
+      Rectangle {
+        width: toggle.knobSize
+        height: toggle.knobSize
+        radius: root.radiusFor(Math.min(width, height))
+        x: toggle.checked ? track.width - width - toggle.knobInset : toggle.knobInset
+        anchors.verticalCenter: parent.verticalCenter
+        color: toggle.checked ? Style.selectedStateColor(root.foreground, root.accent) : Qt.darker(root.foreground, 1.25)
+        Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: 120 } }
+      }
+    }
+
+    MouseArea {
+      id: switchMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: toggle.toggled()
     }
   }
 
@@ -718,6 +851,9 @@ Item {
       model: [{ value: "clock", label: "Time" }, { value: "date", label: "Date" },
               { value: "media", label: "Media" }, { value: "battery", label: "Battery" }]
       Button {
+        foreground: root.foreground
+        accent: root.accent
+        radius: root.radiusFor(Math.min(width, height))
         required property var modelData
         text: modelData.label
         selected: chips.selected.indexOf(modelData.value) !== -1

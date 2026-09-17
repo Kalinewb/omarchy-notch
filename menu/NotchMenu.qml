@@ -14,7 +14,13 @@ import "MenuModel.js" as MenuModel
 //
 // What differs from upstream, and nothing else:
 //   - no PanelWindow, scrim or BorderSurface card: the Item is the card, and
-//     its background is the notch's own colour (black by default)
+//     its background is the notch's own colour (black by default); text is
+//     the notch's (Apple white on black), and the selection and dialog scrim
+//     colours are the theme's menu colours when they show on that colour,
+//     otherwise readable ones
+//   - corners are the notch's radius, not the theme's Hyprland rounding, and
+//     the uninstall confirmation is menu/NotchConfirmDialog.qml (Omarchy's
+//     ConfirmDialog with rounded buttons)
 //   - sizes come from the notch (maxWidth, maxHeight) instead of the screen;
 //     the card top is always the screen edge, so only the rows' ceiling is
 //     frozen on the first search or submenu move, not a card top
@@ -144,15 +150,15 @@ Item {
   // singleton), so consumers can drop them straight into a Rectangle.
   // The surface is the notch's own colour.
   property color background: bar ? bar.notchColor : "#000000"
-  property color foreground: Color.menu.text
-  property color scrim: Color.menu.scrim
-  property color selectedBackground: Color.menu.selectedBackground
-  property color selectedText: Color.menu.selectedText
+  property color foreground: bar ? bar.notchForeground : Color.menu.text
+  property color scrim: bar ? Qt.rgba(background.r, background.g, background.b, 0.7) : Color.menu.scrim
+  property color selectedBackground: bar ? bar.visibleTint(Color.menu.selectedBackground, background, foreground) : Color.menu.selectedBackground
+  property color selectedText: bar ? bar.readableOn(background, [Color.menu.selectedText, foreground], 4.5) : Color.menu.selectedText
   property color selectedBorder: Color.menu.selectedBorder
   property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", selectedBorder, 0)
   readonly property real rowReservedBorderLeft: Border.left(selectedBorderSpec)
   readonly property real rowReservedBorderRight: Border.right(selectedBorderSpec)
-  readonly property int cornerRadius: Style.cornerRadius
+  readonly property real cornerRadius: bar ? bar.notchRadius : Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md
@@ -1143,7 +1149,7 @@ Item {
         }
       }
 
-      ConfirmDialog {
+      NotchConfirmDialog {
         id: deleteConfirm
 
         anchors.fill: parent
@@ -1174,7 +1180,7 @@ Item {
       Rectangle {
         width: parent.width
         height: root.headerHeight
-        radius: root.cornerRadius
+        radius: Math.max(0, Math.min(root.cornerRadius, width / 2, height / 2))
         color: "transparent"
 
         Text {
@@ -1246,7 +1252,7 @@ Item {
 
             width: ListView.view.width
             height: root.rowHeightForDetail(row.detail)
-            radius: root.cornerRadius
+            radius: Math.max(0, Math.min(root.cornerRadius, height / 2))
             color: row.hasCursor ? root.selectedBackground : "transparent"
             borderSpec: row.hasCursor ? root.selectedBorderSpec : Border.none()
 
@@ -1254,7 +1260,7 @@ Item {
               visible: false
               width: Style.space(4)
               height: parent.height - Style.space(18)
-              radius: Math.min(root.cornerRadius, Style.space(4))
+              radius: Math.max(0, Math.min(root.cornerRadius, width / 2, height / 2))
               color: root.selectedBackground
               anchors.left: parent.left
               anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8)

@@ -78,10 +78,12 @@ Item {
   property color themeForeground: Color.bar.text
   property color themeContrastForeground: Color.background
   property color transparentForeground: Color.bar.text
-  property color foreground: themeForeground
-  property color barForeground: useTransparentForeground ? transparentForeground : themeForeground
+  // The notch is its own surface, so widgets drawn in it take the notch's
+  // readable text colour and its colour (see "colours on the notch").
+  property color foreground: notchForeground
+  property color barForeground: useTransparentForeground ? transparentForeground : notchForeground
   property bool foregroundAnimationEnabled: true
-  property color background: Color.bar.background
+  property color background: notchColor
   property color urgent: Color.bar.active
 
   Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
@@ -1290,9 +1292,12 @@ Item {
   //   batteryPeek    widen to show the charge when plugged in or running low (default true)
   //   autoHide       true: the resting notch hides in the screen edge until the
   //                  pointer reaches the top edge above it (default false).
-  //                  Windows then use the full height.
-  //   windowsToTop   false (default): windows stay below the resting notch.
-  //                  true: windows go all the way to the top edge, under the notch.
+  //   windowsToTop   false: windows stay below the resting notch. true: windows
+  //                  go all the way to the top edge, under the notch. Defaults
+  //                  to autoHide's value, so an auto-hiding notch lets windows
+  //                  use the full height unless this is set to false. Either
+  //                  way the space kept clear never changes while the notch
+  //                  opens, peeks, hides or reveals.
   //                  Toggle with `quickshell ipc -p $OMARCHY_PATH/shell call notch windowsToTop toggle`.
 
   readonly property var notchConfig: Util.isPlainObject(barConfig) && Util.isPlainObject(barConfig.notch) ? barConfig.notch : ({})
@@ -1484,7 +1489,75 @@ Item {
     onRunningChanged: if (!running && root.keybindRerun) { root.keybindRerun = false; running = true }
   }
   readonly property color notchColor: notchSetting("color", "#000000")
-  readonly property color notchForeground: notchSetting("foreground", themeForeground)
+  readonly property color notchForeground: notchSetting("foreground", notchText)
+
+  // --- colours on the notch ----------------------------------------------------
+  //
+  // The notch is black whatever the theme, so text on it doesn't take the
+  // theme's colours: it is Apple white (#FFFFFF, secondary text #EBEBF5 at
+  // 60 %) on a dark notch, and Apple black (#000000, secondary #3C3C43 at
+  // 60 %) on a light one -- whichever reads better on the notch colour. A
+  // `foreground` setting still wins. The accent is the theme's when it reaches
+  // 3:1 on the notch (it marks, it isn't read), otherwise the text colour.
+  function luminance(value) {
+    var c = Qt.tint(value, "transparent")   // a color from a color or a "#rrggbb" string
+    function channel(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+    return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+  }
+  function contrast(a, b) {
+    var la = luminance(a), lb = luminance(b)
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+  }
+  function readableOn(background, candidates, minimum) {
+    for (var i = 0; i < candidates.length; i++) {
+      if (candidates[i] === undefined || candidates[i] === null) continue
+      var c = Qt.tint(candidates[i], "transparent")
+      if (contrast(c, background) >= minimum) return Qt.rgba(c.r, c.g, c.b, 1)
+    }
+    // None reads well enough: white or black, whichever reads better (on a
+    // mid-tone notch neither may reach the minimum).
+    return contrast("#ffffff", background) >= contrast("#000000", background) ? "#ffffff" : "#000000"
+  }
+  // A translucent tint (a selection fill) that disappears on this background
+  // is replaced by `fallback` at 14 %.
+  function visibleTint(tintValue, backgroundValue, fallbackValue) {
+    var tint = Qt.tint(tintValue, "transparent"), background = Qt.tint(backgroundValue, "transparent"), fallback = Qt.tint(fallbackValue, "transparent")
+    var a = tint.a
+    var mixed = Qt.rgba(background.r * (1 - a) + tint.r * a, background.g * (1 - a) + tint.g * a, background.b * (1 - a) + tint.b * a, 1)
+    return contrast(mixed, background) >= 1.1 ? tint : Qt.rgba(fallback.r, fallback.g, fallback.b, 0.14)
+  }
+  readonly property bool notchIsDark: contrast("#ffffff", notchColor) >= contrast("#000000", notchColor)
+  readonly property color notchText: notchIsDark ? "#ffffff" : "#000000"
+  readonly property color notchSecondaryText: notchSetting("foreground", "") !== ""
+    ? Qt.rgba(notchForeground.r, notchForeground.g, notchForeground.b, 0.6)
+    : notchIsDark ? Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6) : Qt.rgba(60 / 255, 60 / 255, 67 / 255, 0.6)
+
+  // One radius (DESIGN-PHILOSOPHY.md, 5): every button, chip, field, switch,
+  // highlight, outline and tooltip in or hanging from the notch uses the
+  // notch's bottom radius -- not the theme's Hyprland rounding -- capped at
+  // half the item's height so a short control becomes a pill.
+  readonly property real notchRadius: notchBottomRadius
+  // `size` is the item's smaller side (its height, for anything wider than tall).
+  function radiusFor(size) { return Math.max(0, Math.min(notchRadius, Number(size) / 2)) }
+  // Every item with a radius under `item`, for dev/design.sh.
+  function radiusAudit(item) {
+    var out = []
+    function typeOf(o) { return String(o).replace(/_QMLTYPE_\d+/, "").replace(/\(0x[0-9a-f]+.*$/, "").replace(/^QQuick/, "") }
+    function walk(o, path) {
+      if (!o) return
+      if (o.radius !== undefined && typeof o.radius === "number") {
+        var drawn = (o.color !== undefined && o.color.a > 0) || (o.border !== undefined && o.border.width > 0)
+          || (o.usesOverlayBorder === true)
+        out.push({ type: typeOf(o), path: path, radius: Number(o.radius.toFixed(3)), width: Number(o.width.toFixed(2)),
+                   height: Number(o.height.toFixed(2)), drawn: drawn, gradient: !!o.gradient })
+      }
+      var kids = o.children || []
+      for (var i = 0; i < kids.length; i++) walk(kids[i], path + "/" + typeOf(kids[i]))
+    }
+    walk(item, typeOf(item))
+    return out
+  }
+  readonly property color notchAccent: readableOn(notchColor, [Color.accent, notchForeground], 3)
   readonly property real notchCompactWidth: Math.max(0, notchNumber("compactWidth", 180))
   readonly property real notchCompactHeight: Math.max(barSize, notchNumber("compactHeight", 32))
   readonly property real notchBottomRadius: Math.max(0, notchNumber("bottomRadius", 10))
@@ -1493,8 +1566,10 @@ Item {
   readonly property int notchCollapseDelay: Math.max(0, notchNumber("collapseDelay", 350))
   readonly property bool notchPeekOnTrackChange: notchSetting("peekOnTrackChange", true) !== false
   readonly property int notchPeekDuration: Math.max(500, notchNumber("peekDuration", 3500))
-  readonly property bool notchWindowsToTop: notchSetting("windowsToTop", false) === true
   readonly property bool notchAutoHide: notchSetting("autoHide", false) === true
+  readonly property bool notchWindowsToTop: notchSetting("windowsToTop", notchAutoHide) === true
+  // Whether windowsToTop is set, or follows autoHide (for the settings' note).
+  readonly property bool notchWindowsToTopSet: notchConfig.windowsToTop === true || notchConfig.windowsToTop === false
 
   // --- battery ---------------------------------------------------------------
 
@@ -1573,6 +1648,10 @@ Item {
       if (event && String(event.name) === "configreloaded") {
         glowLayerRuleProcess.running = true
         root.applyKeybinds()
+        // Omarchy's Style reads Hyprland's rounding and gaps only at startup,
+        // on a theme change and on the gaps toggle, so a rounding changed and
+        // reset through the Hyprland config left the shell's boxes behind.
+        Style.scheduleRefresh()
       }
     }
   }
@@ -1787,6 +1866,9 @@ Item {
         }
       })
     }
+    // Every rounded item in the settings panel and the menu, with the notch's
+    // radius, for dev/design.sh (DESIGN-PHILOSOPHY.md, 5).
+    function design(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.designReport()) : "{}" }
     function snapshot(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.contractSnapshot()) : "{}" }
     function geometry(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.geometryReport()) : "{}" }
   }
@@ -1844,9 +1926,28 @@ Item {
     // animation) and any user blur rule written for the bar still apply.
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
-    // A hidden or auto-hiding notch reserves nothing: windows use the height.
-    exclusionMode: root.barHidden || root.notchWindowsToTop || root.notchAutoHide ? ExclusionMode.Ignore : ExclusionMode.Normal
-    exclusiveZone: root.barHidden || root.notchWindowsToTop || root.notchAutoHide ? 0 : Math.ceil(root.notchCompactHeight)
+    // The space windows keep clear at the top: the resting height, or nothing
+    // when windows reach the top edge (windowsToTop) or the bar is hidden. It
+    // depends on settings only, never on whether the notch is open, peeking,
+    // hiding or revealed, so using the notch never resizes a window.
+    readonly property int reservedZone: root.barHidden || root.notchWindowsToTop ? 0 : Math.ceil(root.notchCompactHeight)
+    // A test notch (no host shell, or NOTCH_HARNESS=1) never reserves space on
+    // the real screen -- that would move the user's windows while tests run --
+    // it only reports the zone it would reserve.
+    readonly property bool reservesOnScreen: !!root.shell && !root.harnessed
+    // Applied imperatively, zone first and then mode, because of two Quickshell
+    // behaviours measured on this system: setting exclusiveZone switches
+    // exclusionMode back to Normal, and with the two bound together a change
+    // made just after the window is created (when the host hands over
+    // shell.json) is reported but never reaches Hyprland, which kept the old
+    // 32 px reserved. In this order the change always lands.
+    function applyExclusion() {
+      var zone = reservesOnScreen ? reservedZone : 0
+      exclusiveZone = zone
+      exclusionMode = zone > 0 ? ExclusionMode.Normal : ExclusionMode.Ignore
+    }
+    onReservedZoneChanged: applyExclusion()
+    onReservesOnScreenChanged: applyExclusion()
 
     // Input: the notch itself, plus the reveal strip while it auto-hides.
     mask: Region {
@@ -1975,6 +2076,7 @@ Item {
     }
 
     Component.onCompleted: {
+      applyExclusion()
       root.registerNotchWindow(barWindow)
       shownWidth = targetWidth * root.seedWidthFraction
       shownHeight = 0
@@ -2200,14 +2302,15 @@ Item {
       easing.type: Easing.OutCubic
     }
 
-    // How far the notch has grown out of the edge (0..1).
-    readonly property real emergence: root.notchCompactHeight > 0 ? Math.max(0, Math.min(1, shownHeight / root.notchCompactHeight)) : 1
-
-    // Requested radii. While the notch grows out of the edge both scale with
-    // its height, so it never passes through a pill. Otherwise the bottom
-    // corners follow the setting in every state, the settings panel included.
-    readonly property real requestedBottomRadius: root.notchBottomRadius * emergence
-    readonly property real requestedFilletRadius: root.notchFilletRadius * emergence
+    // Requested radii: the settings, in every state -- growing, hiding and the
+    // panels included. They used to scale down with the height while the notch
+    // emerged or tucked away, which ended a hide as a sharp-cornered sliver.
+    // The Island caps them to what fits instead (bottom corners at most half
+    // the height, fillets at most the straight side), so the notch stays
+    // rounded all the way into the edge; the top corners stay square and the
+    // fillets keep it fused, so it is never a pill.
+    readonly property real requestedBottomRadius: root.notchBottomRadius
+    readonly property real requestedFilletRadius: root.notchFilletRadius
 
     function point(p) { return { x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)) } }
 
@@ -2277,8 +2380,51 @@ Item {
                    : barWindow.WlrLayershell.keyboardFocus === WlrKeyboardFocus.OnDemand ? "onDemand" : "none",
                  windowActive: menuHost.Window.active, keys: m ? m.keysFocused : false },
         background: m ? String(m.background).toUpperCase() : "", notchColor: String(root.notchColor).toUpperCase(),
+        colours: m ? {
+          text: String(m.foreground), selectedText: String(m.selectedText), selectedBackground: String(m.selectedBackground),
+          textContrast: Number(root.contrast(m.foreground, m.background).toFixed(2)),
+          selectedTextContrast: Number(root.contrast(m.selectedText, m.background).toFixed(2)),
+          selectionContrast: Number(root.contrast(Qt.rgba(
+            m.background.r * (1 - m.selectedBackground.a) + m.selectedBackground.r * m.selectedBackground.a,
+            m.background.g * (1 - m.selectedBackground.a) + m.selectedBackground.g * m.selectedBackground.a,
+            m.background.b * (1 - m.selectedBackground.a) + m.selectedBackground.b * m.selectedBackground.a, 1), m.background).toFixed(3))
+        } : null,
         appLibrary: m ? { present: !!m.appLibrary, own: m.appLibrary === m.ownLibrary } : null,
         menuWith: root.notchMenuWith, menuKey: root.notchMenuKey
+      }
+    }
+
+    function designReport() {
+      return {
+        radius: root.notchRadius, bottomRadius: root.notchBottomRadius,
+        tooltip: { radius: tooltipBubble.radius, height: tooltipBubble.height },
+        settings: expandedHost.item ? root.radiusAudit(expandedHost.item) : [],
+        menu: menuHost.item ? root.radiusAudit(menuHost.item) : []
+      }
+    }
+
+    // The notch's colours and their contrast, as numbers.
+    function coloursReport() {
+      function hex(value) { var c = Qt.tint(value, "transparent"); return String(Qt.rgba(c.r, c.g, c.b, 1)).toUpperCase() }
+      var settings = expandedHost.item
+      return {
+        notch: hex(root.notchColor),
+        dark: root.notchIsDark, secondary: String(root.notchSecondaryText).toUpperCase(),
+        foregroundSetting: String(root.notchSetting("foreground", "")),
+        text: hex(root.notchText), foreground: hex(root.notchForeground), accent: hex(root.notchAccent),
+        textContrast: Number(root.contrast(root.notchForeground, root.notchColor).toFixed(3)),
+        accentContrast: Number(root.contrast(root.notchAccent, root.notchColor).toFixed(3)),
+        widgets: { foreground: hex(root.foreground), barForeground: hex(root.barForeground), background: hex(root.background) },
+        glance: hex(compactGlance.foreground),
+        settings: settings ? { foreground: hex(settings.foreground), accent: hex(settings.accent), surface: hex(settings.surface), glowReach: Number(settings.glowReach.toFixed(3)) } : null,
+        selfTest: {
+          blackWhite: Number(root.contrast("#000000", "#ffffff").toFixed(3)),
+          same: Number(root.contrast("#586e75", "#586e75").toFixed(3)),
+          bestOnNotch: Number(Math.max(root.contrast("#ffffff", root.notchColor), root.contrast("#000000", root.notchColor)).toFixed(3)),
+          slateOnBlack: Number(root.contrast("#586e75", "#000000").toFixed(3)),
+          readableFallbackOnBlack: hex(root.readableOn("#000000", ["#111111"], 7)),
+          readableFallbackOnWhite: hex(root.readableOn("#ffffff", ["#eeeeee"], 7))
+        }
       }
     }
 
@@ -2288,7 +2434,10 @@ Item {
       return {
         screen: { name: barWindow.screen ? barWindow.screen.name : "", width: barWindow.width, height: barWindow.screen ? barWindow.screen.height : 0 },
         state: barWindow.notchState,
-        window: { height: barWindow.height, exclusiveZone: barWindow.exclusiveZone, windowsToTop: root.notchWindowsToTop },
+        // exclusiveZone: the space kept clear for windows (a test notch only
+        // reports it); applied: what the window actually asks Hyprland for.
+        window: { height: barWindow.height, exclusiveZone: barWindow.reservedZone, windowsToTop: root.notchWindowsToTop,
+                  applied: { zone: barWindow.exclusiveZone, mode: barWindow.exclusionMode === ExclusionMode.Ignore ? "ignore" : "normal", onScreen: barWindow.reservesOnScreen } },
         bar: { x: Number(bx.toFixed(3)), y: island.y, width: Number(island.barWidth.toFixed(3)), height: Number(island.barHeight.toFixed(3)) },
         target: { width: Number(targetWidth.toFixed(3)), height: Number(targetHeight.toFixed(3)) },
         widgets: {
@@ -2314,6 +2463,7 @@ Item {
         },
         settingsOpen: barWindow.settingsOpen,
         menu: menuReport(),
+        colours: coloursReport(),
         media: {
           facade: !!root.mediaService,
           activeKey: root.mediaPlayerKey(root.mediaPlayer),
@@ -2406,8 +2556,8 @@ Item {
         y: 0
         barWidth: restWidth
         barHeight: Math.max(0, Math.min(barWindow.shownHeight, root.notchCompactHeight))
-        bottomRadius: Math.max(0, Math.min(root.notchBottomRadius * barWindow.emergence, barWidth / 2, barHeight / 2))
-        filletRadius: Math.max(0, Math.min(root.notchFilletRadius * barWindow.emergence, barHeight - bottomRadius))
+        bottomRadius: Math.max(0, Math.min(root.notchBottomRadius, barWidth / 2, barHeight / 2))
+        filletRadius: Math.max(0, Math.min(root.notchFilletRadius, barHeight - bottomRadius))
         color: barWindow.glowColorShown
         // Drawn only in the outline style, not at all at glow size 0, and
         // handed over to the open-notch glow as the notch widens.
@@ -2754,6 +2904,7 @@ Item {
         bar: root
         headerHeight: root.notchCompactHeight
         maxHeight: barWindow.panelMaxHeight
+        glowReach: glow.reach
         onCloseRequested: barWindow.settingsOpen = false
       }
     }
@@ -2806,7 +2957,7 @@ Item {
         implicitHeight: tooltipLabel.implicitHeight + 14
         color: Color.tooltip.background
         borderSpec: Border.surfaceSpec("tooltip", "border", Color.tooltip.border, 1)
-        radius: Style.cornerRadius
+        radius: root.radiusFor(height)
 
         Text {
           id: tooltipLabel
@@ -2866,7 +3017,7 @@ Item {
         anchors.fill: parent
         color: root.transparent ? "transparent" : root.background
         borderSpec: Border.flat(root.barForeground, 1)
-        radius: Math.min(Style.cornerRadius, height / 2)
+        radius: root.radiusFor(height)
         opacity: root.transparent ? 0.45 : 0.94
       }
 
@@ -3277,7 +3428,7 @@ Item {
       anchors.margins: Style.space(1)
       color: root.transparent ? "transparent" : root.background
       borderSpec: Border.flat(root.barForeground, 1)
-      radius: Math.min(Style.cornerRadius, height / 2)
+      radius: root.radiusFor(height)
       opacity: root.transparent ? 0.22 : 0.32
     }
 

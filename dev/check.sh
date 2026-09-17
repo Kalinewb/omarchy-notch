@@ -11,7 +11,7 @@
 
 set -uo pipefail
 DEV=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-SUITES=(geometry glow glow-bottom keys media contract menu colours design motion windows update)
+SUITES=(geometry glow glow-bottom keys media contract menu colours design motion windows update surface)
 (( $# > 0 )) && SUITES=("${@/#lint/}") && SUITES=(${SUITES[@]})
 
 "$DEV/lint.sh" || { echo; echo "lint failed: not running the test suites"; exit 1; }

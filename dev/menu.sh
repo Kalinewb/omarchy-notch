@@ -118,7 +118,7 @@ check "square top corners; bottom corners at the configured radius (10); fillets
 check "one surface: the menu's background is the notch colour (#000000)" "#000000 #000000" \
   "$(jq -r '.menu | "\(.background) \(.notchColor)"' <<<"$o")"
 check "windows are not pushed: the reserved zone stays the resting height" "32" "$(jq -r .window.exclusiveZone <<<"$o")"
-check "the window is tall enough for the card" "true" "$(jq -r '.window.height >= .menu.card.height' <<<"$o")"
+check "the panel window it draws in is tall enough for the card; the bar window stays 36 px" "true 36" "$(jq -r '"\(.panel.height >= .menu.card.height) \(.window.height)"' <<<"$o")"
 check "the keyboard comes to the notch: layer on demand, compositor focus, menu keys focused" "onDemand true true" \
   "$(jq -r '.menu.focus | "\(.keyboard) \(.windowActive) \(.keys)"' <<<"$o")"
 layers=$(hyprctl layers -j | jq -c --argjson pid "$qs_pid" '[.. | objects | select(has("namespace") and .pid == $pid) | .namespace] | unique')

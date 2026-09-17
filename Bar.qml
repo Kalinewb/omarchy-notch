@@ -1258,6 +1258,10 @@ Item {
   //                  claim, then the menu, then openWith.
   //   menuKey        a key combination that toggles the menu (default none)
   //   autoHideKey    a key combination that toggles autoHide (default none)
+  //   stayOpen       true: the notch stays open on its open view (openAction, or
+  //                  the widgets when that is a panel), whatever the pointer
+  //                  does; the settings and the menu still open over it (default false)
+  //   stayOpenKey    a key combination that toggles stayOpen (default none)
   //   color          notch colour (default "#000000")
   //   foreground     text colour (default: the theme's bar text)
   //   compactWidth   resting width in logical px (default 180)
@@ -1417,6 +1421,7 @@ Item {
   readonly property string notchSettingsKey: cleanKey(notchSetting("settingsKey", ""))
   readonly property string notchMenuKey: cleanKey(notchSetting("menuKey", ""))
   readonly property string notchAutoHideKey: cleanKey(notchSetting("autoHideKey", ""))
+  readonly property string notchStayOpenKey: cleanKey(notchSetting("stayOpenKey", ""))
 
   // A Hyprland key combination: modifiers and a key joined by "+", letters,
   // digits and underscores only, so it can be quoted into a Lua call safely.
@@ -1435,8 +1440,8 @@ Item {
   // every bind is a notch bind. Config reloads clear runtime binds; the apply
   // after `configreloaded` adds them back. NOTCH_NO_KEYBINDS=1 turns it off
   // (test harnesses).
-  property var appliedKeys: ({ open: "", settings: "", autoHide: "", menu: "" })
-  readonly property string keyState: notchOpenKey + "|" + notchSettingsKey + "|" + notchAutoHideKey + "|" + notchMenuKey
+  property var appliedKeys: ({ open: "", settings: "", autoHide: "", menu: "", stayOpen: "" })
+  readonly property string keyState: notchOpenKey + "|" + notchSettingsKey + "|" + notchAutoHideKey + "|" + notchMenuKey + "|" + notchStayOpenKey
   // Only the notch Omarchy's shell is hosting touches Hyprland's binds. A notch
   // running anywhere else (a test harness) would otherwise reconcile the live
   // notch's binds away; NOTCH_FORCE_KEYBINDS=1 lets a keybind test opt in.
@@ -1453,7 +1458,8 @@ Item {
     open: { method: "toggle", description: "Open the notch" + keybindTag },
     settings: { method: "settings", description: "Notch settings" + keybindTag },
     autoHide: { method: "autoHide toggle", description: "Toggle notch auto-hide" + keybindTag },
-    menu: { method: "menu root", description: "Notch menu" + keybindTag }
+    menu: { method: "menu root", description: "Notch menu" + keybindTag },
+    stayOpen: { method: "stayOpen toggle", description: "Keep the notch open" + keybindTag }
   })
   onKeyStateChanged: Qt.callLater(applyKeybinds)
   // Keybinds are skipped until the host has set `shell` (see keybindsDisabled);
@@ -1465,8 +1471,8 @@ Item {
   property bool keybindRerun: false
   function applyKeybinds() {
     if (keybindsDisabled) return
-    var wanted = { open: notchOpenKey, settings: notchSettingsKey, autoHide: notchAutoHideKey, menu: notchMenuKey }
-    var names = ["open", "settings", "autoHide", "menu"]
+    var wanted = { open: notchOpenKey, settings: notchSettingsKey, autoHide: notchAutoHideKey, menu: notchMenuKey, stayOpen: notchStayOpenKey }
+    var names = ["open", "settings", "autoHide", "menu", "stayOpen"]
     var list = []
     for (var i = 0; i < names.length; i++) {
       var n = names[i]
@@ -1567,6 +1573,7 @@ Item {
   readonly property bool notchPeekOnTrackChange: notchSetting("peekOnTrackChange", true) !== false
   readonly property int notchPeekDuration: Math.max(500, notchNumber("peekDuration", 3500))
   readonly property bool notchAutoHide: notchSetting("autoHide", false) === true
+  readonly property bool notchStayOpen: notchSetting("stayOpen", false) === true
   readonly property bool notchWindowsToTop: notchSetting("windowsToTop", notchAutoHide) === true
   // Whether windowsToTop is set, or follows autoHide (for the settings' note).
   readonly property bool notchWindowsToTopSet: notchConfig.windowsToTop === true || notchConfig.windowsToTop === false
@@ -1953,13 +1960,21 @@ Item {
   IpcHandler {
     target: "notch"
 
-    function expand(): void { var w = root.focusedNotchWindow(); if (w) w.openView(root.notchOpenAction, "click") }
+    function expand(): void { var w = root.focusedNotchWindow(); if (w) w.openView(root.notchOpenAction, "key") }
     function collapse(): void { for (var i = 0; i < root.notchWindows.length; i++) root.notchWindows[i].collapseNow() }
+    // The open keybind. From the settings or the menu it goes to the open view
+    // (or just closes the panel, when the open action is that panel).
     function toggle(): void {
       var w = root.focusedNotchWindow()
       if (!w) return
+      var action = root.notchOpenAction
+      if (w.panelOpen) {
+        if (action === "none" || (action === "settings" && w.settingsOpen) || (action === "menu" && w.menuOpen)) w.closePanels()
+        else w.openView(action, "key")
+        return
+      }
       if (w.expanded) w.collapseNow()
-      else w.openView(root.notchOpenAction, "click")
+      else w.openView(action, "key")
     }
     function peek(): void { var w = root.focusedNotchWindow(); if (w) w.startPeek("media") }
     // Open one of the notch's views as if hovered: widgets, clock, battery,
@@ -1976,6 +1991,12 @@ Item {
         root.batterySimulatedState = state
       }
       return root.batteryMode
+    }
+    // "true", "false" or "toggle"; saved to shell.json. Returns the new value.
+    function stayOpen(value: string): string {
+      var next = value === "toggle" ? !root.notchStayOpen : value === "true"
+      if (value !== "toggle" && value !== "true" && value !== "false") return String(root.notchStayOpen)
+      return root.setNotchSetting("stayOpen", next) ? String(next) : "unsaved"
     }
     // "true", "false" or "toggle"; saved to shell.json. Returns the new value.
     function autoHide(value: string): string {
@@ -2092,16 +2113,16 @@ Item {
       left: true
       right: true
     }
-    // As tall as the resting notch (plus the spring's overshoot) -- panels that
-    // hang from the bar read this height. Only while the notch is grown into
-    // its settings or the menu is the window as tall as that panel may get; it
-    // goes back once the notch has shrunk to rest.
+    // One height, always: the resting notch plus the spring's overshoot, which
+    // is what panels that hang from the bar read. The notch's tall shapes --
+    // the settings, the menu, the update notice -- are drawn in panelWindow,
+    // sized once. Resizing a layer surface makes Hyprland draw its old buffer
+    // stretched to the new size for a few frames (measured: 1-5 frames, the
+    // blink that looked like a reload), so no surface showing the notch ever
+    // changes size.
     readonly property real panelMaxHeight: Math.max(root.notchCompactHeight,
       Math.min(Style.space(620), (barWindow.screen ? barWindow.screen.height : 900) - Style.space(60)))
-    readonly property bool tall: panelOpen || shownHeight > root.notchCompactHeight * (1 + root.springOvershoot) + 1
-    implicitHeight: tall
-      ? Math.ceil(panelMaxHeight * (1 + root.springOvershoot) + 2)
-      : Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + 2)
+    implicitHeight: Math.ceil(root.notchExpandedHeight * (1 + root.springOvershoot) + 2)
     color: "transparent"
     surfaceFormat.opaque: false
     // The stock bar's namespace, so Omarchy's own layer rule (no map
@@ -2131,16 +2152,24 @@ Item {
     onReservedZoneChanged: applyExclusion()
     onReservesOnScreenChanged: applyExclusion()
 
-    // Input: the notch itself, plus the reveal strip while it auto-hides.
+    // Input: the notch itself (unless panelWindow is drawing it), plus the
+    // reveal strip while it auto-hides.
     mask: Region {
-      item: island
+      item: barWindow.barShapeHidden ? noInput : island
       Region { item: revealZone; intersection: Intersection.Combine }
     }
+    Item { id: noInput; width: 0; height: 0 }
 
     // --- state --------------------------------------------------------------
 
     property bool hoverExpanded: false
     property bool clickExpanded: false
+    // Opened by a keybind (or IPC): it doesn't arm the click-outside focus
+    // grab, which Hyprland clears on unrelated focus changes when the pointer
+    // is elsewhere. It closes on the keybind again, or once the pointer has
+    // been over the notch and left.
+    property bool keyExpanded: false
+    property bool keyVisited: false
     property bool peeking: false
     property bool mediaReady: false
     property string peekKind: "media"
@@ -2161,8 +2190,10 @@ Item {
     readonly property bool panelOpen: settingsOpen || menuOpen
     readonly property bool popoutHere: root.activePopout !== null && root.targetBelongsToWindow(root.activePopout, barWindow)
     readonly property bool dragHere: root.barDragSource !== null && root.barDragWindow === barWindow
+    // stayOpen: the notch stays open on its open view.
+    readonly property bool pinned: root.notchStayOpen && !root.barHidden
     readonly property bool expanded: !root.barHidden
-      && (panelOpen || hoverExpanded || clickExpanded || popoutHere || dragHere
+      && (panelOpen || hoverExpanded || clickExpanded || keyExpanded || pinned || popoutHere || dragHere
           || (root.notchForcedExpanded && root.focusedNotchWindow() === barWindow))
     // Auto-hide: tucked into the edge at rest until the pointer reaches the
     // strip above it. Anything that is not rest -- open, peeking, settings --
@@ -2185,7 +2216,28 @@ Item {
       expandTimer.stop()
       hoverExpanded = false
       clickExpanded = false
+      keyExpanded = false
+      keyVisited = false
+      if (pinned) showPinnedView()
     }
+
+    function closePanels() {
+      settingsOpen = false
+      menuOpen = false
+    }
+
+    // The view stayOpen keeps: the open action, or the widgets when that is a panel.
+    function showPinnedView() {
+      // The flags themselves, not panelOpen: this runs from their change
+      // handlers, before panelOpen's binding has caught up.
+      if (settingsOpen || menuOpen) return
+      var action = root.notchOpenAction
+      if (["widgets", "clock", "battery", "plugin"].indexOf(action) === -1) action = "widgets"
+      if (action === "plugin" && !root.notchOpenPlugin) action = "widgets"
+      viewPlugin = action === "plugin" ? root.notchOpenPlugin : ""
+      view = action
+    }
+    onPinnedChanged: if (pinned) showPinnedView()
 
     function openSettings() {
       expandTimer.stop()
@@ -2223,7 +2275,7 @@ Item {
         return
       }
       if (panelOpen || !root.opensWith(name)) return
-      if (expanded && clickExpanded) collapseNow()
+      if (expanded && (clickExpanded || keyExpanded)) collapseNow()
       else openView(root.notchOpenAction, "click")
     }
 
@@ -2234,13 +2286,18 @@ Item {
       if (requested === "hover" && !root.notchHoverShowsSomething) return
       if (requested === "settings") { openSettings(); return }
       if (requested === "menu") { openMenu("root"); return }
-      if (panelOpen) return
+      // A panel stays put for hovers; a click or a keybind leaves it for this view.
+      if (panelOpen) {
+        if (how !== "click" && how !== "key") return
+        closePanels()
+      }
       var plugin = root.notchOpenPlugin
       if (requested === "plugin" && !plugin) requested = "widgets"
       peeking = false
       viewPlugin = requested === "plugin" ? plugin : ""
       view = requested
       if (how === "click") clickExpanded = true
+      else if (how === "key") { keyExpanded = true; keyVisited = islandHover.hovered }
       else hoverExpanded = true
     }
 
@@ -2248,6 +2305,8 @@ Item {
       if (settingsOpen) return
       hoverExpanded = false
       clickExpanded = false
+      keyExpanded = false
+      if (pinned) showPinnedView()
       // Leaving the settings stops any battery preview started there.
       if (root.batterySimulated) { root.batterySimulatedState = ""; root.batterySimulatedPercent = -1 }
     }
@@ -2256,6 +2315,8 @@ Item {
       if (menuOpen) return
       hoverExpanded = false
       clickExpanded = false
+      keyExpanded = false
+      if (pinned) showPinnedView()
       // Closed from outside the menu (a click outside, a trigger, IPC).
       if (menuHost.item && menuHost.item.opened) menuHost.item.close()
     }
@@ -2269,6 +2330,7 @@ Item {
 
     Component.onCompleted: {
       applyExclusion()
+      if (pinned) showPinnedView()
       root.registerNotchWindow(barWindow)
       shownWidth = targetWidth * root.seedWidthFraction
       shownHeight = 0
@@ -2321,6 +2383,8 @@ Item {
       onTriggered: {
         if (islandHover.hovered || barWindow.popoutHere || barWindow.dragHere) return
         barWindow.hoverExpanded = false
+        if (barWindow.keyVisited) { barWindow.keyExpanded = false; barWindow.keyVisited = false }
+        if (barWindow.pinned && !barWindow.panelOpen) barWindow.showPinnedView()
       }
     }
 
@@ -2396,9 +2460,11 @@ Item {
     // clears a focus grab that starts in the same frame as an exclusive claim.)
     HyprlandFocusGrab {
       active: barWindow.panelOpen
-      windows: [barWindow]
+      windows: [barWindow, barWindow.panelWindow]
+      onCleared: barWindow.closePanels()
     }
-    WlrLayershell.keyboardFocus: panelOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    // The keyboard goes to panelWindow, where the panels are.
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
     // In click mode, clicking anywhere outside the expanded notch closes it.
     HyprlandFocusGrab {
@@ -2572,8 +2638,8 @@ Item {
         // keyboard: what the layer asks for; windowActive: the compositor
         // actually gave the notch keyboard focus; keys: the menu's key
         // handler has Qt's focus inside the notch.
-        focus: { keyboard: barWindow.WlrLayershell.keyboardFocus === WlrKeyboardFocus.Exclusive ? "exclusive"
-                   : barWindow.WlrLayershell.keyboardFocus === WlrKeyboardFocus.OnDemand ? "onDemand" : "none",
+        focus: { keyboard: barWindow.panelWindow.WlrLayershell.keyboardFocus === WlrKeyboardFocus.Exclusive ? "exclusive"
+                   : barWindow.panelWindow.WlrLayershell.keyboardFocus === WlrKeyboardFocus.OnDemand ? "onDemand" : "none",
                  windowActive: menuHost.Window.active, keys: m ? m.keysFocused : false },
         background: m ? String(m.background).toUpperCase() : "", notchColor: String(root.notchColor).toUpperCase(),
         colours: m ? {
@@ -2633,6 +2699,9 @@ Item {
         state: barWindow.notchState,
         // exclusiveZone: the space kept clear for windows (a test notch only
         // reports it); applied: what the window actually asks Hyprland for.
+        panel: { height: barWindow.panelWindow.height, shape: barWindow.panelShape, barShapeHidden: barWindow.barShapeHidden, tall: barWindow.tallShape,
+                 keyboard: barWindow.panelWindow.WlrLayershell.keyboardFocus === WlrKeyboardFocus.OnDemand ? "onDemand" : "none" },
+        open: { key: barWindow.keyExpanded, click: barWindow.clickExpanded, hover: barWindow.hoverExpanded, pinned: barWindow.pinned, stayOpen: root.notchStayOpen },
         window: { height: barWindow.height, exclusiveZone: barWindow.reservedZone, windowsToTop: root.notchWindowsToTop,
                   applied: { zone: barWindow.exclusiveZone, mode: barWindow.exclusionMode === ExclusionMode.Ignore ? "ignore" : "normal", onScreen: barWindow.reservesOnScreen } },
         bar: { x: Number(bx.toFixed(3)), y: island.y, width: Number(island.barWidth.toFixed(3)), height: Number(island.barHeight.toFixed(3)) },
@@ -2680,7 +2749,7 @@ Item {
         view: barWindow.view,
         hoverItems: root.notchHoverItems,
         openWith: root.notchOpenWith, settingsWith: root.notchSettingsWith,
-        keys: { open: root.notchOpenKey, settings: root.notchSettingsKey, autoHide: root.notchAutoHideKey, applied: root.appliedKeys, lastLua: root.lastKeybindLua },
+        keys: { open: root.notchOpenKey, settings: root.notchSettingsKey, autoHide: root.notchAutoHideKey, stayOpen: root.notchStayOpenKey, applied: root.appliedKeys, lastLua: root.lastKeybindLua },
         hiddenPlugins: root.notchHiddenPlugins, hoverPlugins: root.notchHoverPlugins, openAction: root.notchOpenAction, openPlugin: root.notchOpenPlugin, viewPlugin: barWindow.viewPlugin,
         battery: {
           percent: root.batteryPercent, mode: root.batteryMode, simulated: root.batterySimulated,
@@ -2817,12 +2886,14 @@ Item {
       barHeight: Math.max(0, barWindow.shownHeight)
       bottomRadius: barWindow.requestedBottomRadius
       filletRadius: barWindow.requestedFilletRadius
-      color: root.notchColor
+      // Transparent while panelWindow draws the shape (see the handoff).
+      color: barWindow.barShapeHidden ? "transparent" : root.notchColor
 
       HoverHandler {
         id: islandHover
         onHoveredChanged: {
           root.setBarHovered(hovered)
+          if (hovered && barWindow.keyExpanded) barWindow.keyVisited = true
           if (hovered) {
             collapseTimer.stop()
             autoHideTimer.stop()
@@ -2871,8 +2942,8 @@ Item {
       // resizes around them, and popups anchor to the same place every time.
       Item {
         id: content
-        width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth, barWindow.batteryWidth, barWindow.settingsWidth, barWindow.menuWidth, barWindow.noticeWidth)
-        height: Math.max(root.notchCompactHeight, barWindow.settingsHeight, barWindow.menuHeight, barWindow.noticeHeight)
+        width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth, barWindow.batteryWidth)
+        height: root.notchCompactHeight
         x: (island.barWidth - width) / 2
         y: 0
 
@@ -3076,37 +3147,122 @@ Item {
           Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         }
 
-        // The expanded-view hosts: each renders one plugin's expandedView
-        // inside the notch, which grows around it -- a Component a plugin
-        // declares, or a built-in key the notch resolves
-        // (builtinExpandedViews). notch.settings and notch.menu have one.
-        // Laid out at full size and revealed as the notch grows.
-        ExpandedHost {
-          id: expandedHost
-          plugin: root.notchPlugins.byId["notch.settings"] || null
-          builtins: barWindow.builtinExpandedViews
-          shown: barWindow.settingsOpen
-          x: (content.width - width) / 2
+      }
+    }
+
+    // --- the panel window ----------------------------------------------------------
+    //
+    // The notch's tall shapes: the settings, the menu and the update notice. A
+    // surface sized once for the tallest the notch can grow, drawing the same
+    // Island from the same shownWidth/shownHeight as the bar window, so the bar
+    // window never changes height. It takes input only where the shape is and
+    // only while it draws it, and the keyboard while a panel is open.
+    //
+    // Handoff: while the notch is tall (a panel or the notice is up, or it is
+    // still shrinking from one) panelWindow draws the shape and the bar
+    // window's shape is transparent. Both are identical at the resting size,
+    // where they swap, and they overlap for a moment instead of leaving a gap.
+    readonly property bool tallShape: panelOpen || notchState === "notice"
+      || shownHeight > root.notchCompactHeight * (1 + root.springOvershoot) + 1
+    property bool panelShape: false
+    property bool barShapeHidden: false
+    onTallShapeChanged: {
+      if (tallShape) panelShape = true
+      else barShapeHidden = false
+      shapeHandoff.restart()
+    }
+    Timer {
+      id: shapeHandoff
+      interval: 50
+      onTriggered: {
+        if (barWindow.tallShape) barWindow.barShapeHidden = true
+        else barWindow.panelShape = false
+      }
+    }
+
+    property PanelWindow panelWindow: PanelWindow {
+      screen: barWindow.screen
+      visible: barWindow.visible
+      anchors { top: true; left: true; right: true }
+      implicitHeight: Math.ceil(barWindow.panelMaxHeight * (1 + root.springOvershoot) + 2)
+      color: "transparent"
+      surfaceFormat.opaque: false
+      exclusionMode: ExclusionMode.Ignore
+      // The bar's namespace, for Omarchy's no-animation layer rule.
+      WlrLayershell.namespace: "omarchy-bar"
+      WlrLayershell.layer: WlrLayer.Top
+      WlrLayershell.keyboardFocus: barWindow.panelOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+      mask: Region { item: barWindow.panelShape ? panelIsland : panelNoInput }
+      Item { id: panelNoInput; width: 0; height: 0 }
+
+      Island {
+        id: panelIsland
+        x: (barWindow.width - width) / 2
+        y: 0
+        barWidth: Math.max(0, barWindow.shownWidth)
+        barHeight: Math.max(0, barWindow.shownHeight)
+        bottomRadius: barWindow.requestedBottomRadius
+        filletRadius: barWindow.requestedFilletRadius
+        color: barWindow.panelShape ? root.notchColor : "transparent"
+
+        // The same presses as on the bar window's notch, for the notice's
+        // background and a long right-click on a panel.
+        TapHandler {
+          acceptedButtons: Qt.LeftButton
+          longPressThreshold: 0.45
+          onSingleTapped: barWindow.trigger("click")
+          onDoubleTapped: barWindow.trigger("doubleClick")
+          onLongPressed: barWindow.trigger("longPress")
         }
-        // The update notice, revealed as the notch pops down around it.
-        Loader {
-          id: noticeHost
-          x: (content.width - width) / 2
+        MouseArea {
+          anchors.fill: parent
+          acceptedButtons: Qt.RightButton | Qt.MiddleButton
+          pressAndHoldInterval: 450
+          onClicked: function(mouse) { barWindow.trigger(mouse.button === Qt.MiddleButton ? "middleClick" : "rightClick") }
+          onPressAndHold: function(mouse) { if (mouse.button === Qt.RightButton) barWindow.trigger("longRightClick") }
+        }
+
+        // Laid out at full size, centred on the notch and clipped by it, and
+        // revealed as the notch grows.
+        Item {
+          id: panelContent
+          width: Math.max(barWindow.settingsWidth, barWindow.menuWidth, barWindow.noticeWidth)
+          height: Math.max(root.notchCompactHeight, barWindow.settingsHeight, barWindow.menuHeight, barWindow.noticeHeight)
+          x: (panelIsland.barWidth - width) / 2
           y: 0
-          width: item ? item.implicitWidth : 0
-          height: item ? item.implicitHeight : 0
-          sourceComponent: updateNoticeView
-          opacity: barWindow.notchState === "notice" ? 1 : 0
-          visible: opacity > 0
-          enabled: barWindow.notchState === "notice"
-          Behavior on opacity { NumberAnimation { duration: barWindow.notchState === "notice" ? 220 : 90; easing.type: Easing.OutCubic } }
-        }
-        ExpandedHost {
-          id: menuHost
-          plugin: root.notchPlugins.byId["notch.menu"] || null
-          builtins: barWindow.builtinExpandedViews
-          shown: barWindow.menuOpen
-          x: (content.width - width) / 2
+
+          // The expanded-view hosts: each renders one plugin's expandedView
+          // inside the notch, which grows around it -- a Component a plugin
+          // declares, or a built-in key the notch resolves
+          // (builtinExpandedViews). notch.settings and notch.menu have one.
+          // Laid out at full size and revealed as the notch grows.
+          ExpandedHost {
+            id: expandedHost
+            plugin: root.notchPlugins.byId["notch.settings"] || null
+            builtins: barWindow.builtinExpandedViews
+            shown: barWindow.settingsOpen
+            x: (panelContent.width - width) / 2
+          }
+          // The update notice, revealed as the notch pops down around it.
+          Loader {
+            id: noticeHost
+            x: (panelContent.width - width) / 2
+            y: 0
+            width: item ? item.implicitWidth : 0
+            height: item ? item.implicitHeight : 0
+            sourceComponent: updateNoticeView
+            opacity: barWindow.notchState === "notice" ? 1 : 0
+            visible: opacity > 0
+            enabled: barWindow.notchState === "notice"
+            Behavior on opacity { NumberAnimation { duration: barWindow.notchState === "notice" ? 220 : 90; easing.type: Easing.OutCubic } }
+          }
+          ExpandedHost {
+            id: menuHost
+            plugin: root.notchPlugins.byId["notch.menu"] || null
+            builtins: barWindow.builtinExpandedViews
+            shown: barWindow.menuOpen
+            x: (panelContent.width - width) / 2
+          }
         }
       }
     }

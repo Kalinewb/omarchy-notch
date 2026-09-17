@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "kalinewb.profiles",
+  "name": "Profiles",
+  "version": "1.0.0",
+  "author": "test",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Panel.qml" }
+}

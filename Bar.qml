@@ -11,6 +11,8 @@ import "BarModel.js" as BarModel
 import "spring.js" as Spring
 import "contract.js" as Contract
 import "menu"
+import "plugins"
+import "plugins/PluginsModel.js" as PluginsModel
 
 Item {
   id: root
@@ -78,12 +80,15 @@ Item {
   property color themeForeground: Color.bar.text
   property color themeContrastForeground: Color.background
   property color transparentForeground: Color.bar.text
-  // The notch is its own surface, so widgets drawn in it take the notch's
-  // readable text colour and its colour (see "colours on the notch").
-  property color foreground: notchForeground
+  // `barForeground` is what widgets paint with in the bar itself, so in the
+  // notch it is the notch's readable colour (see "colours on the notch").
+  // `foreground` and `background` stay the theme's: widgets also use them in
+  // their own pop-out panels, which sit on the theme's background, and white
+  // text on a light panel reads no better than dark text on a black notch.
+  property color foreground: themeForeground
   property color barForeground: useTransparentForeground ? transparentForeground : notchForeground
   property bool foregroundAnimationEnabled: true
-  property color background: notchColor
+  property color background: Color.bar.background
   property color urgent: Color.bar.active
 
   Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
@@ -1789,7 +1794,8 @@ Item {
 
   // Start the update. Returns false when it can't start (disabled, or one is running).
   function startUpdate() {
-    if (!updatesEnabled || updateNotice === "updating") return false
+    // Not while a plugin job runs: both reload every plugin.
+    if (!updatesEnabled || updateNotice === "updating" || pluginJobRunning) return false
     var run = [updateScript, "run", updateStatusPath]
     var argv
     if ((Quickshell.env("NOTCH_UPDATE_DETACH") || "systemd-run") === "systemd-run") {
@@ -1906,6 +1912,402 @@ Item {
     interval: Number(Quickshell.env("NOTCH_UPDATE_DONE_MS") || 5000)
     running: root.updateNotice === "done"
     onTriggered: root.ackUpdate()
+  }
+
+  // --- plugins -------------------------------------------------------------------
+  //
+  // The user's own plugins (plugins/catalogue.json: Face ID and Profiles) are
+  // installed, turned on and updated from the Plugins page inside the notch
+  // (plugins/NotchPlugins.qml). bin/notch-plugins does the work: `state` probes
+  // every entry, `preview` fills the confirmation card, and `run` is launched
+  // detached like the notch's own update, because installing or updating a
+  // plugin reloads every plugin and destroys this notch. The rebuilt notch
+  // reads the job's status file, re-reads the disk and pops down a notice
+  // (plugins/NotchPluginsNotice.qml). Setup and removal are handed to each
+  // plugin's own panel.
+  //
+  // Nothing is checked at startup: the page checks when it opens (if the last
+  // full check is a minute old), on Refresh, and after a job -- first locally
+  // (no network: the notice never waits for GitHub), then in full. Test
+  // notches never probe, read the status file or act unless
+  // NOTCH_FORCE_PLUGINS=1 and the NOTCH_PLUGINS_DIR and NOTCH_PLUGINS_OMARCHY
+  // sandbox hooks are set (dev/plugins.sh).
+  readonly property bool pluginsEnabled: (!!root.shell && !root.harnessed) || Quickshell.env("NOTCH_FORCE_PLUGINS") === "1"
+  readonly property bool pluginsSandboxed: !!Quickshell.env("NOTCH_PLUGINS_DIR") && !!Quickshell.env("NOTCH_PLUGINS_OMARCHY")
+  readonly property bool pluginsCanAct: pluginsEnabled && (!root.harnessed || pluginsSandboxed)
+  readonly property string pluginsScript: String(Qt.resolvedUrl("bin/notch-plugins")).replace(/^file:\/\//, "")
+  // The status dir hook is honoured only in a sandbox.
+  readonly property string pluginsStatusPath: ((pluginsSandboxed && Quickshell.env("NOTCH_PLUGINS_STATE_DIR"))
+    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/graveklar.notch")) + "/plugins-job.json"
+  // The validated catalogue, the last probe (a local one merged over the last
+  // full one), the last full probe, the job's status file, the card
+  // ({ action, id, token }) and its preview, and the last handoff's answer.
+  property var pluginsCatalogue: ({ self: {}, plugins: [] })
+  property var pluginsState: ({ checkedAt: 0, startedAt: 0, entries: [] })
+  property var pluginsFull: ({ checkedAt: 0, startedAt: 0, entries: [] })
+  property var pluginsJob: ({})
+  property var pluginsPreview: ({})
+  property var pluginsConfirm: ({})
+  property var pluginsHandoff: ({})
+  property real pluginsClock: Date.now()
+  property int pluginsTokens: 0
+
+  // A plugin job this notch (or an earlier one) started is still running. The
+  // notch's own update waits for it, and it for the update.
+  readonly property bool pluginJobRunning: PluginsModel.jobRunning(pluginsJob, pluginsClock)
+  readonly property bool pluginsStateProcessRunning: pluginsStateProcess.running
+  // One view per catalogue entry, for the page, its keys and the report.
+  readonly property var pluginsViews: {
+    var now = pluginsClock
+    var byId = {}
+    var probed = (pluginsState && pluginsState.entries) || []
+    for (var i = 0; i < probed.length; i++) byId[probed[i].id] = probed[i]
+    var listed = (pluginsCatalogue && pluginsCatalogue.plugins && pluginsCatalogue.plugins.length) ? pluginsCatalogue.plugins : probed
+    return listed.map(function(p) {
+      var e = byId[p.id] ? Object.assign({ checked: true }, byId[p.id]) : { id: p.id, name: p.name, checked: false }
+      return PluginsModel.entryView(e, root.pluginsJob, now, { canAct: root.pluginsCanAct, handoff: root.pluginsHandoff,
+                                                             checking: pluginsStateProcess.running })
+    })
+  }
+  readonly property var pluginsSelfView: PluginsModel.selfView(Object.assign({}, (pluginsCatalogue || {}).self || {}, (pluginsState || {}).self || {}))
+  readonly property var pluginsJobEntry: {
+    var probed = (pluginsState && pluginsState.entries) || []
+    for (var i = 0; i < probed.length; i++) if (probed[i].id === (pluginsJob || {}).id) return probed[i]
+    return null
+  }
+  // A finished job's notice stays (until a click) when it has something to offer.
+  readonly property bool pluginsDoneNeedsClick: {
+    var e = pluginsJobEntry
+    if ((pluginsJob || {}).restartSuggested === true) return true
+    if (!e) return false
+    return (e.installed && !e.enabled) || (e.enabled && (e.setup === "needed" || e.setup === "attention"))
+  }
+  // The disk has been probed since the job finished: a probe that started
+  // after it (a slow probe begun earlier doesn't count).
+  readonly property bool pluginsProbedAfterJob: Number((pluginsState || {}).startedAt || 0) >= Number((pluginsJob || {}).finishedAt || 0)
+
+  // What the post-job notice shows, or "":
+  //   running   a job started in the last 5 minutes is running, or finished and
+  //             the disk is being re-read (success is never shown from the
+  //             status file alone)
+  //   done      it finished in the last 10 minutes, unseen
+  //   failed    likewise, failed; or a "running" job older than 5 minutes
+  readonly property string pluginsNotice: {
+    if (!pluginsCanAct) return ""
+    var job = pluginsJob || {}
+    var now = pluginsClock
+    if (!job.phase || job.seen === true) return ""
+    if (job.phase === "running") return now - Number(job.startedAt || 0) < 5 * 60000 ? "running" : now - Number(job.startedAt || 0) < 15 * 60000 ? "failed" : ""
+    if ((job.phase === "done" || job.phase === "failed") && now - Number(job.finishedAt || 0) < 10 * 60000) {
+      if (job.phase === "done" && !pluginsProbedAfterJob) return "running"
+      return job.phase
+    }
+    return ""
+  }
+  // The card's confirm button: a fresh preview returned the exact commit, and
+  // the repository there is still this plugin (its manifest id and kinds).
+  readonly property bool pluginsConfirmReady: !!(pluginsConfirm || {}).id && pluginsPreview.id === pluginsConfirm.id
+    && pluginsPreview.token === pluginsConfirm.token && pluginsPreview.ok === true && pluginsPreview.refused === ""
+    && /^[0-9a-f]{40}$/.test(String(pluginsPreview.remote || "")) && !pluginJobRunning && updateNotice !== "updating"
+    && !pluginsStateProcess.running
+
+  function loadPluginsCatalogue() {
+    if (!pluginsCanAct || pluginsCatalogueProcess.running || ((pluginsCatalogue || {}).plugins || []).length > 0) return
+    pluginsCatalogueProcess.running = true
+  }
+
+  // Probe the plugins: `local` true for HEAD, enabled and setup only (no
+  // network). While a job runs every probe is local, so nothing fetches into
+  // a checkout the job is changing.
+  function refreshPlugins(local) {
+    loadPluginsCatalogue()
+    if (!pluginsCanAct) return false
+    var p = local === true || pluginJobRunning ? pluginsLocalProcess : pluginsStateProcess
+    if (p.running) p.again = true
+    else p.running = true
+    return true
+  }
+
+  function refreshPluginsIfStale() {
+    loadPluginsCatalogue()
+    if (Date.now() - Number((pluginsFull || {}).checkedAt || 0) > 60000 && !pluginsStateProcess.running) refreshPlugins()
+  }
+
+  // Install… and Update… open the card; nothing runs until it is confirmed.
+  function askPluginAction(action, id) {
+    if (!pluginsCanAct || (action !== "install" && action !== "update") || pluginJobRunning) return false
+    pluginsTokens += 1
+    pluginsConfirm = { action: action, id: String(id), token: pluginsTokens }
+    pluginsPreview = {}
+    pluginsPreviewProcess.nextToken = pluginsTokens
+    pluginsPreviewProcess.nextId = String(id)
+    if (!pluginsPreviewProcess.running) pluginsPreviewProcess.begin()
+    return true
+  }
+
+  function cancelPluginAction() {
+    if (!(pluginsConfirm || {}).id && !(pluginsPreview || {}).id) return
+    pluginsConfirm = ({})
+    pluginsPreview = ({})
+  }
+
+  // Launch `run` detached, exactly like startUpdate(). Returns false when it
+  // can't start (a test notch, or a plugin job or notch update is running).
+  function launchPluginsRun(args) {
+    if (!pluginsCanAct || pluginJobRunning || updateNotice === "updating") return false
+    var run = [pluginsScript, "run"].concat(args)
+    var argv
+    if ((Quickshell.env("NOTCH_PLUGINS_DETACH") || "systemd-run") === "systemd-run") {
+      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "graveklar-notch-plugins-" + Date.now()]
+      var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
+                    "XDG_CONFIG_HOME", "XDG_STATE_HOME", "NOTCH_PLUGINS_DIR", "NOTCH_PLUGINS_OMARCHY", "NOTCH_PLUGINS_CATALOGUE",
+                    "NOTCH_PLUGINS_SHELL", "NOTCH_PLUGINS_TERMINAL", "NOTCH_PLUGINS_SESSION_LOCKED", "NOTCH_PLUGINS_SCRATCH",
+                    "NOTCH_PLUGINS_DISCOVER_MS"]
+      for (var i = 0; i < passed.length; i++) {
+        var value = Quickshell.env(passed[i])
+        if (value) argv.push("--setenv=" + passed[i] + "=" + value)
+      }
+      argv = argv.concat(run)
+    } else {
+      argv = ["setsid", "-f"].concat(run)
+    }
+    // Local until the runner writes its first status; a runner that refuses
+    // before that (another job holds the lock) is caught by
+    // expirePluginsLaunch().
+    pluginsJob = { phase: "running", action: String(args[0]), id: String(args[1]), startedAt: Date.now(), finishedAt: 0, seen: false, launched: true }
+    pluginsClock = Date.now()
+    Quickshell.execDetached(argv)
+    pluginsStatusPoll.restart()
+    return true
+  }
+
+  // A launched job whose runner never wrote its status within 5 s didn't start.
+  function expirePluginsLaunch() {
+    var j = pluginsJob || {}
+    if (j.launched && j.phase === "running" && Date.now() - Number(j.startedAt || 0) > 5000)
+      pluginsJob = { phase: "failed", reason: "not-started", action: j.action, id: j.id, startedAt: j.startedAt,
+                     finishedAt: Date.now(), seen: false, launched: true }
+  }
+
+  // The card's confirm: only for the card on show, with the commit it showed.
+  function startPluginJob(token) {
+    var c = pluginsConfirm || {}
+    if (!c.id || token !== c.token || !pluginsConfirmReady) return false
+    if (!launchPluginsRun([c.action, c.id, pluginsStatusPath, String(pluginsPreview.remote)])) return false
+    cancelPluginAction()
+    return true
+  }
+
+  // Enable needs no card: nothing is downloaded and no --yes is involved.
+  function enablePlugin(id) {
+    return launchPluginsRun(["enable", String(id), pluginsStatusPath])
+  }
+
+  function openPluginSetup(id) { return pluginsHandOff("setup", id) }
+  function openPluginRemoval(id) { return pluginsHandOff("remove", id) }
+  function pluginsHandOff(kind, id) {
+    if (!pluginsCanAct || pluginsHandoffProcess.running) return false
+    pluginsHandoff = { id: String(id), kind: kind, pending: true }
+    pluginsHandoffProcess.command = [pluginsScript, kind, String(id)]
+    pluginsHandoffProcess.running = true
+    return true
+  }
+
+  function reviewPluginInTerminal(id) {
+    if (!pluginsCanAct) return false
+    Quickshell.execDetached([pluginsScript, "review", String(id)])
+    return true
+  }
+
+  // Only on an explicit click: a rescan leaves non-entry QML stale.
+  function restartShellForPlugins() {
+    var hook = Quickshell.env("NOTCH_PLUGINS_RESTART")
+    if (!pluginsCanAct || (root.harnessed && !hook)) return false
+    ackPluginJob()
+    Quickshell.execDetached(hook ? ["bash", "-c", hook] : ["omarchy", "restart", "shell"])
+    return true
+  }
+
+  // Seen here at once; in the status file only for that job, once finished
+  // (the runner checks both under the job lock).
+  function ackPluginJob() {
+    if (!pluginsJob || !pluginsJob.phase) return false
+    var job = JSON.parse(JSON.stringify(pluginsJob))
+    job.seen = true
+    pluginsJob = job
+    if (pluginsCanAct && job.job && job.phase !== "running")
+      Quickshell.execDetached([pluginsScript, "ack", pluginsStatusPath, String(job.job)])
+    return true
+  }
+
+  function clearPluginHandoff() { pluginsHandoff = ({}) }
+
+  function openPluginsFromSettings() {
+    var w = null
+    for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].settingsOpen) w = notchWindows[i]
+    w = w || focusedNotchWindow()
+    if (w) w.openPlugins("")
+  }
+
+  function closePluginsPages() {
+    for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].pluginsOpen) notchWindows[i].pluginsOpen = false
+  }
+
+  // A finished job re-reads the disk before its notice says anything: a local
+  // probe first (a few hundred ms, no network), then a full one.
+  function pluginsJobSettled() {
+    var job = pluginsJob || {}
+    if ((job.phase === "done" || job.phase === "failed") && job.seen !== true && !pluginsLocalProcess.running
+        && Date.now() - Number(job.finishedAt || 0) < 10 * 60000 && !pluginsProbedAfterJob) {
+      pluginsLocalProcess.thenFull = true
+      refreshPlugins(true)
+    }
+  }
+
+  function pluginsReport() {
+    var w = focusedNotchWindow()
+    var c = pluginsConfirm || {}
+    var entry = null
+    var listed = (pluginsCatalogue || {}).plugins || []
+    for (var i = 0; i < listed.length; i++) if (listed[i].id === c.id) entry = listed[i]
+    var s = pluginsState || {}
+    return {
+      enabled: pluginsEnabled, canAct: pluginsCanAct, sandboxed: pluginsSandboxed, open: w ? w.pluginsOpen : false,
+      checking: pluginsStateProcess.running, checkingLocal: pluginsLocalProcess.running,
+      checkedAt: Number(s.checkedAt || 0), startedAt: Number(s.startedAt || 0), local: s.local === true,
+      fullCheckedAt: Number((pluginsFull || {}).checkedAt || 0), pluginsDir: s.pluginsDir || "", shell: s.shell,
+      entries: pluginsViews, self: pluginsSelfView, probe: s.entries || [],
+      job: pluginsJob, jobRunning: pluginJobRunning, notice: pluginsNotice, doneNeedsClick: pluginsDoneNeedsClick,
+      confirm: c.id ? { action: c.action, id: c.id, url: entry ? entry.url : "", token: c.token, ready: pluginsConfirmReady,
+                        refused: String(pluginsPreview.refused || ""),
+                        sha: pluginsConfirmReady ? String(pluginsPreview.remote) : "" } : null,
+      preview: pluginsPreview, handoff: pluginsHandoff, statusPath: pluginsStatusPath,
+      updateBlocked: pluginJobRunning
+    }
+  }
+
+  Process {
+    id: pluginsCatalogueProcess
+    command: [root.pluginsScript, "catalogue"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { var c = JSON.parse(text); if (c && c.plugins) root.pluginsCatalogue = c } catch (e) { }
+      }
+    }
+  }
+  Process {
+    id: pluginsStateProcess
+    // Asked again while a probe ran: probe once more after it.
+    property bool again: false
+    command: [root.pluginsScript, "state"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var s = null
+        try { s = JSON.parse(text) } catch (e) { }
+        if (!s || !s.entries) s = { checkedAt: Date.now(), startedAt: 0, entries: [], reason: s && s.reason ? s.reason : "command" }
+        else root.pluginsFull = s
+        // A local probe newer than this one stays; its network fields come from this.
+        if (Number((root.pluginsState || {}).startedAt || 0) > Number(s.startedAt || 0) && root.pluginsState.local === true && s.entries.length)
+          root.pluginsState = PluginsModel.mergeLocal(s, root.pluginsState)
+        else
+          root.pluginsState = s
+        root.pluginsClock = Date.now()
+      }
+    }
+    onRunningChanged: if (!running && again) { again = false; root.refreshPlugins() }
+  }
+  Process {
+    id: pluginsLocalProcess
+    property bool again: false
+    // A job just finished: the full probe follows this one.
+    property bool thenFull: false
+    command: [root.pluginsScript, "state", "--local"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var s = null
+        try { s = JSON.parse(text) } catch (e) { }
+        if (s && s.entries) root.pluginsState = PluginsModel.mergeLocal(root.pluginsFull, s)
+        root.pluginsClock = Date.now()
+      }
+    }
+    onRunningChanged: {
+      if (running) return
+      if (again) { again = false; running = true; return }
+      if (thenFull) { thenFull = false; root.refreshPlugins() }
+      root.pluginsJobSettled()
+    }
+  }
+  Process {
+    id: pluginsPreviewProcess
+    // The card each run is for; a newer card starts its own run after this one.
+    property int runToken: 0
+    property int nextToken: 0
+    property string nextId: ""
+    function begin() {
+      runToken = nextToken
+      command = [root.pluginsScript, "preview", nextId]
+      running = true
+    }
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (pluginsPreviewProcess.runToken !== (root.pluginsConfirm || {}).token) return
+        var p = null
+        try { p = JSON.parse(text) } catch (e) { }
+        if (!p || !p.id) p = { id: root.pluginsConfirm.id, ok: false, refused: "", reason: p && p.reason ? p.reason : "command" }
+        p.token = pluginsPreviewProcess.runToken
+        root.pluginsPreview = p
+      }
+    }
+    onRunningChanged: if (!running && nextToken !== runToken && root.pluginsCanAct) begin()
+  }
+  Process {
+    id: pluginsHandoffProcess
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var r = null
+        try { r = JSON.parse(text) } catch (e) { }
+        if (!r || !r.id) r = { id: root.pluginsHandoff.id, kind: root.pluginsHandoff.kind, ok: false, reason: r && r.reason === "sandbox" ? "sandbox" : "not-running" }
+        root.pluginsHandoff = r
+        // The plugin's own panel is opening: get out of its way.
+        if (r.ok) root.closePluginsPages()
+      }
+    }
+  }
+  FileView {
+    id: pluginsStatusFile
+    // A notch that can't act never reads the live notch's files.
+    path: root.pluginsCanAct ? root.pluginsStatusPath : ""
+    printErrors: false
+    onLoaded: {
+      try {
+        var job = JSON.parse(text())
+        var local = root.pluginsJob || {}
+        // A job this notch launched keeps its local state until the runner
+        // writes a status of its own (an older file is the previous job).
+        if (job && job.phase && !(local.launched && Number(job.startedAt || 0) < Number(local.startedAt || 0) - 2000))
+          root.pluginsJob = job
+      } catch (e) { }
+      root.expirePluginsLaunch()
+      root.pluginsClock = Date.now()
+      root.pluginsJobSettled()
+    }
+    onLoadFailed: root.expirePluginsLaunch()
+  }
+  // While a job runs or its notice shows, follow the status file and keep the
+  // clock moving so stale notices expire.
+  Timer {
+    id: pluginsStatusPoll
+    interval: 1000
+    repeat: true
+    running: root.pluginsCanAct && (root.pluginsNotice !== "" || root.pluginJobRunning)
+    onTriggered: { pluginsStatusFile.reload(); root.expirePluginsLaunch(); root.pluginsClock = Date.now() }
+  }
+  // "Face ID installed" shows for a few seconds, then counts as seen, unless it
+  // offers Open setup, Enable or Restart shell.
+  Timer {
+    interval: Number(Quickshell.env("NOTCH_PLUGINS_DONE_MS") || 5000)
+    running: root.pluginsNotice === "done" && !root.pluginsDoneNeedsClick
+    onTriggered: root.ackPluginJob()
   }
 
   function setNotchSetting(key, value) {
@@ -2069,6 +2471,30 @@ Item {
       else if (action === "dismiss") root.ackUpdate()
       return JSON.stringify(root.updateReport())
     }
+    // The Plugins page on the focused screen: "open" (or "open:<id>", scrolled
+    // to that entry), "close", "refresh" (probe again), or "status"; each
+    // answers with the plugins state as JSON. Nothing here installs, updates,
+    // enables, sets up or removes anything: that takes a click in the page, and
+    // install and update a confirmed card.
+    function plugins(action: string): string {
+      var w = root.focusedNotchWindow()
+      if (action === "open" || action.indexOf("open:") === 0) { if (w) w.openPlugins(action.slice(5)) }
+      else if (action === "close") root.closePluginsPages()
+      else if (action === "refresh") root.refreshPlugins()
+      else if (action !== "status") return JSON.stringify({ error: "unknown action" })
+      return JSON.stringify(root.pluginsReport())
+    }
+    // Test hook (dev/plugins.sh): press a visible button on the focused
+    // screen's Plugins page or its notice -- "install:<id>", "confirm",
+    // "cancel", "escape", "close", "refresh", "restart", "notice:<button>",
+    // or a key, "key:up|down|tab|return|escape" -- through the handler a click
+    // or a key press uses. Only a sandboxed test notch accepts it:
+    // everything else answers "refused".
+    function pluginsPress(button: string): string {
+      if (!(root.harnessed && root.pluginsSandboxed)) return "refused"
+      var w = root.focusedNotchWindow()
+      return w ? w.pressPluginsButton(button) : "no-such-button"
+    }
     // Every rounded item in the settings panel and the menu, with the notch's
     // radius, for dev/design.sh (DESIGN-PHILOSOPHY.md, 5).
     function design(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.designReport()) : "{}" }
@@ -2187,7 +2613,12 @@ Item {
     // "menu" open action, or IPC). Like the settings, it stays until closed:
     // a picked row, Escape, or a click outside. At most one of the two is open.
     property bool menuOpen: false
-    readonly property bool panelOpen: settingsOpen || menuOpen
+    // The notch grown into the Plugins page (Settings → Updates → Manage…, or
+    // IPC). Like the menu, it stays until closed. At most one panel is open.
+    property bool pluginsOpen: false
+    // The catalogue entry the page opened on ("" for the top).
+    property string pluginsFocusId: ""
+    readonly property bool panelOpen: settingsOpen || menuOpen || pluginsOpen
     readonly property bool popoutHere: root.activePopout !== null && root.targetBelongsToWindow(root.activePopout, barWindow)
     readonly property bool dragHere: root.barDragSource !== null && root.barDragWindow === barWindow
     // stayOpen: the notch stays open on its open view.
@@ -2201,13 +2632,24 @@ Item {
     property bool revealed: false
     // An update notice pops down from the resting notch (see "updates"). It
     // shows over auto-hide and peeks; opening the notch covers it.
-    readonly property bool noticeShown: root.updateNotice !== "" && !root.barHidden
+    // A finished plugin job's notice pops down the same way; the update's wins.
+    readonly property bool noticeShown: (root.updateNotice !== "" || root.pluginsNotice !== "") && !root.barHidden
     // The notice kept while the notch shrinks away, so its text doesn't change
-    // under it.
+    // under it, and which of the two it is.
     property string shownNotice: ""
+    property string shownPluginsNotice: ""
+    property string noticeKind: "update"
     Connections {
       target: root
-      function onUpdateNoticeChanged() { if (root.updateNotice !== "") barWindow.shownNotice = root.updateNotice }
+      function onUpdateNoticeChanged() {
+        if (root.updateNotice !== "") { barWindow.shownNotice = root.updateNotice; barWindow.noticeKind = "update" }
+        else if (root.pluginsNotice !== "") barWindow.noticeKind = "plugins"
+      }
+      function onPluginsNoticeChanged() {
+        if (root.pluginsNotice === "") return
+        barWindow.shownPluginsNotice = root.pluginsNotice
+        if (root.updateNotice === "") barWindow.noticeKind = "plugins"
+      }
     }
     readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking && !noticeShown
     readonly property string notchState: root.barHidden || autoHidden ? "hidden" : expanded ? "expanded" : noticeShown ? "notice" : peeking ? "peek" : "compact"
@@ -2224,13 +2666,14 @@ Item {
     function closePanels() {
       settingsOpen = false
       menuOpen = false
+      pluginsOpen = false
     }
 
     // The view stayOpen keeps: the open action, or the widgets when that is a panel.
     function showPinnedView() {
       // The flags themselves, not panelOpen: this runs from their change
       // handlers, before panelOpen's binding has caught up.
-      if (settingsOpen || menuOpen) return
+      if (settingsOpen || menuOpen || pluginsOpen) return
       var action = root.notchOpenAction
       if (["widgets", "clock", "battery", "plugin"].indexOf(action) === -1) action = "widgets"
       if (action === "plugin" && !root.notchOpenPlugin) action = "widgets"
@@ -2243,6 +2686,7 @@ Item {
       expandTimer.stop()
       peeking = false
       menuOpen = false
+      pluginsOpen = false
       view = "settings"
       settingsOpen = true
     }
@@ -2253,12 +2697,42 @@ Item {
       expandTimer.stop()
       peeking = false
       settingsOpen = false
+      pluginsOpen = false
       view = "menu"
       menuOpen = true
       var menu = menuHost.item
       if (!menu) return
       menu.open(JSON.stringify({ menu: route || "root" }))
       if (!menu.opened) menuOpen = false
+    }
+
+    // Open the Plugins page, at the entry `focusId` ("" for the top).
+    function openPlugins(focusId) {
+      expandTimer.stop()
+      peeking = false
+      settingsOpen = false
+      menuOpen = false
+      pluginsFocusId = focusId || ""
+      view = "plugins"
+      pluginsOpen = true
+    }
+
+    // The settings, opened at one section ("updates").
+    function openSettingsSection(name) {
+      openSettings()
+      if (expandedHost.item && typeof expandedHost.item.revealSection === "function") expandedHost.item.revealSection(name)
+    }
+
+    // pluginsPress: a button on this window's Plugins page or its notice.
+    function pressPluginsButton(name) {
+      var n = String(name)
+      if (n === "restart" || n.indexOf("notice:") === 0) {
+        var notice = noticeHost.item
+        if (noticeKind !== "plugins" || notchState !== "notice" || !notice || typeof notice.press !== "function") return "no-such-button"
+        return notice.press(n === "restart" ? "restart" : n.slice(7))
+      }
+      if (!pluginsOpen || !pluginsHost.item) return "no-such-button"
+      return pluginsHost.item.press(n)
     }
 
     // A press on the notch: open or close the settings, the menu or the
@@ -2319,6 +2793,16 @@ Item {
       if (pinned) showPinnedView()
       // Closed from outside the menu (a click outside, a trigger, IPC).
       if (menuHost.item && menuHost.item.opened) menuHost.item.close()
+    }
+
+    onPluginsOpenChanged: {
+      if (pluginsOpen) return
+      hoverExpanded = false
+      clickExpanded = false
+      keyExpanded = false
+      if (pinned) showPinnedView()
+      // A card left open is cancelled by the page once it has faded out, so it
+      // never changes under the shrinking notch (NotchPlugins.qml).
     }
 
     function startPeek(kind) {
@@ -2487,11 +2971,13 @@ Item {
     readonly property real settingsHeight: Math.max(root.notchCompactHeight, expandedHost.item ? expandedHost.item.implicitHeight : 0)
     readonly property real menuWidth: Math.max(compactWidth, menuHost.item ? menuHost.item.implicitWidth : 0)
     readonly property real menuHeight: Math.max(root.notchCompactHeight, menuHost.item ? menuHost.item.implicitHeight : 0)
+    readonly property real pluginsWidth: Math.max(compactWidth, pluginsHost.item ? pluginsHost.item.implicitWidth : 0)
+    readonly property real pluginsHeight: Math.max(root.notchCompactHeight, pluginsHost.item ? pluginsHost.item.implicitHeight : 0)
     readonly property real noticeWidth: Math.max(compactWidth, noticeHost.item ? noticeHost.item.implicitWidth : 0)
     readonly property real noticeHeight: Math.max(root.notchCompactHeight, noticeHost.item ? noticeHost.item.implicitHeight : 0)
     // The open notch's width for the current view. Widgets and a single plugin
     // are the same row (filtered), so both measure the row.
-    readonly property real expandedWidth: view === "settings" ? settingsWidth : view === "menu" ? menuWidth
+    readonly property real expandedWidth: view === "settings" ? settingsWidth : view === "menu" ? menuWidth : view === "plugins" ? pluginsWidth
       : view === "clock" ? clockWidth : view === "battery" ? batteryWidth : rowWidth
 
     readonly property real targetWidth: Math.min(maxBarWidth,
@@ -2501,6 +2987,7 @@ Item {
     readonly property real targetHeight: notchState === "hidden" ? 0
       : notchState === "expanded" && view === "settings" ? settingsHeight
       : notchState === "expanded" && view === "menu" ? menuHeight
+      : notchState === "expanded" && view === "plugins" ? pluginsHeight
       : notchState === "notice" ? noticeHeight : root.notchCompactHeight
 
     property real shownWidth: 0
@@ -2662,7 +3149,8 @@ Item {
         tooltip: { radius: tooltipBubble.radius, height: tooltipBubble.height },
         settings: expandedHost.item ? root.radiusAudit(expandedHost.item) : [],
         notice: noticeHost.item ? root.radiusAudit(noticeHost.item) : [],
-        menu: menuHost.item ? root.radiusAudit(menuHost.item) : []
+        menu: menuHost.item ? root.radiusAudit(menuHost.item) : [],
+        plugins: pluginsHost.item ? root.radiusAudit(pluginsHost.item) : []
       }
     }
 
@@ -2678,6 +3166,7 @@ Item {
         textContrast: Number(root.contrast(root.notchForeground, root.notchColor).toFixed(3)),
         accentContrast: Number(root.contrast(root.notchAccent, root.notchColor).toFixed(3)),
         widgets: { foreground: hex(root.foreground), barForeground: hex(root.barForeground), background: hex(root.background) },
+        themeText: hex(Color.bar.text), themeBarBackground: hex(Color.bar.background),
         glance: hex(compactGlance.foreground),
         settings: settings ? { foreground: hex(settings.foreground), accent: hex(settings.accent), surface: hex(settings.surface), glowReach: Number(settings.glowReach.toFixed(3)) } : null,
         selfTest: {
@@ -2734,6 +3223,29 @@ Item {
           notice: root.updateNotice, shownNotice: barWindow.shownNotice, noticeShown: barWindow.noticeShown,
           host: { opacity: Number(noticeHost.opacity.toFixed(3)), enabled: noticeHost.enabled, width: noticeHost.width, height: noticeHost.height },
           size: { width: Number(noticeWidth.toFixed(3)), height: Number(noticeHeight.toFixed(3)) }
+        },
+        plugins: {
+          open: barWindow.pluginsOpen, focusId: barWindow.pluginsFocusId,
+          host: { opacity: Number(pluginsHost.opacity.toFixed(3)), enabled: pluginsHost.enabled, width: pluginsHost.width, height: pluginsHost.height },
+          size: { width: Number(pluginsWidth.toFixed(3)), height: Number(pluginsHeight.toFixed(3)) },
+          // panelContent, which hosts the page: never smaller than it.
+          content: { width: Number(panelContent.width.toFixed(3)), height: Number(panelContent.height.toFixed(3)) },
+          listHeight: pluginsHost.item ? pluginsHost.item.listHeight : 0,
+          heldHeight: pluginsHost.item ? pluginsHost.item.implicitHeight : 0,
+          layers: pluginsHost.item ? { list: Number(pluginsHost.item.listOpacity.toFixed(3)), card: Number(pluginsHost.item.cardOpacity.toFixed(3)) } : null,
+          motion: pluginsHost.item ? pluginsHost.item.motionSamples : [],
+          focus: pluginsHost.item ? pluginsHost.item.focusName : "",
+          refreshEnabled: pluginsHost.item ? pluginsHost.item.refreshEnabled : false,
+          settingsUpdatesOpen: expandedHost.item ? expandedHost.item.updatesSectionOpen : false,
+          scroll: pluginsHost.item ? pluginsHost.item.scrollReport() : null,
+          notice: root.pluginsNotice, shownNotice: barWindow.shownPluginsNotice, noticeKind: barWindow.noticeKind,
+          card: pluginsHost.item ? pluginsHost.item.carding : false, selected: pluginsHost.item ? pluginsHost.item.selectedIndex : -1,
+          foreground: pluginsHost.item ? String(pluginsHost.item.foreground).toUpperCase() : "",
+          surface: pluginsHost.item ? String(pluginsHost.item.surface).toUpperCase() : "",
+          updateButtons: {
+            settings: expandedHost.item ? expandedHost.item.updateButtonEnabled : null,
+            notice: noticeHost.item && barWindow.noticeKind === "update" ? noticeHost.item.updateButtonEnabled : null
+          }
         },
         media: {
           facade: !!root.mediaService,
@@ -3226,8 +3738,8 @@ Item {
         // revealed as the notch grows.
         Item {
           id: panelContent
-          width: Math.max(barWindow.settingsWidth, barWindow.menuWidth, barWindow.noticeWidth)
-          height: Math.max(root.notchCompactHeight, barWindow.settingsHeight, barWindow.menuHeight, barWindow.noticeHeight)
+          width: Math.max(barWindow.settingsWidth, barWindow.menuWidth, barWindow.pluginsWidth, barWindow.noticeWidth)
+          height: Math.max(root.notchCompactHeight, barWindow.settingsHeight, barWindow.menuHeight, barWindow.pluginsHeight, barWindow.noticeHeight)
           x: (panelIsland.barWidth - width) / 2
           y: 0
 
@@ -3250,7 +3762,7 @@ Item {
             y: 0
             width: item ? item.implicitWidth : 0
             height: item ? item.implicitHeight : 0
-            sourceComponent: updateNoticeView
+            sourceComponent: barWindow.noticeKind === "plugins" ? pluginsNoticeView : updateNoticeView
             opacity: barWindow.notchState === "notice" ? 1 : 0
             visible: opacity > 0
             enabled: barWindow.notchState === "notice"
@@ -3263,12 +3775,20 @@ Item {
             shown: barWindow.menuOpen
             x: (panelContent.width - width) / 2
           }
+          // The Plugins page. Not a contract built-in: a plain descriptor.
+          ExpandedHost {
+            id: pluginsHost
+            plugin: ({ id: "notch.plugins", expandedView: "plugins" })
+            builtins: barWindow.builtinExpandedViews
+            shown: barWindow.pluginsOpen
+            x: (panelContent.width - width) / 2
+          }
         }
       }
     }
 
     // Built-in expandedView keys, resolved by the expanded-view hosts.
-    readonly property var builtinExpandedViews: ({ settings: settingsExpandedView, menu: menuExpandedView })
+    readonly property var builtinExpandedViews: ({ settings: settingsExpandedView, menu: menuExpandedView, plugins: pluginsExpandedView })
     Component {
       id: settingsExpandedView
       NotchSettings {
@@ -3284,6 +3804,25 @@ Item {
       NotchUpdate {
         bar: root
         notice: barWindow.shownNotice
+      }
+    }
+    Component {
+      id: pluginsExpandedView
+      NotchPlugins {
+        bar: root
+        window: barWindow
+        headerHeight: root.notchCompactHeight
+        maxHeight: barWindow.panelMaxHeight
+        focusId: barWindow.pluginsFocusId
+        onCloseRequested: barWindow.pluginsOpen = false
+      }
+    }
+    Component {
+      id: pluginsNoticeView
+      NotchPluginsNotice {
+        bar: root
+        window: barWindow
+        notice: barWindow.shownPluginsNotice
       }
     }
     Component {

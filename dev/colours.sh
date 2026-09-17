@@ -90,8 +90,11 @@ for notch in "#000000" "#FDF6E3" "#268BD2" "#1A1B26"; do
   check "secondary text is Apple's secondary label at 60 %" "$([[ $(expected_text "$c") == "#FFFFFF" ]] && echo "#99EBEBF5" || echo "#993C3C43")" "$(jq -r .secondary <<<"$c")"
   check "text contrast ≥ 7 (or the best white/black can do on this colour) and accent ≥ 3" "true true" \
     "$(jq -r '"\(.textContrast >= ([7, .selfTest.bestOnNotch] | min)) \(.accentContrast >= 3)"' <<<"$c")"
-  check "widgets, the resting glance and the settings panel use it; widget background is the notch" "true" \
-    "$(jq -r '.text as $t | (.widgets.foreground == $t and .widgets.barForeground == $t and .glance == $t and .settings.foreground == $t and .settings.accent == .accent and .widgets.background == .notch and .settings.surface == .notch)' <<<"$c")"
+  check "widgets paint in the notch with it, and so do the glance and the settings" "true" \
+    "$(jq -r '.text as $t | (.widgets.barForeground == $t and .glance == $t and .settings.foreground == $t and .settings.accent == .accent and .settings.surface == .notch)' <<<"$c")"
+  # A widget's own pop-out panel sits on the theme's background, not the notch's.
+  check "…while the colours widgets use in their own panels stay the theme's" "true" \
+    "$(jq -r '.widgets.foreground == .themeText and .widgets.background == .themeBarBackground' <<<"$c")"
   check "menu: text ≥ 7 (or best possible), selected text ≥ 4.5, selection fill visible (≥ 1.1)" "true true true" \
     "$(jq -r '.colours.selfTest.bestOnNotch as $best | .menu.colours | "\(.textContrast >= ([7, $best] | min)) \(.selectedTextContrast >= ([4.5, $best] | min)) \(.selectionContrast >= 1.1)"' <<<"$r")"
   stop
@@ -100,7 +103,7 @@ done
 echo; echo "${BOLD}A foreground setting wins${RESET}"
 start '{"color":"#000000","foreground":"#FF8800","batteryPeek":false}'
 c=$(ipc geometry | jq -c .colours)
-check "foreground \"#FF8800\" is used for text, widgets and glance" "#FF8800 #FF8800 #FF8800" "$(jq -r '"\(.foreground) \(.widgets.foreground) \(.glance)"' <<<"$c")"
+check "foreground \"#FF8800\" is what the notch, its widgets and the glance paint with" "#FF8800 #FF8800 #FF8800" "$(jq -r '"\(.foreground) \(.widgets.barForeground) \(.glance)"' <<<"$c")"
 stop
 
 if grep -qE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log"; then

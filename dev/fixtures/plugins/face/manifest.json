@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "graveklar.face",
+  "name": "Face ID",
+  "version": "2.0.0",
+  "author": "test",
+  "kinds": ["bar-widget", "service"],
+  "entryPoints": { "barWidget": "FacePanel.qml", "service": "Service.qml" }
+}

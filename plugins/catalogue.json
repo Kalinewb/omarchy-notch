@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "self": { "id": "graveklar.notch", "name": "Notch" },
+  "deny": ["graveklar.liquid-notifications", "graveklar.face-lock"],
+  "plugins": [
+    { "id": "graveklar.face", "name": "Face ID",
+      "url": "https://github.com/Kalinewb/omarchy-face.git",
+      "kinds": ["bar-widget", "service"],
+      "status": ["bin/omarchy-face-status", "--json"], "statusFormat": "face",
+      "setup":  ["graveklar.face", "open", "setup", ""],
+      "remove": ["graveklar.face", "open", "remove", ""],
+      "removeHint": "Settings → Remove Face ID from this machine",
+      "busyWhen": "face-install-running", "panelOpenCall": ["graveklar.face", "state"] },
+    { "id": "kalinewb.profiles", "name": "Profiles",
+      "url": "https://github.com/Kalinewb/omarchy-profiles.git",
+      "kinds": ["bar-widget"],
+      "status": ["bin/omarchy-profile", "setup", "status", "--json"], "statusFormat": "profiles",
+      "setup":  ["kalinewb.profiles", "open"],
+      "remove": ["kalinewb.profiles", "open"],
+      "removeHint": "Manage → Uninstall Profiles from this machine",
+      "busyWhen": "profiles-switch-pending" }
+  ]
+}

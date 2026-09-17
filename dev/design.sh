@@ -5,11 +5,12 @@
 #   ./dev/design.sh
 #
 # Every button, chip, field, switch, highlight, outline and card in the
-# settings panel and the menu uses the notch's bottom radius, capped at half
-# its height, whatever the theme's Hyprland rounding is. Runs the real Bar.qml
-# in throwaway notches with several bottomRadius values, walks every item with
-# a radius in the settings panel and the menu (all of them, folded sections and
-# the closed uninstall dialog included) and checks each drawn one:
+# settings panel, the menu and the Plugins page uses the notch's bottom radius,
+# capped at half its height, whatever the theme's Hyprland rounding is. Runs the
+# real Bar.qml in throwaway notches with several bottomRadius values, walks
+# every item with a radius in the settings panel, the menu (all of them, folded
+# sections and the closed uninstall dialog included) and the Plugins page (its
+# list and its confirmation card) and checks each drawn one:
 #
 #     radius = min(bottomRadius, height / 2, width / 2)
 #
@@ -17,6 +18,11 @@
 # circles): a slider's track, fill and knob are round, radius = height / 2.
 # Hairlines (1–2 px separators) and gradient fades are not boxes and are
 # skipped.
+#
+# The Plugins page is checked in a sandbox: an empty plugins folder, `false`
+# for every command, and a catalogue pointing at local repos holding only a
+# manifest, so the page lists both entries as installable and opens a card,
+# and never touches anything live.
 
 set -uo pipefail
 
@@ -40,10 +46,22 @@ ln -s "$SHELL_PATH/shell/Ui" "$root/Ui"
 ln -s "$SHELL_PATH/shell/services" "$root/services"
 ln -s "$REPO" "$root/notch"
 cp "$REPO/dev/harness/shell.qml" "$root/shell.qml"
+mkdir -p "$root/plugins"
+for id in $(jq -r '.plugins[].id' "$REPO/plugins/catalogue.json"); do
+  git -c init.defaultBranch=main init -q "$root/src"
+  jq -n --arg id "$id" '{schemaVersion: 1, id: $id, name: $id, version: "1.0.0", kinds: ["bar-widget"]}' >"$root/src/manifest.json"
+  git -C "$root/src" add manifest.json && git -C "$root/src" -c user.name=t -c user.email=t@t.invalid commit -q -m init
+  git clone -q --bare "$root/src" "$root/gh/$id.git" && rm -rf "$root/src"
+done
+jq --arg base "file://$root/gh" '.plugins |= map(.url = "\($base)/\(.id).git")' "$REPO/plugins/catalogue.json" >"$root/catalogue.json"
+PLUGIN_HOOKS=(NOTCH_FORCE_PLUGINS=1 NOTCH_PLUGINS_DIR="$root/plugins" NOTCH_PLUGINS_OMARCHY=false NOTCH_PLUGINS_CATALOGUE="$root/catalogue.json"
+              NOTCH_PLUGINS_SHELL=false NOTCH_PLUGINS_TERMINAL=false NOTCH_PLUGINS_SESSION_LOCKED=false NOTCH_PLUGINS_STATE_DIR="$root/state"
+              NOTCH_PLUGINS_SCRATCH="$root/scratch"
+              NOTCH_PLUGINS_DETACH=setsid)
 
 ipc() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
 start() {
-  NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 NOTCH_HARNESS_CONFIG="$1" quickshell -p "$root" -n >>"$root/qs.log" 2>&1 &
+  env NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 NOTCH_HARNESS_CONFIG="$1" "${PLUGIN_HOOKS[@]}" quickshell -p "$root" -n >>"$root/qs.log" 2>&1 &
   qs_pid=$!
   for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
   for _ in $(seq 1 30); do sleep 0.1; [[ $(ipc geometry | jq -r .menu.rowsLoaded) == true ]] && break; done
@@ -61,6 +79,18 @@ for r in ${RADII:-10 8 3 16}; do
   ipc menu root >/dev/null; sleep 1.1
   d=$(ipc design)
   ipc menu root >/dev/null
+  # The Plugins page, then its card.
+  ipc plugins open >/dev/null
+  for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc plugins status | jq -r '.checkedAt > 0') == true ]] && break; done
+  sleep 1.1
+  page=$(ipc design | jq -c .plugins)
+  ipc pluginsPress install:graveklar.face >/dev/null
+  for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc plugins status | jq -r '.preview.id != null') == true ]] && break; done
+  sleep 0.4
+  cardAudit=$(ipc design | jq -c .plugins)
+  carded=$(ipc geometry | jq -r .plugins.card)
+  ipc pluginsPress escape >/dev/null; ipc plugins close >/dev/null
+  d=$(jq -c --argjson page "$page" --argjson card "$cardAudit" '.plugins = $page | .pluginsCard = $card' <<<"$d")
   report=$(python3 - "$d" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
@@ -82,17 +112,22 @@ def audit(items):
         bad.append(f'{i["type"]} {i["width"]}x{i["height"]} radius {i["radius"]} (want {want:g}) at {i["path"]}')
     return {"total": len(items), "drawn": len(drawn), "roundParts": round_parts, "bad": bad}
 out = {"radius": r, "settings": audit(d["settings"]), "menu": audit(d["menu"]),
+       "plugins": audit(d["plugins"]), "pluginsCard": audit(d["pluginsCard"]),
        "tooltipOk": abs(d["tooltip"]["radius"] - max(0, min(r, d["tooltip"]["height"] / 2))) <= 0.01}
 print(json.dumps(out))
 PY
 )
-  echo "  ${DIM}$(jq -c '{radius, settings: (.settings | {total, drawn, roundParts, bad: (.bad | length)}), menu: (.menu | {total, drawn, roundParts, bad: (.bad | length)})}' <<<"$report")${RESET}"
-  jq -r '(.settings.bad[:6] + .menu.bad[:14])[] | "        \(.)"' <<<"$report"
+  echo "  ${DIM}$(jq -c '{radius, settings: (.settings | {total, drawn, roundParts, bad: (.bad | length)}), menu: (.menu | {total, drawn, roundParts, bad: (.bad | length)}), plugins: (.plugins | {total, drawn, bad: (.bad | length)}), card: (.pluginsCard | {total, drawn, bad: (.bad | length)})}' <<<"$report")${RESET}"
+  jq -r '(.settings.bad[:6] + .menu.bad[:14] + .plugins.bad[:6] + .pluginsCard.bad[:6])[] | "        \(.)"' <<<"$report"
   check "the notch's radius is bottomRadius ($r)" "$r" "$(jq -r .radius <<<"$d")"
   check "settings: every drawn rounded item has radius min($r, height / 2, width / 2)" "true 0" \
     "$(jq -r '.settings | "\(.drawn > 20) \(.bad | length)"' <<<"$report")"
   check "menu: every drawn rounded item (rows, dialog, buttons) has radius min($r, height / 2, width / 2)" "true 0" \
     "$(jq -r '.menu | "\(.drawn > 0) \(.bad | length)"' <<<"$report")"
+  check "plugins page: every drawn rounded item (rows, buttons) has radius min($r, height / 2, width / 2)" "true 0" \
+    "$(jq -r '.plugins | "\(.drawn > 3) \(.bad | length)"' <<<"$report")"
+  check "plugins card (shown): every drawn rounded item (Cancel, Install) has radius min($r, height / 2, width / 2)" "true true 0" \
+    "$carded $(jq -r '.pluginsCard | "\(.drawn >= 2) \(.bad | length)"' <<<"$report")"
   check "the tooltip bubble has the notch's radius" "true" "$(jq -r .tooltipOk <<<"$report")"
   stop
 done

@@ -1,0 +1,4 @@
+#!/bin/bash
+# dev/plugins.sh fixture: `omarchy-profile setup status --json`, every row ok.
+[[ "$*" == "setup status --json" ]] || exit 2
+jq -nc '[{id: "adopt", state: "ok"}, {id: "apps", state: "ok"}, {id: "switch", state: "ok"}]'

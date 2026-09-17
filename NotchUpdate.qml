@@ -31,6 +31,9 @@ Item {
   readonly property real padding: Style.space(14)
   readonly property real actionsHeight: Style.space(30)
 
+  // Whether Update takes a click (dev/plugins.sh).
+  readonly property bool updateButtonEnabled: updateButton.enabled
+
   function radiusFor(size) { return bar ? bar.radiusFor(size) : Math.max(0, Math.min(10, size / 2)) }
   function shortSha(sha) { return String(sha || "").slice(0, 7) }
 
@@ -142,6 +145,9 @@ Item {
       Button {
         id: updateButton
         visible: root.notice === "available"
+        // Not while a plugin job runs: both reload every plugin.
+        enabled: !!root.bar && !root.bar.pluginJobRunning
+        opacity: enabled ? 1 : 0.35
         text: "Update"
         bordered: true
         selected: true

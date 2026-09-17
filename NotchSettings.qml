@@ -58,6 +58,20 @@ Item {
     }
   }
 
+  // Unfold a section and scroll to it: "updates" (the Plugins page's notch row).
+  function revealSection(name) {
+    if (name !== "updates") return
+    updatesSection.open = true
+    Qt.callLater(function() {
+      settingsFlick.contentY = Math.max(0, Math.min(updatesSection.y, settingsFlick.contentHeight - settingsFlick.height))
+    })
+  }
+
+  // Whether Updates is unfolded (dev/plugins.sh).
+  readonly property bool updatesSectionOpen: updatesSection.open
+  // Whether the notch update's Update button takes a click (dev/plugins.sh).
+  readonly property bool updateButtonEnabled: updateNowButton.enabled
+
   // The notch's radius for a control this tall (DESIGN-PHILOSOPHY.md, 5).
   function radiusFor(height) { return bar ? bar.radiusFor(height) : Math.max(0, Math.min(10, height / 2)) }
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -148,6 +162,7 @@ Item {
   }
 
   Flickable {
+    id: settingsFlick
     x: root.padding
     y: root.headerHeight
     width: parent.width - 2 * root.padding
@@ -429,6 +444,7 @@ Item {
       }
 
       Section {
+        id: updatesSection
         title: "Updates"
 
         SettingRow {
@@ -444,7 +460,11 @@ Item {
           Row {
             spacing: Style.space(6)
             Button {
+              id: updateNowButton
               visible: root.bar && root.bar.updateNotice === "" && root.bar.updateCheckResult && root.bar.updateCheckResult.state === "available"
+              // Not while a plugin job runs: both reload every plugin.
+              enabled: !!root.bar && !root.bar.pluginJobRunning
+              opacity: enabled ? 1 : 0.35
               text: "Update"
               bordered: true
               selected: true
@@ -468,6 +488,21 @@ Item {
               horizontalPadding: Style.space(7)
               onClicked: root.bar.checkForUpdates()
             }
+          }
+        }
+
+        SettingRow {
+          label: "Your plugins"
+          Button {
+            text: "Manage…"
+            bordered: true
+            foreground: root.foreground
+            accent: root.accent
+            radius: root.radiusFor(Math.min(width, height))
+            fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            horizontalPadding: Style.space(7)
+            onClicked: root.bar.openPluginsFromSettings()
           }
         }
       }

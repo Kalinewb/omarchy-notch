@@ -1,0 +1,732 @@
+#!/bin/bash
+# Install, enable and update the user's own plugins from the notch.
+#
+#   notch-plugins catalogue                   the validated catalogue, one line of JSON
+#   notch-plugins state [--local]             read-only probe of every entry, one line of JSON;
+#                                             --local skips the network (relation "unchecked")
+#   notch-plugins preview <id>                what an install or update would bring, one line of JSON
+#   notch-plugins run <install|update|enable> <id> <status file> [<sha>]
+#                                             do it; progress goes to <status file> as JSON
+#   notch-plugins ack <status file> <job>     mark that finished job seen
+#   notch-plugins setup <id> | remove <id>    hand off to the plugin's own panel over IPC
+#   notch-plugins review <id>                 a floating terminal: upstream's diff, or the local edits
+#
+# Only ids from plugins/catalogue.json are accepted: argv never carries a URL
+# or a path. The catalogue pins each plugin's GitHub URL, and a denied id or the
+# notch itself is never touched. The catalogue is validated on every call; an
+# invalid one fails every command with reason `catalogue`.
+#
+# `run` changes the plugins folder, which reloads every plugin and destroys the
+# notch that started it, so the notch launches it detached and the rebuilt
+# notch reads the status file (outside the plugins folder), as bin/notch-update
+# does. install and update take the exact commit the user confirmed and refuse
+# if GitHub moved since. Before anything lands in the plugins folder the
+# repository's manifest id and kinds are checked (a checkout-less shallow clone
+# for an install, FETCH_HEAD for an update); a folder that still turns out
+# wrong after an install is moved aside to plugins/.notch-refused.<name>.<ms>,
+# which Omarchy ignores. Success is decided from the checkout afterwards, never
+# from an exit code. Nothing here is privileged: setup that needs a password
+# happens in the plugin's own panel.
+#
+# Exit codes: 0 ok, 1 refused or failed at run time, 2 usage, an unknown or
+# denied id, or a sandbox violation.
+#
+# Sandbox hooks (dev/plugins.sh). Any of them set without both NOTCH_PLUGINS_DIR
+# and NOTCH_PLUGINS_OMARCHY fails every command with reason `sandbox`, so a
+# half-configured test never mixes stand-ins with the live folder:
+#   NOTCH_PLUGINS_DIR             the plugins folder (default $HOME/.config/omarchy/plugins,
+#                                 the fixed path upstream writes; never XDG_CONFIG_HOME)
+#   NOTCH_PLUGINS_OMARCHY         command used instead of `omarchy` (plugin add/update/enable/list)
+#   NOTCH_PLUGINS_CATALOGUE       another catalogue
+#   NOTCH_PLUGINS_SHELL           instead of `omarchy-shell` (handoffs, panel state, rescans)
+#   NOTCH_PLUGINS_TERMINAL        instead of the floating-terminal helper
+#   NOTCH_PLUGINS_SESSION_LOCKED  instead of `omarchy-hyprland-session-locked`
+#   NOTCH_PLUGINS_SCRATCH         scratch folder (default $XDG_RUNTIME_DIR/graveklar.notch)
+# and one timing knob:
+#   NOTCH_PLUGINS_DISCOVER_MS     how long an install waits for the shell to see the plugin (10000)
+
+set -uo pipefail
+
+REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+export GIT_TERMINAL_PROMPT=0 GIT_OPTIONAL_LOCKS=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
+
+PLUGINS_DIR="${NOTCH_PLUGINS_DIR:-$HOME/.config/omarchy/plugins}"
+SANDBOXED=0
+[[ -n ${NOTCH_PLUGINS_DIR:-} && -n ${NOTCH_PLUGINS_OMARCHY:-} ]] && SANDBOXED=1
+CATALOGUE_FILE="$REPO/plugins/catalogue.json"
+SCRATCH_ROOT="${NOTCH_PLUGINS_SCRATCH:-${XDG_RUNTIME_DIR:-/tmp}/graveklar.notch}"
+read -ra OMARCHY <<<"${NOTCH_PLUGINS_OMARCHY:-omarchy}"
+read -ra SHELLCMD <<<"${NOTCH_PLUGINS_SHELL:-omarchy-shell}"
+read -ra TERMINAL <<<"${NOTCH_PLUGINS_TERMINAL:-omarchy-launch-floating-terminal-with-presentation}"
+read -ra LOCKED <<<"${NOTCH_PLUGINS_SESSION_LOCKED:-omarchy-hyprland-session-locked}"
+ORIG_UMASK=$(umask)
+ID_RE='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+
+now_ms() { date +%s%3N; }
+
+# refuse <exit code> <reason> <message>: one line of JSON, then exit.
+refuse() {
+  jq -nc --arg reason "$2" --arg message "$3" '{ok: false, reason: $reason, message: $message}'
+  exit "$1"
+}
+
+# Every hook needs both NOTCH_PLUGINS_DIR and NOTCH_PLUGINS_OMARCHY.
+check_hooks() {
+  local v
+  (( SANDBOXED )) && return 0
+  for v in NOTCH_PLUGINS_DIR NOTCH_PLUGINS_OMARCHY NOTCH_PLUGINS_CATALOGUE NOTCH_PLUGINS_SHELL \
+           NOTCH_PLUGINS_TERMINAL NOTCH_PLUGINS_SESSION_LOCKED NOTCH_PLUGINS_SCRATCH; do
+    [[ -n ${!v:-} ]] && refuse 2 sandbox "$v needs NOTCH_PLUGINS_DIR and NOTCH_PLUGINS_OMARCHY."
+  done
+  return 0
+}
+
+# --- catalogue ----------------------------------------------------------------
+
+CATALOGUE=""
+load_catalogue() {
+  [[ -n ${NOTCH_PLUGINS_CATALOGUE:-} ]] && CATALOGUE_FILE=$NOTCH_PLUGINS_CATALOGUE
+  # file:// URLs (local test remotes) only in a sandbox.
+  CATALOGUE=$(jq -ce --argjson sandbox "$SANDBOXED" '
+    def idok: type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$") and (contains("..") | not);
+    def urlok: type == "string" and (test("^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+\\.git$")
+      or ($sandbox == 1 and test("^file:///[A-Za-z0-9._/-]+\\.git$") and (contains("..") | not)));
+    def argv: type == "array" and length > 0 and all(.[]; type == "string");
+    if .version == 1 and (.self.id | idok) and (.self.name | type == "string")
+      and (.deny | type == "array" and all(.[]; idok))
+      and (.plugins | type == "array" and length > 0)
+      and ([.plugins[].id] | length == (unique | length))
+      and (.deny as $deny | .self.id as $self | all(.plugins[];
+        (.id | idok) and (.id as $id | ($deny | index($id)) == null and $id != $self)
+        and (.name | type == "string" and length > 0) and (.url | urlok)
+        and (.kinds | argv and index("bar") == null)
+        and (.status | argv) and (.status[0] | startswith("/") | not) and (.status[0] | contains("..") | not)
+        and ((.statusFormat // "none") as $f | ["face", "profiles", "none"] | index($f)) != null
+        and ((.busyWhen // "") as $b | ["", "face-install-running", "profiles-switch-pending"] | index($b)) != null
+        and (.setup | argv) and .setup[0] == .id and (.remove | argv) and .remove[0] == .id
+        and ((.panelOpenCall // [.id]) | argv) and ((.panelOpenCall // [.id])[0] == .id)))
+    then . else false end' "$CATALOGUE_FILE" 2>/dev/null) \
+    || refuse 1 catalogue "The plugin catalogue is invalid."
+}
+
+# resolve <id>: sets ENTRY, ID, NAME, URL, DIR, or refuses (exit 2).
+resolve() {
+  ID=${1:-}
+  [[ $ID =~ $ID_RE && $ID != *..* ]] || refuse 2 unknown-id "Not a plugin in the notch's list."
+  if jq -e --arg id "$ID" '(.deny | index($id)) != null or .self.id == $id' <<<"$CATALOGUE" >/dev/null; then
+    refuse 2 denied "$ID can't be installed or changed from the notch."
+  fi
+  ENTRY=$(jq -c --arg id "$ID" '.plugins[] | select(.id == $id)' <<<"$CATALOGUE")
+  [[ -n $ENTRY ]] || refuse 2 unknown-id "$ID isn't in the notch's list."
+  NAME=$(jq -r .name <<<"$ENTRY")
+  URL=$(jq -r .url <<<"$ENTRY")
+  DIR="$PLUGINS_DIR/$ID"
+}
+
+# A sandbox folder with the live shell or a real terminal would act on the
+# live system while reporting on the sandbox.
+guard() { # guard shell|terminal
+  (( SANDBOXED )) || return 0
+  case $1 in
+    shell) [[ -n ${NOTCH_PLUGINS_SHELL:-} ]] || refuse 2 sandbox "NOTCH_PLUGINS_DIR is set without NOTCH_PLUGINS_SHELL." ;;
+    terminal) [[ -n ${NOTCH_PLUGINS_TERMINAL:-} ]] || refuse 2 sandbox "NOTCH_PLUGINS_DIR is set without NOTCH_PLUGINS_TERMINAL." ;;
+  esac
+}
+
+# --- scratch and cleanup ------------------------------------------------------
+
+# Preview clones and captured output: a private folder under SCRATCH_ROOT,
+# never inside the plugins folder, removed on exit.
+SCRATCH=""; STATUS=""; LOCK=""; CHILD=""; OUTPUT=""; SNAPSHOT=""; SNAPPED=0
+scratch() {
+  [[ -n $SCRATCH ]] && return 0
+  mkdir -p -m 700 "$SCRATCH_ROOT" 2>/dev/null || return 1
+  SCRATCH=$(umask 077; mktemp -d "$SCRATCH_ROOT/plugins-scratch.XXXXXX") || { SCRATCH=""; return 1; }
+}
+
+on_exit() {
+  if [[ -n $STATUS && -f $STATUS ]] && jq -e --argjson pid $$ '.phase == "running" and .pid == $pid' "$STATUS" >/dev/null 2>&1; then
+    write "$STATUS" '.phase = "failed" | .reason = "stopped" | .message = "Stopped without finishing." | .finishedAt = $now'
+  fi
+  [[ -n $LOCK ]] && rm -rf "$LOCK"
+  [[ -n $SCRATCH ]] && rm -rf "$SCRATCH"
+}
+trap on_exit EXIT
+trap 'on_signal 143' TERM
+trap 'on_signal 130' INT
+trap 'on_signal 129' HUP
+
+# TERM, INT or HUP: stop the child's whole process group (upstream's git clone
+# included), remove the staging folders it left, and say so at once.
+on_signal() { # on_signal <exit code>
+  trap - TERM INT HUP
+  if [[ -n $CHILD ]]; then
+    kill -TERM -- -"$CHILD" 2>/dev/null || kill -TERM "$CHILD" 2>/dev/null
+    for _ in {1..40}; do
+      pgrep -g "$CHILD" -r D,R,S,T,t,W,I >/dev/null 2>&1 || break
+      sleep 0.05
+    done
+    kill -KILL -- -"$CHILD" 2>/dev/null
+    wait "$CHILD" 2>/dev/null
+    CHILD=""
+  fi
+  if (( SNAPPED )); then
+    local name
+    while IFS= read -r name; do
+      [[ $name == .add.tmp.* && -n $name ]] && rm -rf -- "${PLUGINS_DIR:?}/$name"
+    done < <(new_entries)
+  fi
+  exit "$1"
+}
+
+# --- probing ------------------------------------------------------------------
+
+norm_url() { local u=${1%/}; printf '%s' "${u%.git}"; }
+manifest_at() { git -C "$1" show "$2:manifest.json" 2>/dev/null; }
+# kinds_of <manifest json>: its kinds as a JSON array ([] when missing or odd).
+kinds_of() { jq -c 'if (.kinds | type) == "array" then .kinds else [] end' <<<"$1" 2>/dev/null || echo '[]'; }
+has_bar() { jq -e 'index("bar") != null' <<<"$1" >/dev/null 2>&1; }
+
+# The plugin's own status, from its catalogue argv run in its folder:
+# prints "<setup> <busy>", setup ∈ ok|needed|attention|unknown.
+plugin_status() { # plugin_status <entry> <dir>
+  local entry=$1 dir=$2 format busy_when out setup busy=false
+  local -a argv
+  mapfile -t argv < <(jq -r '.status[]' <<<"$entry")
+  format=$(jq -r '.statusFormat // "none"' <<<"$entry")
+  busy_when=$(jq -r '.busyWhen // ""' <<<"$entry")
+  if [[ $format == none || ! -f $dir/${argv[0]} ]]; then echo "unknown false"; return; fi
+  out=$(cd "$dir" && timeout 10 "${argv[@]}" 2>/dev/null </dev/null)
+  case $format in
+    face) setup=$(jq -r 'if (((.rows // []) | any(.state == "broken")) or ((.install.state // "") == "failed")) then "attention"
+        elif ((.rows // []) | any((.id | IN("legacy", "camera", "system", "engine", "people")) and .state != "ok")) then "needed"
+        else "ok" end' <<<"$out" 2>/dev/null) ;;
+    profiles) setup=$(jq -r 'if type != "array" then "unknown"
+        elif any(.[]; .state == "needs_action" or .state == "broken") then "needed" else "ok" end' <<<"$out" 2>/dev/null) ;;
+  esac
+  case $busy_when in
+    face-install-running) busy=$(jq -r '(.install.state // "") == "running"' <<<"$out" 2>/dev/null) ;;
+    profiles-switch-pending) busy=$(jq -r 'type == "array" and any(.[]; .id == "switch" and (.state == "needs_action" or .state == "broken"))' <<<"$out" 2>/dev/null) ;;
+  esac
+  echo "${setup:-unknown} ${busy:-false}"
+}
+
+# probe <entry> <network: yes|no> <plugin list json>: one entry as JSON.
+probe() {
+  local entry=$1 network=$2 list=$3
+  local id url dir installed=false git=false origin="" matches=false dirty=false detached=false
+  local head="" remote="" behind=0 ahead=0 relation=none subject="" version="" remote_version=""
+  local manifest_id="" kinds='[]' setup=none busy=false known=false enabled=false state
+  id=$(jq -r .id <<<"$entry"); url=$(jq -r .url <<<"$entry"); dir="$PLUGINS_DIR/$id"
+  [[ $network == yes ]] || relation=unchecked
+  if [[ -d $dir ]]; then
+    installed=true
+    setup=unknown
+    version=$(jq -r '.version // ""' "$dir/manifest.json" 2>/dev/null)
+    manifest_id=$(jq -r '.id // ""' "$dir/manifest.json" 2>/dev/null)
+    kinds=$(kinds_of "$(cat "$dir/manifest.json" 2>/dev/null)")
+    if [[ -e $dir/.git ]]; then
+      git=true
+      origin=$(git -C "$dir" remote get-url origin 2>/dev/null)
+      [[ -n $origin && $(norm_url "$origin") == "$(norm_url "$url")" ]] && matches=true
+      head=$(git -C "$dir" rev-parse HEAD 2>/dev/null)
+      git -C "$dir" symbolic-ref -q HEAD >/dev/null 2>&1 || detached=true
+      [[ -n $(git -C "$dir" status --porcelain --untracked-files=no 2>/dev/null) ]] && dirty=true
+      if [[ $matches == true && $network == yes ]]; then
+        if timeout 15 git -C "$dir" fetch --quiet origin HEAD 2>/dev/null </dev/null; then
+          remote=$(git -C "$dir" rev-parse FETCH_HEAD 2>/dev/null)
+          behind=$(git -C "$dir" rev-list --count "$head..$remote" 2>/dev/null || echo 0)
+          ahead=$(git -C "$dir" rev-list --count "$remote..$head" 2>/dev/null || echo 0)
+          if [[ $head == "$remote" ]]; then relation=current
+          elif (( ahead == 0 )); then relation=behind
+          elif (( behind == 0 )); then relation=ahead
+          else relation=diverged; fi
+          subject=$(git -C "$dir" log -1 --format=%s "$remote" 2>/dev/null)
+          remote_version=$(manifest_at "$dir" "$remote" | jq -r '.version // ""' 2>/dev/null)
+        else
+          relation=offline
+        fi
+      fi
+      # Only a checkout of the pinned URL runs its own status command.
+      [[ $matches == true ]] && read -r setup busy < <(plugin_status "$entry" "$dir")
+    fi
+  elif [[ $network == yes ]]; then
+    remote=$(timeout 15 git ls-remote -- "$url" HEAD 2>/dev/null </dev/null | awk 'NR == 1 { print $1 }')
+    [[ -n $remote ]] || relation=offline
+  fi
+  if jq -e --arg id "$id" 'type == "array" and any(.[]; .id == $id)' <<<"$list" >/dev/null 2>&1; then
+    known=true
+    enabled=$(jq -r --arg id "$id" 'any(.[]; .id == $id and .enabled == true)' <<<"$list")
+  fi
+
+  if [[ $installed != true ]]; then state=not-installed
+  elif [[ $git != true || $matches != true ]]; then state=other-source
+  elif [[ $dirty == true || $detached == true || $relation == ahead || $relation == diverged ]]; then state=local-changes
+  elif [[ $enabled != true ]]; then state=disabled
+  elif [[ $relation == offline ]]; then state=offline
+  elif [[ $relation == unchecked ]]; then state=unchecked
+  elif [[ $relation == behind ]]; then state=update-available
+  else state=current; fi
+
+  jq -nc --argjson entry "$entry" --arg state "$state" --argjson installed "$installed" --argjson git "$git" \
+    --argjson originMatches "$matches" --argjson dirty "$dirty" --argjson detached "$detached" \
+    --arg local "$head" --arg remote "$remote" --argjson behind "${behind:-0}" --argjson ahead "${ahead:-0}" \
+    --arg relation "$relation" --arg subject "$subject" --arg version "$version" --arg remoteVersion "$remote_version" \
+    --arg manifestId "$manifest_id" --argjson installedKinds "$kinds" --arg setup "$setup" --argjson pluginBusy "${busy:-false}" \
+    --argjson known "$known" --argjson enabled "${enabled:-false}" '
+    {id: $entry.id, name: $entry.name, url: $entry.url, kinds: $entry.kinds, removeHint: ($entry.removeHint // ""),
+     state: $state, installed: $installed, git: $git, originMatches: $originMatches, dirty: $dirty, detached: $detached,
+     local: $local, remote: $remote, behind: $behind, ahead: $ahead, relation: $relation, subject: $subject,
+     version: $version, remoteVersion: $remoteVersion, manifestId: $manifestId, installedKinds: $installedKinds,
+     known: $known, enabled: $enabled, setup: $setup, pluginBusy: $pluginBusy}'
+}
+
+# plugin_list [seconds]: `omarchy plugin list --json`, bounded.
+plugin_list() { timeout "${1:-10}" "${OMARCHY[@]}" plugin list --json 2>/dev/null </dev/null; }
+
+state() { # state [--local]
+  local network=yes list work i n shell_ok=false started
+  case ${1:-} in
+    "") ;;
+    --local) network=no ;;
+    *) refuse 2 usage "state takes only --local." ;;
+  esac
+  started=$(now_ms)
+  list=$(plugin_list)
+  jq -e 'type == "array"' <<<"$list" >/dev/null 2>&1 && shell_ok=true || list='[]'
+  scratch || refuse 1 command "Can't make a scratch folder."
+  work=$(mktemp -d "$SCRATCH/state.XXXXXX") || refuse 1 command "Can't make a scratch folder."
+  n=$(jq '.plugins | length' <<<"$CATALOGUE")
+  for (( i = 0; i < n; i++ )); do
+    probe "$(jq -c ".plugins[$i]" <<<"$CATALOGUE")" "$network" "$list" >"$work/$i.json" &
+  done
+  wait
+  jq -nc --arg startedAt "$started" --arg checkedAt "$(now_ms)" --argjson shell "$shell_ok" --argjson catalogue "$CATALOGUE" \
+    --argjson local "$([[ $network == no ]] && echo true || echo false)" --arg pluginsDir "$PLUGINS_DIR" \
+    --arg version "$(jq -r '.version // ""' "$REPO/manifest.json" 2>/dev/null)" \
+    '{startedAt: ($startedAt | tonumber), checkedAt: ($checkedAt | tonumber), local: $local, pluginsDir: $pluginsDir,
+      shell: $shell, entries: [inputs],
+      self: {id: $catalogue.self.id, name: $catalogue.self.name, version: $version}}' \
+    $(for (( i = 0; i < n; i++ )); do echo "$work/$i.json"; done)
+}
+
+# Whether a diff from..to touches QML or JS that a rescan doesn't reload (not a
+# manifest entry point).
+restart_likely() { # restart_likely <dir> <from> <to>
+  local dir=$1 from=$2 to=$3 points
+  points=$( { manifest_at "$dir" "$to"; manifest_at "$dir" "$from"; } | jq -r '.entryPoints // {} | .[]' 2>/dev/null)
+  if git -C "$dir" diff --name-only "$from" "$to" 2>/dev/null | grep -E '\.(qml|js)$' | grep -vxF -f <(printf '%s\n' "$points" | grep .) | grep -q .; then
+    echo true
+  else
+    echo false
+  fi
+}
+
+panel_open() {
+  local -a call
+  jq -e 'has("panelOpenCall")' <<<"$ENTRY" >/dev/null || { echo false; return; }
+  # Never ask the live shell about a sandbox.
+  (( SANDBOXED )) && [[ -z ${NOTCH_PLUGINS_SHELL:-} ]] && { echo false; return; }
+  mapfile -t call < <(jq -r '.panelOpenCall[]' <<<"$ENTRY")
+  timeout 3 "${SHELLCMD[@]}" "${call[@]}" 2>/dev/null </dev/null | jq -r 'try (.open == true) catch false' 2>/dev/null | head -n 1 | grep -qx true \
+    && echo true || echo false
+}
+
+# peek <url>: a shallow clone with no work tree (so no checkout filter runs)
+# into the scratch folder; sets PEEK_HEAD, PEEK_ID, PEEK_KINDS and
+# PEEK_VERSION, and removes the clone. 1 when it can't be fetched. Inside `run`
+# the clone goes through `call`, so a signal stops it.
+peek() {
+  local url=$1 dir manifest rc
+  PEEK_HEAD=""; PEEK_ID=""; PEEK_KINDS='[]'; PEEK_VERSION=""
+  scratch || return 1
+  dir=$(mktemp -d "$SCRATCH/clone.XXXXXX") || return 1
+  if [[ -n $STATUS ]]; then
+    call timeout 60 git clone --depth 1 --no-checkout --quiet -- "$url" "$dir/repo"; rc=$?
+  else
+    timeout 60 git clone --depth 1 --no-checkout --quiet -- "$url" "$dir/repo" >/dev/null 2>&1 </dev/null; rc=$?
+  fi
+  if (( rc == 0 )); then
+    PEEK_HEAD=$(git -C "$dir/repo" rev-parse HEAD 2>/dev/null)
+    manifest=$(manifest_at "$dir/repo" HEAD)
+    PEEK_ID=$(jq -r '.id // "" | strings' <<<"$manifest" 2>/dev/null)
+    PEEK_KINDS=$(kinds_of "$manifest")
+    PEEK_VERSION=$(jq -r '.version // "" | strings' <<<"$manifest" 2>/dev/null)
+  fi
+  rm -rf "$dir"
+  [[ $rc == 0 && -n $PEEK_HEAD ]]
+}
+
+# refusal <manifest id> <kinds json>: "", wrong-id or bar-kind for this entry.
+refusal() {
+  if [[ $1 != "$ID" ]]; then echo wrong-id
+  elif has_bar "$2"; then echo bar-kind
+  else echo ""; fi
+}
+
+preview() {
+  resolve "${1:-}"
+  local p remote head behind commits stat files ins=0 del=0 restart panel manifest mid kinds refused
+  p=$(probe "$ENTRY" yes "$(plugin_list)")
+  if [[ $(jq -r .installed <<<"$p") != true ]]; then
+    if peek "$URL"; then refused=$(refusal "$PEEK_ID" "$PEEK_KINDS"); else refused=offline; fi
+    jq -nc --argjson p "$p" --arg remote "$PEEK_HEAD" --arg manifestId "$PEEK_ID" --argjson kinds "$PEEK_KINDS" \
+      --arg version "$PEEK_VERSION" --arg refused "$refused" '
+      {ok: ($refused == "" and $remote != ""), id: $p.id, action: "install", url: $p.url, remote: $remote,
+       manifestId: $manifestId, kinds: $kinds, version: $version, refused: $refused, reason: $refused}'
+    return 0
+  fi
+  remote=$(jq -r .remote <<<"$p"); head=$(jq -r .local <<<"$p"); behind=$(jq -r .behind <<<"$p")
+  commits='[]'; files=0; restart=false; mid=""; kinds='[]'; refused=""
+  if [[ -n $remote ]]; then
+    manifest=$(manifest_at "$DIR" "$remote")
+    mid=$(jq -r '.id // "" | strings' <<<"$manifest" 2>/dev/null)
+    kinds=$(kinds_of "$manifest")
+    refused=$(refusal "$mid" "$kinds")
+  elif [[ $(jq -r .relation <<<"$p") == offline ]]; then
+    refused=offline
+  fi
+  if [[ -n $remote ]] && (( behind > 0 )); then
+    commits=$(git -C "$DIR" log -5 --format='%H%x09%s' "$head..$remote" 2>/dev/null | jq -Rsc 'split("\n") | map(select(. != "") | split("\t") | {sha: .[0], subject: (.[1:] | join("\t"))})')
+    files=$(git -C "$DIR" diff --name-only "$head" "$remote" 2>/dev/null | grep -c .)
+    stat=$(git -C "$DIR" diff --numstat "$head" "$remote" 2>/dev/null)
+    ins=$(awk '$1 ~ /^[0-9]+$/ { s += $1 } END { print s + 0 }' <<<"$stat")
+    del=$(awk '$2 ~ /^[0-9]+$/ { s += $2 } END { print s + 0 }' <<<"$stat")
+    restart=$(restart_likely "$DIR" "$head" "$remote")
+  fi
+  panel=$(panel_open)
+  jq -nc --argjson p "$p" --argjson commits "$commits" --argjson files "${files:-0}" --argjson insertions "$ins" \
+    --argjson deletions "$del" --argjson restartLikely "$restart" --argjson panelOpen "$panel" \
+    --arg manifestId "$mid" --argjson kinds "$kinds" --arg refused "$refused" '
+    ($refused == "" and $p.remote != "" and $p.behind > 0 and ($p.state == "update-available" or $p.state == "disabled")) as $ok |
+    {ok: $ok, id: $p.id, action: "update", url: $p.url, state: $p.state, local: $p.local, remote: $p.remote, behind: $p.behind,
+     commits: $commits, files: $files, insertions: $insertions, deletions: $deletions,
+     restartLikely: $restartLikely, panelOpen: $panelOpen, pluginBusy: $p.pluginBusy,
+     manifestId: $manifestId, kinds: $kinds, refused: $refused,
+     reason: (if $ok then "" elif $refused != "" then $refused elif $p.state == "local-changes" then "local-changes"
+              elif $p.state == "other-source" then "wrong-origin" elif $p.behind == 0 then "current" else $p.state end)}'
+}
+
+# --- jobs ---------------------------------------------------------------------
+
+# write <status file> [jq --arg/--argjson options...] <filter over the current status>:
+# the result replaces the file atomically (mode 600).
+write() {
+  local file=$1; shift
+  local filter=${*: -1}
+  local options=("${@:1:$#-1}")
+  local current tmp
+  current=$(cat "$file" 2>/dev/null) || current='{}'
+  jq -e . >/dev/null 2>&1 <<<"$current" || current='{}'
+  tmp=$(umask 077; mktemp "$file.XXXXXX") || return 1
+  if jq -c "${options[@]}" --argjson now "$(now_ms)" "$filter" <<<"$current" >"$tmp"; then
+    mv -f "$tmp" "$file"
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+
+# fail <reason> <message>: the job failed; print the status and exit 1.
+fail() {
+  write "$STATUS" --arg reason "$1" --arg message "$2" '.phase = "failed" | .reason = $reason | .message = $message | .finishedAt = $now'
+  cat "$STATUS"; echo
+  exit 1
+}
+step() { write "$STATUS" --arg step "$1" '.step = $step'; }
+
+# call <command...>: run it outside our umask in its own process group (so a
+# signal can stop all of it), and wait; output in $OUTPUT. A trapped signal
+# ends the wait at once.
+call() {
+  ( umask "$ORIG_UMASK"; exec setsid "$@" ) >"$OUTPUT" 2>&1 </dev/null &
+  CHILD=$!
+  wait "$CHILD"; local rc=$?
+  CHILD=""
+  return $rc
+}
+last_line() { grep . "$OUTPUT" 2>/dev/null | tail -n 1 | cut -c1-200; }
+
+# A lock is live while its pid runs. One without a pid (another script's
+# mkdir-then-pid lock, caught in between) counts as live for 5 s.
+lock_live() {
+  if [[ -f $1/pid ]]; then
+    kill -0 "$(cat "$1/pid" 2>/dev/null)" 2>/dev/null
+  else
+    [[ -d $1 ]] && (( $(date +%s) - $(stat -c %Y "$1" 2>/dev/null || echo 0) < 5 ))
+  fi
+}
+
+# take_lock <lock dir>: the lock appears with its pid already inside (a rename),
+# so no one ever sees it half made. A dead holder's lock is moved aside first.
+take_lock() {
+  local lock=$1 tmp aside
+  tmp=$(mktemp -d "$lock.new.XXXXXX") || return 1
+  echo $$ >"$tmp/pid"
+  # A rename replaces an empty folder: never someone's mkdir-then-pid lock.
+  if [[ -d $lock ]] && lock_live "$lock"; then rm -rf "$tmp"; return 1; fi
+  if mv -T "$tmp" "$lock" 2>/dev/null; then return 0; fi
+  aside="$lock.stale.$$"
+  if [[ -d $lock ]] && ! lock_live "$lock" && mv -T "$lock" "$aside" 2>/dev/null; then
+    # Taken back if it came alive between the check and the move.
+    if lock_live "$aside"; then mv -T "$aside" "$lock" 2>/dev/null; else rm -rf "$aside"; fi
+    if mv -T "$tmp" "$lock" 2>/dev/null; then return 0; fi
+  fi
+  rm -rf "$tmp"
+  return 1
+}
+
+# The plugins folder's entries (dot entries too), and those new since the snapshot.
+entries_now() { find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort; }
+new_entries() { comm -13 <(printf '%s\n' "$SNAPSHOT") <(entries_now) | grep .; }
+
+enabled_now() { plugin_list | jq -e --arg id "$ID" 'type == "array" and any(.[]; .id == $id and .enabled == true)' >/dev/null 2>&1; }
+# seconds_left <deadline ms>: whole seconds to it, between 1 and 10 (a timeout).
+seconds_left() { local s=$(( ($1 - $(now_ms)) / 1000 + 1 )); (( s < 1 )) && s=1; (( s > 10 )) && s=10; echo "$s"; }
+known_now() { plugin_list "$1" | jq -e --arg id "$ID" 'type == "array" and any(.[]; .id == $id)' >/dev/null 2>&1; }
+manifest_id_now() { jq -r '.id // "" | strings' "$DIR/manifest.json" 2>/dev/null; }
+
+rescan() {
+  # A sandbox without a stand-in shell has no shell watching it.
+  (( SANDBOXED )) && [[ -z ${NOTCH_PLUGINS_SHELL:-} ]] && return 0
+  timeout 10 "${SHELLCMD[@]}" shell rescanPlugins >/dev/null 2>&1 </dev/null
+}
+
+run() {
+  local action=${1:-} sha=${4:-} status_file
+  [[ $action =~ ^(install|update|enable)$ ]] || refuse 2 usage "run needs install, update or enable."
+  resolve "${2:-}"
+  status_file=${3:-}
+  [[ -n $status_file ]] || refuse 2 usage "run needs a status file."
+  [[ $action == enable || $sha =~ ^[0-9a-f]{40}$ ]] || refuse 2 usage "$action needs the confirmed commit."
+
+  umask 077
+  mkdir -p -m 700 "$(dirname "$status_file")" || refuse 1 command "Can't write the status file."
+  # An ack of the last job holds the lock for a moment: wait that out.
+  local tries
+  for tries in {1..20}; do
+    take_lock "$status_file.lock" && { LOCK="$status_file.lock"; break; }
+    sleep 0.05
+  done
+  [[ -n $LOCK ]] || refuse 1 busy "Another plugin job is running."
+  if lock_live "$(dirname "$status_file")/update.json.lock"; then refuse 1 busy "The notch is updating itself."; fi
+
+  scratch || refuse 1 command "Can't make a scratch folder."
+  OUTPUT="$SCRATCH/output"
+  STATUS=$status_file
+  write "$STATUS" --arg job "$(now_ms)-$$" --arg action "$action" --arg id "$ID" --arg expected "$sha" --argjson pid $$ \
+    '{job: $job, action: $action, id: $id, phase: "running", step: "checking", reason: "", message: "", from: "", to: "",
+      expected: $expected, version: "", enabled: false, restartSuggested: false, movedTo: "", startedAt: $now, finishedAt: 0,
+      pid: $pid, seen: false}'
+
+  if command -v "${LOCKED[0]}" >/dev/null 2>&1 && "${LOCKED[@]}" >/dev/null 2>&1 </dev/null; then
+    fail locked "The session is locked."
+  fi
+
+  case $action in
+    install) run_install "$sha" ;;
+    update) run_update "$sha" ;;
+    enable) run_enable ;;
+  esac
+  cat "$STATUS"; echo
+}
+
+# move_aside <reason> <message>: every new folder since the snapshot goes to
+# plugins/.notch-refused.<name>.<ms> (ignored by Omarchy's watcher and scan),
+# the shell rescans, and the job fails naming where it went.
+move_aside() {
+  local reason=$1 message=$2 name target moved=() left=()
+  while IFS= read -r name; do
+    [[ -z $name || $name == .* ]] && continue
+    if [[ $name =~ $ID_RE && $name != *..* && -d $PLUGINS_DIR/$name ]]; then
+      target="$PLUGINS_DIR/.notch-refused.$name.$(now_ms)"
+      mv -T -- "$PLUGINS_DIR/$name" "$target" && moved+=("$target") || left+=("$name")
+    else
+      left+=("$name")
+    fi
+  done < <(new_entries)
+  rescan
+  (( ${#left[@]} )) && message+=" Left in place: ${left[*]}."
+  (( ${#moved[@]} )) && message+=" Moved to ${moved[*]}."
+  write "$STATUS" --arg movedTo "${moved[*]:-}" '.movedTo = $movedTo'
+  fail "$reason" "$message"
+}
+
+run_install() {
+  local sha=$1 head rc deadline landed_id kinds
+  [[ -e $DIR || -L $DIR ]] && fail already-installed "$NAME is already installed."
+
+  # Before the plugins folder is touched: the commit, id and kinds GitHub has
+  # now. The notch's preview isn't trusted; this runs again here.
+  peek "$URL" || fail offline "Couldn't reach GitHub."
+  [[ $PEEK_HEAD == "$sha" ]] || fail changed "GitHub changed since you checked."
+  case $(refusal "$PEEK_ID" "$PEEK_KINDS") in
+    wrong-id) fail wrong-id "This repository is ${PEEK_ID:-unnamed}, not $ID. Nothing was installed." ;;
+    bar-kind) fail bar-kind "This repository is a bar, not $NAME. Nothing was installed." ;;
+  esac
+
+  SNAPSHOT=$(entries_now); SNAPPED=1
+  step installing
+  # No --enable: nothing is turned on before it is verified.
+  call "${OMARCHY[@]}" plugin add "$URL" --yes; rc=$?
+
+  # Upstream cloned again, so GitHub may have moved in between.
+  step verifying
+  if [[ ! -d $DIR ]]; then
+    [[ -n $(new_entries | grep -v '^\.') ]] && move_aside wrong-id "It didn't install as $ID."
+    fail command "$(last_line || true)"
+  fi
+  if [[ ! -e $DIR/.git || $(norm_url "$(git -C "$DIR" remote get-url origin 2>/dev/null)") != "$(norm_url "$URL")" ]]; then
+    move_aside wrong-origin "$ID isn't a checkout of $NAME's pinned repository."
+  fi
+  landed_id=$(manifest_id_now)
+  [[ $landed_id == "$ID" ]] || move_aside wrong-id "The installed repository is ${landed_id:-unnamed}, not $ID."
+  head=$(git -C "$DIR" rev-parse HEAD 2>/dev/null)
+  write "$STATUS" --arg to "$head" --arg version "$(jq -r '.version // ""' "$DIR/manifest.json" 2>/dev/null)" '.to = $to | .version = $version'
+  [[ $head == "$sha" ]] || move_aside changed "GitHub changed while installing."
+  kinds=$(kinds_of "$(cat "$DIR/manifest.json" 2>/dev/null)")
+  has_bar "$kinds" && move_aside bar-kind "$NAME is now a bar."
+
+  # The exit code only colours the message: a rescan that fails after the
+  # move exits 1 with the plugin installed. Wait (bounded by the clock) for
+  # the shell to see it; if it never does, it's installed and turned off.
+  step enabling
+  deadline=$(( $(now_ms) + ${NOTCH_PLUGINS_DISCOVER_MS:-10000} ))
+  until known_now "$(seconds_left "$deadline")"; do
+    if (( $(now_ms) >= deadline )); then
+      write "$STATUS" '.phase = "done" | .enabled = false | .message = "Installed. The shell hasn'"'"'t seen it yet: turn it on in Plugins." | .finishedAt = $now'
+      return 0
+    fi
+    sleep 0.05
+  done
+  call timeout 30 "${OMARCHY[@]}" plugin enable "$ID"
+  if enabled_now; then
+    write "$STATUS" '.phase = "done" | .enabled = true | .finishedAt = $now'
+  else
+    write "$STATUS" --arg message "Installed, but it couldn't be turned on: $(last_line || true)" \
+      '.phase = "done" | .enabled = false | .message = $message | .finishedAt = $now'
+  fi
+  (( rc == 0 )) || true
+}
+
+run_update() {
+  local sha=$1 from to remote setup busy manifest
+  [[ -d $DIR ]] || fail not-installed "$NAME isn't installed."
+  [[ -e $DIR/.git ]] || fail not-git "$NAME wasn't installed from git."
+  [[ $(norm_url "$(git -C "$DIR" remote get-url origin 2>/dev/null)") == "$(norm_url "$URL")" ]] || fail wrong-origin "$NAME was installed from somewhere else."
+  from=$(git -C "$DIR" rev-parse HEAD 2>/dev/null)
+  write "$STATUS" --arg from "$from" '.from = $from'
+  [[ -n $(git -C "$DIR" status --porcelain --untracked-files=no 2>/dev/null) ]] && fail local-changes "$NAME has local edits."
+  git -C "$DIR" symbolic-ref -q HEAD >/dev/null 2>&1 || fail local-changes "$NAME isn't on a branch."
+  read -r setup busy < <(plugin_status "$ENTRY" "$DIR")
+  [[ $busy == true ]] && fail plugin-busy "$NAME is busy."
+  call timeout 15 git -C "$DIR" fetch --quiet origin HEAD || fail offline "Couldn't reach GitHub."
+  remote=$(git -C "$DIR" rev-parse FETCH_HEAD 2>/dev/null)
+  [[ $remote == "$sha" ]] || fail changed "GitHub changed since you checked."
+  git -C "$DIR" merge-base --is-ancestor "$from" "$remote" 2>/dev/null || fail local-changes "$NAME differs from GitHub."
+  # What the commit says it is, before upstream runs.
+  manifest=$(manifest_at "$DIR" "$remote")
+  case $(refusal "$(jq -r '.id // "" | strings' <<<"$manifest" 2>/dev/null)" "$(kinds_of "$manifest")") in
+    wrong-id) fail wrong-id "GitHub's $NAME now calls itself $(jq -r '.id // "nothing" | strings' <<<"$manifest" 2>/dev/null). Nothing was updated." ;;
+    bar-kind) fail bar-kind "GitHub's $NAME is now a bar. Nothing was updated." ;;
+  esac
+
+  step updating
+  # Always with the id: without one it updates every checkout.
+  call "${OMARCHY[@]}" plugin update "$ID" --yes
+  step verifying
+  to=$(git -C "$DIR" rev-parse HEAD 2>/dev/null)
+  if [[ $to == "$sha" ]]; then
+    [[ $(manifest_id_now) == "$ID" ]] || { write "$STATUS" --arg to "$to" '.to = $to'; fail wrong-id "$NAME's manifest no longer says $ID."; }
+    write "$STATUS" --arg to "$to" --arg version "$(jq -r '.version // ""' "$DIR/manifest.json" 2>/dev/null)" \
+      --argjson restart "$(restart_likely "$DIR" "$from" "$to")" --argjson enabled "$(enabled_now && echo true || echo false)" \
+      '.phase = "done" | .to = $to | .version = $version | .restartSuggested = $restart | .enabled = $enabled | .finishedAt = $now'
+  elif [[ $to == "$from" ]]; then
+    fail command "$(last_line || true)"
+  else
+    write "$STATUS" --arg to "$to" '.to = $to'
+    fail changed "$NAME ended up at a different commit."
+  fi
+}
+
+run_enable() {
+  [[ -d $DIR ]] || fail not-installed "$NAME isn't installed."
+  [[ $(manifest_id_now) == "$ID" ]] || fail wrong-id "The folder $ID isn't $NAME."
+  has_bar "$(kinds_of "$(cat "$DIR/manifest.json" 2>/dev/null)")" && fail bar-kind "$NAME is a bar, so it isn't turned on here."
+  step enabling
+  call timeout 30 "${OMARCHY[@]}" plugin enable "$ID"
+  if enabled_now; then
+    write "$STATUS" --arg version "$(jq -r '.version // ""' "$DIR/manifest.json" 2>/dev/null)" \
+      '.phase = "done" | .enabled = true | .version = $version | .finishedAt = $now'
+  else
+    fail command "$(last_line || echo "It couldn't be turned on.")"
+  fi
+}
+
+# ack <status file> <job>: mark that job seen, only if it is still the file's
+# job and has finished. Under the job lock: a job starting now replaces the
+# file anyway, so a held lock means there is nothing to do.
+ack() {
+  local status=${1:-} job=${2:-}
+  [[ -n $status && -n $job ]] || refuse 2 usage "ack needs a status file and a job."
+  [[ $(basename -- "$status") == plugins-job.json ]] || refuse 2 usage "ack only marks plugins-job.json."
+  [[ -f $status && ! -L $status ]] || return 0
+  jq -e 'type == "object"' "$status" >/dev/null 2>&1 || refuse 1 usage "That isn't a plugin job's status."
+  umask 077
+  take_lock "$status.lock" || return 0
+  LOCK="$status.lock"
+  if jq -e --arg job "$job" '.job == $job and .phase != "running"' "$status" >/dev/null 2>&1; then
+    write "$status" '.seen = true'
+  fi
+}
+
+# --- handoffs -----------------------------------------------------------------
+
+handoff() { # handoff setup|remove <id>
+  local kind=$1 out rc reason=""
+  local -a argv
+  resolve "${2:-}"
+  guard shell
+  mapfile -t argv < <(jq -r --arg kind "$kind" '.[$kind][]' <<<"$ENTRY")
+  out=$(timeout 5 "${SHELLCMD[@]}" "${argv[@]}" 2>&1 </dev/null); rc=$?
+  if (( rc != 0 )); then
+    if grep -q "Target not found." <<<"$out"; then reason=not-hosted; else reason=not-running; fi
+  fi
+  jq -nc --argjson ok "$([[ -z $reason ]] && echo true || echo false)" --arg reason "$reason" --arg output "$(head -c 400 <<<"$out")" \
+    --arg id "$ID" --arg kind "$kind" '{ok: $ok, reason: $reason, output: $output, id: $id, kind: $kind}'
+  [[ -z $reason ]]
+}
+
+review() {
+  local cmd mode=update head fetch
+  resolve "${1:-}"
+  guard terminal
+  [[ -e $DIR/.git ]] || refuse 1 not-git "$NAME isn't a git checkout."
+  [[ $(norm_url "$(git -C "$DIR" remote get-url origin 2>/dev/null)") == "$(norm_url "$URL")" ]] || refuse 1 wrong-origin "$NAME was installed from somewhere else."
+  head=$(git -C "$DIR" rev-parse HEAD 2>/dev/null)
+  fetch=$(git -C "$DIR" rev-parse -q --verify FETCH_HEAD 2>/dev/null)
+  if [[ -n $(git -C "$DIR" status --porcelain --untracked-files=no 2>/dev/null) ]] \
+     || ! git -C "$DIR" symbolic-ref -q HEAD >/dev/null 2>&1 \
+     || { [[ -n $fetch ]] && ! git -C "$DIR" merge-base --is-ancestor "$head" "$fetch" 2>/dev/null; }; then
+    mode=local-changes
+  fi
+  # One string for `bash -c`: only the validated id and a quoted path go in.
+  if [[ $mode == update ]]; then
+    cmd="omarchy plugin update $(printf %q "$ID")"
+  else
+    cmd="cd $(printf %q "$DIR") && git status && git log --oneline -10 HEAD FETCH_HEAD"
+  fi
+  setsid -f "${TERMINAL[@]}" "$cmd" >/dev/null 2>&1 </dev/null
+  jq -nc --arg mode "$mode" --arg id "$ID" '{ok: true, id: $id, mode: $mode}'
+}
+
+case "${1:-}" in
+  catalogue) check_hooks; load_catalogue; echo "$CATALOGUE" ;;
+  state) check_hooks; load_catalogue; state "${2:-}" ;;
+  preview) check_hooks; load_catalogue; preview "${2:-}" ;;
+  run) check_hooks; load_catalogue; run "${2:-}" "${3:-}" "${4:-}" "${5:-}" ;;
+  ack) check_hooks; ack "${2:-}" "${3:-}" ;;
+  setup|remove) check_hooks; load_catalogue; handoff "$1" "${2:-}" ;;
+  review) check_hooks; load_catalogue; review "${2:-}" ;;
+  *) echo "usage: notch-plugins catalogue | state [--local] | preview <id> | run <install|update|enable> <id> <status file> [<sha>] | ack <status file> <job> | setup <id> | remove <id> | review <id>" >&2; exit 2 ;;
+esac

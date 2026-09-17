@@ -1,0 +1,8 @@
+#!/bin/bash
+# dev/plugins.sh fixture: Face ID's status, in its --json shape. The camera
+# needs setup; FIXTURE_FACE_INSTALL sets install.state (idle, running, failed).
+jq -nc --arg install "${FIXTURE_FACE_INSTALL:-idle}" '{
+  rows: [{id: "legacy", state: "ok"}, {id: "camera", state: "needs_action"}, {id: "system", state: "ok"},
+         {id: "engine", state: "ok"}, {id: "people", state: "ok"}],
+  install: {state: $install}
+}'

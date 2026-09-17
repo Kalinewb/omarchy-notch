@@ -6,7 +6,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -95,7 +95,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -184,7 +184,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -273,7 +273,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -362,7 +362,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -440,7 +440,7 @@
         "height": 466,
         "width": 353
       },
-      "state": "peek",
+      "state": "compact",
       "view": "widgets",
       "viewPlugin": "",
       "widgetsWidth": 359
@@ -451,7 +451,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -549,7 +549,7 @@
         "peek": [
           "clock",
           "date",
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -650,7 +650,7 @@
         "peek": [
           "clock",
           "date",
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -751,7 +751,7 @@
         "peek": [
           "clock",
           "date",
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -852,7 +852,7 @@
         "peek": [
           "clock",
           "date",
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -953,7 +953,7 @@
         "peek": [
           "clock",
           "date",
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1036,7 +1036,7 @@
         "height": 466,
         "width": 353
       },
-      "state": "peek",
+      "state": "compact",
       "view": "widgets",
       "viewPlugin": "",
       "widgetsWidth": 271
@@ -1054,7 +1054,7 @@
         "peek": [
           "clock",
           "date",
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1150,7 +1150,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1244,7 +1244,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1341,7 +1341,7 @@
           "media"
         ],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1429,7 +1429,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1516,7 +1516,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1599,7 +1599,7 @@
         "height": 479,
         "width": 353
       },
-      "state": "peek",
+      "state": "compact",
       "view": "widgets",
       "viewPlugin": "",
       "widgetsWidth": 359
@@ -1610,7 +1610,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1706,7 +1706,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1796,7 +1796,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1886,7 +1886,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -1969,7 +1969,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -2059,7 +2059,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -2138,7 +2138,7 @@
         "height": 449,
         "width": 353
       },
-      "state": "peek",
+      "state": "compact",
       "view": "widgets",
       "viewPlugin": "",
       "widgetsWidth": 359
@@ -2149,7 +2149,7 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -2243,7 +2243,8 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "battery",
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -2335,7 +2336,8 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "battery",
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -2427,7 +2429,8 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "battery",
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -2514,7 +2517,8 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "battery",
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -2601,7 +2605,8 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "battery",
+          "media"
         ]
       },
       "heightIsRest": true,
@@ -2680,7 +2685,7 @@
         "height": 466,
         "width": 353
       },
-      "state": "peek",
+      "state": "compact",
       "view": "widgets",
       "viewPlugin": "",
       "widgetsWidth": 332
@@ -2693,7 +2698,8 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery"
+          "battery",
+          "media"
         ]
       },
       "heightIsRest": true,

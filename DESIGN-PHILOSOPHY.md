@@ -32,7 +32,9 @@ menu's background is the notch colour), `dev/colours.sh` (widgets' background is
   4.5:1, and a selection fill must actually show.
 - Secondary text is always the secondary label, never an arbitrary dimmer hue.
 - Omarchy's own controls default to theme colours. Everything drawn in the notch is handed the
-  notch's colours explicitly: `notchForeground`, `notchAccent`, `notchColor`.
+  notch's colours explicitly: `notchForeground`, `notchAccent`, `notchColor`. That stops at the
+  notch's edge: a widget's pop-out panel sits on the theme's background and keeps the theme's
+  colours, so the notch never makes something else unreadable.
 - A `foreground` setting always wins.
 
 Checked by: `dev/colours.sh` (the contrast function against WCAG values, the white/black

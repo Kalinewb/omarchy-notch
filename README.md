@@ -36,6 +36,56 @@ update reloads every plugin and destroys the notch that started it. It runs
 Over IPC: `notch update check|now|later|dismiss|status`. `dev/update.sh` tests the lot against
 a sandbox git remote.
 
+### Plugins
+
+Settings → Updates → **Your plugins** → Manage… grows the notch into the Plugins page. It lists
+the plugins the notch knows how to install, **Face ID** (`graveklar.face`) and **Profiles**
+(`kalinewb.profiles`), with what each is doing: not installed, up to date, an update available
+(with the number of changes), installed but turned off, local edits, installed from somewhere
+else, or offline. Each row has its buttons: Install…, Update…, Enable, Open setup, Remove…,
+Review in terminal. The notch itself is listed too, pointing at Settings → Updates. Up/Down pick a
+row, Enter presses its main button, Escape closes.
+
+Only the entries in `plugins/catalogue.json` can be installed, each from its pinned GitHub URL;
+`graveklar.liquid-notifications` and `graveklar.face-lock` are refused. Install… and Update… never
+run straight away: the page turns into a card that says what will happen (the URL and commit, or
+the commits, files and lines an update brings, and whether it closes the plugin's open panel),
+and its button stays on "Checking…" until GitHub has answered with the exact commit and that
+commit's manifest id and kinds. A repository that no longer names the plugin's id, or has become a
+bar, is refused on the card. That commit is what gets installed; if GitHub moves in between, the
+job refuses. Before anything lands in the plugins folder the job checks the commit, id and kinds
+again (a shallow clone with no work tree for an install, the fetched commit for an update). Upstream
+then clones once more, so the result is verified too (the right id, from the pinned URL, at that
+commit, not a bar); a folder that fails that is moved aside to
+`plugins/.notch-refused.<name>.<ms>`, which Omarchy ignores, and the notice names it for deleting.
+Install turns the plugin on only once it is verified. Setup and
+removal happen in each plugin's own panel (Face ID: Settings → Remove; Profiles: Manage →
+Uninstall); nothing here asks for your password.
+
+A job runs as `bin/notch-plugins run` in its own `systemd-run --user` unit, because installing or
+updating a plugin reloads every plugin and destroys the notch, usually more than once (the folder
+move, upstream's own rescan, the enable), and every rebuilt notch reads the same status. It runs `omarchy plugin add <url>
+--yes` (then `omarchy plugin enable`) or `omarchy plugin update <id> --yes`, decides the outcome from
+the disk rather than the exit code, and writes its progress to
+`$XDG_RUNTIME_DIR/graveklar.notch/plugins-job.json`. The rebuilt notch re-reads the disk and pops
+down a notice as soon as a local probe (no network) has confirmed the result: "Face ID installed"
+(with Open setup, Enable or Restart shell when there is something to do, otherwise it clears after
+5 seconds), or why it failed until you dismiss it. A stopped job (TERM or INT) stops upstream's
+whole process group, removes its staging folder and says so at once. One
+job runs at a time, never alongside the notch's own update, and never while the session is locked.
+Nothing is checked at startup: the page checks when it opens, on Refresh (not while a job runs),
+and after a job.
+
+Over IPC: `notch plugins open|open:<id>|close|status|refresh`. No IPC call installs, updates, enables, sets up
+or removes anything. `dev/plugins.sh` tests the lot against sandbox git remotes and a sandbox
+plugins folder through these hooks, which a test notch passes on: `NOTCH_PLUGINS_DIR`,
+`NOTCH_PLUGINS_OMARCHY`, `NOTCH_PLUGINS_CATALOGUE`, `NOTCH_PLUGINS_SHELL`,
+`NOTCH_PLUGINS_TERMINAL`, `NOTCH_PLUGINS_SESSION_LOCKED`, `NOTCH_PLUGINS_SCRATCH` (any of these
+without both `NOTCH_PLUGINS_DIR` and `NOTCH_PLUGINS_OMARCHY` refuses every command),
+`NOTCH_PLUGINS_STATE_DIR` (only in a sandbox), `NOTCH_PLUGINS_DISCOVER_MS`, `NOTCH_PLUGINS_DONE_MS`,
+`NOTCH_PLUGINS_DETACH` and `NOTCH_PLUGINS_RESTART`. A test notch never checks or acts unless
+`NOTCH_FORCE_PLUGINS=1` and the sandbox hooks are set.
+
 **Developing:** commit in this repo, then run `./install.sh`. It fast-forwards the live
 checkout to your committed HEAD and restarts the shell, without changing where the checkout
 pulls from; push when the change is ready. It refuses while there are uncommitted changes, which
@@ -240,7 +290,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |
 | `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. `openAction` can also be `"settings"` or `"menu"`. |
 | `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. |
-| `color` / `foreground` | `#000000` / Apple white | Notch colour, and the colour of text on it. Text is Apple white (`#FFFFFF`, secondary `#EBEBF5` at 60 %) on a dark notch and black on a light one, whatever the theme. Widgets in the notch, the settings and the menu use it too. |
+| `color` / `foreground` | `#000000` / Apple white | Notch colour, and the colour of text on it. Text is Apple white (`#FFFFFF`, secondary `#EBEBF5` at 60 %) on a dark notch and black on a light one, whatever the theme. Widgets paint with it in the notch, as do the glance, settings, menu and pages. A widget's own pop-out panel keeps the theme's colours, because it sits on the theme's background. |
 | `compactWidth`, `compactHeight` | `180`, `32` | Resting size, in logical px. The height is also what windows keep clear. |
 | `bottomRadius` | `10` | Convex bottom-corner radius, in every state including the settings panel. |
 | `filletRadius` | `10` | Concave fillet where the notch meets the screen edge. |

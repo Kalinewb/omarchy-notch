@@ -60,7 +60,12 @@ CASES[user]=$user_bar
 
 # snapshot_case <bar json> -> {"<view>": snapshot, ...}
 snapshot_case() {
-  NOTCH_HARNESS=1 NOTCH_HARNESS_BAR="$1" quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
+  # The battery peek depends on the machine's charging state at the moment the
+  # notch starts, which would make a recorded snapshot depend on the laptop's
+  # battery. Off for every case.
+  local bar
+  bar=$(jq -c '.notch = ((.notch // {}) + {batteryPeek: false})' <<<"$1")
+  NOTCH_HARNESS=1 NOTCH_HARNESS_BAR="$bar" quickshell -p "$root" -n >"$root/qs.log" 2>&1 &
   qs_pid=$!
   for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc snapshot) == \{* ]] && break; done
   sleep 1.5

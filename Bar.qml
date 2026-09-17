@@ -1729,6 +1729,178 @@ Item {
 
   // Persist a notch setting into bar.notch in shell.json; the change comes
   // back in through barConfig like any other edit.
+  // --- updates -------------------------------------------------------------------
+  //
+  // The live notch is a git checkout (`omarchy plugin add`). When GitHub has a
+  // newer notch, a small notice pops down from the resting notch with Later and
+  // Update (NotchUpdate.qml). Update runs bin/notch-update detached, in its own
+  // `systemd-run --user` unit: the update reloads every plugin and restarts the
+  // shell, which destroys this notch, so the rebuilt notch reads the job's
+  // status file and says how it went. Later snoozes that version.
+  //
+  //   updateCheck    check at start (after 20 s) and every 6 h (default true)
+  //
+  // Test notches never check or update unless NOTCH_FORCE_UPDATES=1; dev/update.sh
+  // also points NOTCH_UPDATE_DIR / _STATE_DIR / _APPLY / _RESTART at a sandbox.
+  readonly property bool notchUpdateCheck: notchSetting("updateCheck", true) !== false
+  readonly property bool updatesEnabled: (!!root.shell && !root.harnessed) || Quickshell.env("NOTCH_FORCE_UPDATES") === "1"
+  readonly property string updateScript: String(Qt.resolvedUrl("bin/notch-update")).replace(/^file:\/\//, "")
+  readonly property string updateStateDir: Quickshell.env("NOTCH_UPDATE_STATE_DIR") || ""
+  readonly property string updateStatusPath: (updateStateDir || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/graveklar.notch")) + "/update.json"
+  readonly property string updateSnoozePath: (updateStateDir || ((Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/graveklar.notch")) + "/update-snoozed"
+  property var updateCheckResult: ({ state: "unchecked" })
+  property var updateJob: ({})
+  property string updateSnoozed: ""
+  // Ticks while the notice depends on time (a running or just-finished job).
+  property real updateClock: Date.now()
+
+  // What the notice shows, or "" for nothing:
+  //   updating   a job started in the last 5 minutes is still running
+  //   done       a job finished in the last 10 minutes and hasn't been seen
+  //   failed     likewise, failed
+  //   available  an update is out and that version isn't snoozed
+  readonly property string updateNotice: {
+    if (!updatesEnabled) return ""
+    var now = updateClock
+    var job = updateJob || {}
+    if (job.phase === "updating" && now - Number(job.startedAt || 0) < 5 * 60000) return "updating"
+    if ((job.phase === "done" || job.phase === "failed") && job.seen !== true && now - Number(job.finishedAt || 0) < 10 * 60000) return job.phase
+    var c = updateCheckResult || {}
+    // Not a version the last job just installed (the check result can be
+    // older than the job).
+    if (c.state === "available" && c.remote && c.remote !== updateSnoozed && !(job.phase === "done" && job.to === c.remote)) return "available"
+    return ""
+  }
+
+  readonly property bool updateCheckRunning: updateCheckProcess.running
+
+  function checkForUpdates() {
+    if (!updatesEnabled || updateCheckProcess.running) return false
+    updateCheckProcess.running = true
+    return true
+  }
+
+  // Start the update. Returns false when it can't start (disabled, or one is running).
+  function startUpdate() {
+    if (!updatesEnabled || updateNotice === "updating") return false
+    var run = [updateScript, "run", updateStatusPath]
+    var argv
+    if ((Quickshell.env("NOTCH_UPDATE_DETACH") || "systemd-run") === "systemd-run") {
+      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "graveklar-notch-update-" + Date.now()];
+      // A transient unit starts from the user manager's environment: hand it
+      // what omarchy's commands and the test hooks need.
+      var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
+                    "XDG_STATE_HOME", "NOTCH_UPDATE_DIR", "NOTCH_UPDATE_APPLY", "NOTCH_UPDATE_RESTART"]
+      for (var i = 0; i < passed.length; i++) {
+        var value = Quickshell.env(passed[i])
+        if (value) argv.push("--setenv=" + passed[i] + "=" + value)
+      }
+      argv = argv.concat(run)
+    } else {
+      argv = ["setsid", "-f"].concat(run)
+    }
+    updateJob = { phase: "updating", startedAt: Date.now(), from: String((updateCheckResult || {}).local || ""), finishedAt: 0, seen: false, launched: true }
+    updateClock = Date.now()
+    Quickshell.execDetached(argv)
+    updateStatusPoll.restart()
+    return true
+  }
+
+  // Later: don't offer this version again.
+  function snoozeUpdate() {
+    var sha = String((updateCheckResult || {}).remote || "")
+    if (!/^[0-9a-f]{7,64}$/.test(sha)) return false
+    updateSnoozed = sha
+    Quickshell.execDetached([updateScript, "snooze", updateSnoozePath, sha])
+    return true
+  }
+
+  // A finished update's notice has been seen. Dismissing a failed update also
+  // snoozes that version, so the notice doesn't come straight back (Settings →
+  // Updates still offers it).
+  function ackUpdate() {
+    if (!updateJob || !updateJob.phase) return false
+    var job = JSON.parse(JSON.stringify(updateJob))
+    job.seen = true
+    updateJob = job
+    Quickshell.execDetached([updateScript, "ack", updateStatusPath])
+    if (job.phase === "failed") snoozeUpdate()
+    return true
+  }
+
+  function updateReport() {
+    return {
+      enabled: updatesEnabled, checkSetting: notchUpdateCheck, checking: updateCheckProcess.running,
+      check: updateCheckResult, job: updateJob, snoozed: updateSnoozed, notice: updateNotice,
+      statusPath: updateStatusPath, snoozePath: updateSnoozePath
+    }
+  }
+
+  Process {
+    id: updateCheckProcess
+    command: [root.updateScript, "check"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.updateCheckResult = JSON.parse(text) }
+        catch (e) { root.updateCheckResult = { state: "error", checkedAt: Date.now() } }
+      }
+    }
+  }
+
+  Timer {
+    interval: Number(Quickshell.env("NOTCH_UPDATE_FIRST_CHECK_MS") || 20000)
+    running: root.updatesEnabled && root.notchUpdateCheck
+    onTriggered: root.checkForUpdates()
+  }
+  Timer {
+    interval: 6 * 3600 * 1000
+    repeat: true
+    running: root.updatesEnabled && root.notchUpdateCheck
+    onTriggered: root.checkForUpdates()
+  }
+
+  FileView {
+    id: updateStatusFile
+    // A notch that doesn't update itself never reads the live notch's files.
+    path: root.updatesEnabled ? root.updateStatusPath : ""
+    printErrors: false
+    onLoaded: {
+      try {
+        var job = JSON.parse(text())
+        // A job this notch launched that hasn't written its first status yet
+        // keeps the local "updating" until the file catches up.
+        if (job && job.phase && !(root.updateJob.launched && Number(job.startedAt || 0) < Number(root.updateJob.startedAt || 0) - 2000)) {
+          var finished = root.updateJob.phase === "updating" && (job.phase === "done" || job.phase === "failed")
+          root.updateJob = job
+          // A job that just finished changes what there is to update to.
+          if (finished) root.checkForUpdates()
+        }
+      } catch (e) { }
+      root.updateClock = Date.now()
+    }
+  }
+  FileView {
+    id: updateSnoozeFile
+    path: root.updatesEnabled ? root.updateSnoozePath : ""
+    printErrors: false
+    onLoaded: root.updateSnoozed = String(text()).trim()
+  }
+  // While a job runs, follow its status file; after, keep the clock moving so
+  // stale notices expire.
+  Timer {
+    id: updateStatusPoll
+    interval: 1000
+    repeat: true
+    running: root.updatesEnabled && (root.updateNotice === "updating" || root.updateNotice === "done" || root.updateNotice === "failed")
+    onTriggered: { updateStatusFile.reload(); root.updateClock = Date.now() }
+  }
+  // "Notch updated" shows for a few seconds, then counts as seen.
+  Timer {
+    interval: Number(Quickshell.env("NOTCH_UPDATE_DONE_MS") || 5000)
+    running: root.updateNotice === "done"
+    onTriggered: root.ackUpdate()
+  }
+
   function setNotchSetting(key, value) {
     if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
     return root.shell.mutateShellConfig(function(config) {
@@ -1866,6 +2038,16 @@ Item {
         }
       })
     }
+    // Updates: "check" checks now, "now" starts the update, "later" snoozes the
+    // version on offer, "dismiss" clears a finished update's notice; any of
+    // them, and "status", answer with the update state as JSON.
+    function update(action: string): string {
+      if (action === "check") root.checkForUpdates()
+      else if (action === "now") root.startUpdate()
+      else if (action === "later") root.snoozeUpdate()
+      else if (action === "dismiss") root.ackUpdate()
+      return JSON.stringify(root.updateReport())
+    }
     // Every rounded item in the settings panel and the menu, with the notch's
     // radius, for dev/design.sh (DESIGN-PHILOSOPHY.md, 5).
     function design(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.designReport()) : "{}" }
@@ -1986,8 +2168,18 @@ Item {
     // strip above it. Anything that is not rest -- open, peeking, settings --
     // still shows.
     property bool revealed: false
-    readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking
-    readonly property string notchState: root.barHidden || autoHidden ? "hidden" : expanded ? "expanded" : peeking ? "peek" : "compact"
+    // An update notice pops down from the resting notch (see "updates"). It
+    // shows over auto-hide and peeks; opening the notch covers it.
+    readonly property bool noticeShown: root.updateNotice !== "" && !root.barHidden
+    // The notice kept while the notch shrinks away, so its text doesn't change
+    // under it.
+    property string shownNotice: ""
+    Connections {
+      target: root
+      function onUpdateNoticeChanged() { if (root.updateNotice !== "") barWindow.shownNotice = root.updateNotice }
+    }
+    readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking && !noticeShown
+    readonly property string notchState: root.barHidden || autoHidden ? "hidden" : expanded ? "expanded" : noticeShown ? "notice" : peeking ? "peek" : "compact"
 
     function collapseNow() {
       expandTimer.stop()
@@ -2091,7 +2283,8 @@ Item {
       // Hover either opens the notch (when it is one of the ways to open it)
       // or shows its own hover view; both close again when the pointer leaves.
       onTriggered: {
-        if (!islandHover.hovered || barWindow.expanded) return
+        // Not while the update notice is up: the pointer is on its way to a button.
+        if (!islandHover.hovered || barWindow.expanded || barWindow.noticeShown) return
         if (root.opensWith("hover")) barWindow.openView(root.notchOpenAction, "hoverOpen")
         else barWindow.openView("hover", "hover")
       }
@@ -2228,18 +2421,21 @@ Item {
     readonly property real settingsHeight: Math.max(root.notchCompactHeight, expandedHost.item ? expandedHost.item.implicitHeight : 0)
     readonly property real menuWidth: Math.max(compactWidth, menuHost.item ? menuHost.item.implicitWidth : 0)
     readonly property real menuHeight: Math.max(root.notchCompactHeight, menuHost.item ? menuHost.item.implicitHeight : 0)
+    readonly property real noticeWidth: Math.max(compactWidth, noticeHost.item ? noticeHost.item.implicitWidth : 0)
+    readonly property real noticeHeight: Math.max(root.notchCompactHeight, noticeHost.item ? noticeHost.item.implicitHeight : 0)
     // The open notch's width for the current view. Widgets and a single plugin
     // are the same row (filtered), so both measure the row.
     readonly property real expandedWidth: view === "settings" ? settingsWidth : view === "menu" ? menuWidth
       : view === "clock" ? clockWidth : view === "battery" ? batteryWidth : rowWidth
 
     readonly property real targetWidth: Math.min(maxBarWidth,
-      notchState === "expanded" ? expandedWidth : notchState === "peek" ? peekWidth : compactWidth)
+      notchState === "expanded" ? expandedWidth : notchState === "notice" ? noticeWidth : notchState === "peek" ? peekWidth : compactWidth)
     // Every view but the settings and the menu is one row at the resting
     // height; those grow the notch down, top edge still on the screen edge.
     readonly property real targetHeight: notchState === "hidden" ? 0
       : notchState === "expanded" && view === "settings" ? settingsHeight
-      : notchState === "expanded" && view === "menu" ? menuHeight : root.notchCompactHeight
+      : notchState === "expanded" && view === "menu" ? menuHeight
+      : notchState === "notice" ? noticeHeight : root.notchCompactHeight
 
     property real shownWidth: 0
     property real shownHeight: 0
@@ -2399,6 +2595,7 @@ Item {
         radius: root.notchRadius, bottomRadius: root.notchBottomRadius,
         tooltip: { radius: tooltipBubble.radius, height: tooltipBubble.height },
         settings: expandedHost.item ? root.radiusAudit(expandedHost.item) : [],
+        notice: noticeHost.item ? root.radiusAudit(noticeHost.item) : [],
         menu: menuHost.item ? root.radiusAudit(menuHost.item) : []
       }
     }
@@ -2464,6 +2661,11 @@ Item {
         settingsOpen: barWindow.settingsOpen,
         menu: menuReport(),
         colours: coloursReport(),
+        update: {
+          notice: root.updateNotice, shownNotice: barWindow.shownNotice, noticeShown: barWindow.noticeShown,
+          host: { opacity: Number(noticeHost.opacity.toFixed(3)), enabled: noticeHost.enabled, width: noticeHost.width, height: noticeHost.height },
+          size: { width: Number(noticeWidth.toFixed(3)), height: Number(noticeHeight.toFixed(3)) }
+        },
         media: {
           facade: !!root.mediaService,
           activeKey: root.mediaPlayerKey(root.mediaPlayer),
@@ -2669,8 +2871,8 @@ Item {
       // resizes around them, and popups anchor to the same place every time.
       Item {
         id: content
-        width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth, barWindow.batteryWidth, barWindow.settingsWidth, barWindow.menuWidth)
-        height: Math.max(root.notchCompactHeight, barWindow.settingsHeight, barWindow.menuHeight)
+        width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth, barWindow.batteryWidth, barWindow.settingsWidth, barWindow.menuWidth, barWindow.noticeWidth)
+        height: Math.max(root.notchCompactHeight, barWindow.settingsHeight, barWindow.menuHeight, barWindow.noticeHeight)
         x: (island.barWidth - width) / 2
         y: 0
 
@@ -2886,6 +3088,19 @@ Item {
           shown: barWindow.settingsOpen
           x: (content.width - width) / 2
         }
+        // The update notice, revealed as the notch pops down around it.
+        Loader {
+          id: noticeHost
+          x: (content.width - width) / 2
+          y: 0
+          width: item ? item.implicitWidth : 0
+          height: item ? item.implicitHeight : 0
+          sourceComponent: updateNoticeView
+          opacity: barWindow.notchState === "notice" ? 1 : 0
+          visible: opacity > 0
+          enabled: barWindow.notchState === "notice"
+          Behavior on opacity { NumberAnimation { duration: barWindow.notchState === "notice" ? 220 : 90; easing.type: Easing.OutCubic } }
+        }
         ExpandedHost {
           id: menuHost
           plugin: root.notchPlugins.byId["notch.menu"] || null
@@ -2906,6 +3121,13 @@ Item {
         maxHeight: barWindow.panelMaxHeight
         glowReach: glow.reach
         onCloseRequested: barWindow.settingsOpen = false
+      }
+    }
+    Component {
+      id: updateNoticeView
+      NotchUpdate {
+        bar: root
+        notice: barWindow.shownNotice
       }
     }
     Component {

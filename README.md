@@ -16,6 +16,26 @@ omarchy plugin enable graveklar.notch
 
 That installs a git checkout, so `omarchy plugin update graveklar.notch` updates it.
 
+### Updates
+
+When GitHub has a newer notch, the resting notch pops down into a small notice with **Later**
+and **Update**. Update installs it in the background and restarts the shell, and the notch then
+says "Notch updated" for a few seconds. Later hides that version until a newer one comes out. If
+an update fails, the notice shows why until you dismiss it. Opening the notch covers the notice,
+and hovering it never opens the notch, so the pointer can reach the buttons.
+
+The notch checks 20 seconds after it starts and every 6 hours after that. A check fetches
+origin's HEAD into `.git` and nothing else, so it never reloads plugins. Settings → Updates shows
+where things stand (up to date, available, a development install ahead of GitHub, local edits,
+offline) and has Check now. `updateCheck: false` turns checking off.
+
+The update runs as `bin/notch-update run` in its own `systemd-run --user` unit, because the
+update reloads every plugin and destroys the notch that started it. It runs
+`omarchy plugin update graveklar.notch --yes`, decides success from where the checkout ends up
+(not from the exit code), and writes its progress to `$XDG_RUNTIME_DIR/graveklar.notch/update.json`.
+Over IPC: `notch update check|now|later|dismiss|status`. `dev/update.sh` tests the lot against
+a sandbox git remote.
+
 **Developing:** commit in this repo, then run `./install.sh`. It fast-forwards the live
 checkout to your committed HEAD and restarts the shell, without changing where the checkout
 pulls from; push when the change is ready. It refuses while there are uncommitted changes, which
@@ -217,6 +237,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `bottomRadius` | `10` | Convex bottom-corner radius, in every state including the settings panel. |
 | `filletRadius` | `10` | Concave fillet where the notch meets the screen edge. |
 | `hoverDelay`, `collapseDelay` | `60`, `350` | Milliseconds. |
+| `updateCheck` | `true` | Check GitHub for a newer notch and pop down a notice when there is one. |
 | `peekOnTrackChange`, `peekDuration` | `true`, `3500` | Widen briefly on a new track. |
 | `batteryGlow` | `true` | The battery glow. |
 | `glowScale` | `1.0` | Glow reach relative to the resting notch's size (0–2.5, at most 80 px). 0 draws no glow. |

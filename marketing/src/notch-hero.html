@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notch — hero</title>
+<link rel="stylesheet" href="card.css">
+<style>
+  :root { --w: 1600px; --h: 800px; }
+
+  /* 72 px margins on both sides; the illustration column is 800..1528. */
+  .copy { left: 72px; top: 64px; width: 680px; }
+  .title { margin-top: 28px; font-size: 78px; }
+  .tagline { margin-top: 26px; font-size: 33px; line-height: 1.24; }
+  .desc { margin-top: 18px; font-size: 16.5px; line-height: 1.62; }
+  .chips { margin-top: 30px; gap: 12px; }
+  .chip { height: 72px; padding: 0 14px; gap: 13px; }
+  .chip .ic { width: 40px; height: 40px; font-size: 21px; }
+  .chip b { font-size: 15px; }
+  .chip span { font-size: 12px; margin-top: 4px; }
+  .install { margin-top: 22px; height: 56px; padding: 0 20px; font-size: 15px; }
+  .footer { left: 72px; right: 72px; bottom: 26px; font-size: 12px; }
+
+  /* Close-up of the resting notch's right fillet. */
+  .loupe { width: 172px; height: 146px; }
+  .loupe .cap {
+    position: absolute; left: 12px; right: 10px; bottom: 9px;
+    font-size: 10.5px; line-height: 1.45; color: rgba(214,219,240,0.66); white-space: nowrap;
+  }
+  .loupe .cap b { color: var(--teal); font-weight: 700; letter-spacing: 0.12em; }
+
+  /* Between the two states: the ways to open it, then the spring. */
+  .between {
+    position: absolute; left: 800px; width: 728px; top: 290px; height: 44px;
+    display: flex; align-items: center; gap: 10px; white-space: nowrap; z-index: 6;
+  }
+  .between .tag { position: static; box-shadow: none; }
+  .flow { position: relative; flex: 1 1 auto; height: 44px; margin: 0 4px; }
+  .flow svg { position: absolute; left: 0; bottom: 9px; overflow: visible; }
+  .flow .lbl {
+    position: absolute; left: 0; right: 0; top: 4px; text-align: center;
+    font-size: 11.5px; color: rgba(214,219,240,0.70);
+  }
+  .flow .lbl b { color: var(--lav); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="grid"></div>
+  <div class="ambient a"></div>
+  <div class="ambient b"></div>
+  <div class="grain"></div>
+
+  <section class="copy">
+    <div class="badge"><i class="dot"></i>OMARCHY PLUGIN</div>
+    <h1 class="title"><span class="app-icon" id="appicon"></span>Notch</h1>
+    <p class="tagline">A notch for your <em class="blue">Omarchy bar</em>.<br><em class="purple">Pitch black</em>, and it grows<br>into <em class="pink">everything</em>.</p>
+    <p class="desc">One black surface fused to the top edge of the screen.<br>It opens into your bar widgets, its settings and the Omarchy menu.</p>
+    <div class="chips">
+      <div class="chip"><i class="ic pink pink">&#xf0954;</i><div class="tx"><b>At a glance</b><span>time · date · playing · battery</span></div></div>
+      <div class="chip"><i class="ic purple purple">&#xf037d;</i><div class="tx"><b>Opens your way</b><span>hover · click · scroll · keys</span></div></div>
+      <div class="chip"><i class="ic amber amber">&#xf0084;</i><div class="tx"><b>Battery glow</b><span>charging · full · low</span></div></div>
+      <div class="chip"><i class="ic blue blue">&#xf035c;</i><div class="tx"><b>Menu + settings inside</b><span>same shape, grows down</span></div></div>
+    </div>
+    <div class="install"><span class="p">$</span><span><span class="k">omarchy plugin add</span> <span class="u">https://github.com/Kalinewb/omarchy-notch</span></span></div>
+  </section>
+
+  <!-- AT REST: same width and centre (x = 1164) as the open screen below -->
+  <div class="screen fade" id="screenA" style="left:800px; top:79px; width:728px; height:204px;">
+    <div class="display">
+      <div class="notch" id="rest" data-w="180" data-h="32" data-s="1.2" data-center="1" style="top:0"></div>
+    </div>
+  </div>
+
+  <div class="inset loupe" id="loupe">
+    <svg id="loupeSvg" width="172" height="95"></svg>
+    <div class="cap"><b>FILLET r 10</b><br>concave, centred outside</div>
+  </div>
+
+  <div class="between" id="between">
+    <span class="key">hover</span><span class="key">click</span><span class="key">scroll</span><span class="key rec">your keys</span>
+    <div class="flow" id="flow"><div class="lbl">grows on a spring, <b>3.8 % overshoot</b></div><svg id="flowSvg" height="10"></svg></div>
+    <span class="tag blue" id="t-open">OPEN · WIDGET ROW</span>
+  </div>
+
+  <!-- OPEN -->
+  <div class="screen fade" id="screenB" style="left:800px; top:346px; width:728px; height:398px;">
+    <div class="display">
+      <div class="notch" id="open" data-w="auto" data-h="32" data-s="1.2" data-center="1" style="top:0">
+        <div class="nc row">
+          <div class="ws" id="g-ws"><span>1</span><span class="on">2</span><span>3</span><span>4</span></div>
+          <div class="media" id="g-media"><i class="art"></i><span>Kestrel · Vey</span><i class="eq"><b style="height:9px"></b><b style="height:12px"></b><b style="height:6px"></b></i></div>
+          <div class="clock" id="g-clock">Wed 17:42</div>
+          <div class="status" id="g-status"><span class="g">&#xf00af;</span><span class="g">&#xf0928;</span><span class="g">&#xf057e;</span>
+            <span class="batt"><span class="cell"><i class="case"></i><i class="nub"></i><i class="fill" style="width:13.4px"></i></span>84%</span></div>
+        </div>
+      </div>
+      <div class="win active" style="left:18px; top:132px; width:330px; height:250px;">
+        <div><span class="pr">~/notch</span> <span class="hl">❯ omarchy plugin add …</span></div>
+        <div>Added graveklar.notch into …</div>
+        <div><span class="pr">~/notch</span> <span class="hl">❯</span> <span class="bar" style="width:120px"></span></div>
+        <div><span class="bar" style="width:200px"></span></div>
+        <div><span class="bar" style="width:150px"></span></div>
+      </div>
+      <div class="win" style="left:362px; top:132px; width:330px; height:250px;">
+        <div><span class="bar" style="width:90px"></span>  <span class="bar" style="width:60px"></span></div>
+        <div><span class="bar" style="width:220px"></span></div>
+        <div><span class="bar" style="width:170px"></span></div>
+        <div><span class="bar" style="width:240px"></span></div>
+        <div><span class="bar" style="width:110px"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <span class="tag white" id="t-rest">AT REST</span>
+  <span class="tag purple" id="t-black">PITCH BLACK · #000000</span>
+  <span class="tag pink" id="t-ws">WORKSPACES</span>
+  <span class="tag purple" id="t-media">NOW PLAYING</span>
+  <span class="tag blue" id="t-clock">CLOCK</span>
+  <span class="tag teal" id="t-status">STATUS</span>
+
+  <div class="footer"><span>Hyprland<span class="sep">·</span>Quickshell<span class="sep">·</span>Omarchy 4</span><span>graveklar.notch<span class="sep">·</span>MIT</span></div>
+</div>
+
+<script src="notch.js"></script>
+<script>
+  const card = document.querySelector(".card");
+  const $ = (id) => document.getElementById(id);
+  Notch.appIcon($("appicon"), 64);
+  Notch.buildAll();
+
+  const A = Notch.rectIn($("screenA"));
+  const badge = Notch.rectIn(document.querySelector(".badge"));
+  // AT REST sits on the screen's top edge, level with the badge.
+  Notch.place($("t-rest"), [A.x + 16, badge.y + badge.h / 2], 0, 0.5);
+
+  // Resting notch: its size, then what it is.
+  const rest = $("rest");
+  const a = Notch.barPoint(rest, 0, 32 + 12), b = Notch.barPoint(rest, 180, 32 + 12);
+  Notch.dimension(card, a, b, "180 × 32", { below: true });
+  Notch.place($("t-black"), [(a[0] + b[0]) / 2, a[1] + 50], 0.5, 0.5);
+
+  // Loupe: the right fillet at 5x, in bar coordinates. The black is the
+  // corner square minus the disc centred outside the bar at (w + r, r).
+  (function loupe() {
+    const L = $("loupe");
+    const cx = 190, cy = 10, r = 10;
+    const vx = 164.8, vy = -3.6, vw = 34.4, vh = 19;
+    Notch.place(L, [A.x + A.w - 20, Notch.barPoint(rest, 0, 0)[1] + 12], 1, 0);
+    const svg = $("loupeSvg");
+    svg.setAttribute("viewBox", `${vx} ${vy} ${vw} ${vh}`);
+    svg.innerHTML = `
+      <defs><pattern id="hatch" width="1.6" height="1.6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="1.6" height="1.6" fill="#151826"/><rect width="0.3" height="1.6" fill="rgba(255,255,255,0.07)"/></pattern></defs>
+      <rect x="${vx}" y="${vy}" width="${vw}" height="${-vy}" fill="url(#hatch)"/>
+      <rect x="${vx}" y="0" width="${vw}" height="${vh}" fill="#1d2140"/>
+      <path transform="translate(-10 0)" d="${Notch.pathD(180, 32, 10, 10)}" fill="#000000"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#7fdad0" stroke-opacity="0.35" stroke-width="0.22" stroke-dasharray="0.8 0.7"/>
+      <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx} ${cy - r}" fill="none" stroke="#7fdad0" stroke-width="0.34"/>
+      <line x1="${cx}" y1="${cy}" x2="${cx - r * Math.SQRT1_2}" y2="${cy - r * Math.SQRT1_2}" stroke="#7fdad0" stroke-opacity="0.8" stroke-width="0.2"/>
+      <circle cx="${cx}" cy="${cy}" r="0.5" fill="#7fdad0"/>
+      <text x="${cx - 2.2}" y="${cy - 5.6}" font-family="JetBrainsMono Nerd Font, monospace" font-size="2.2" fill="#7fdad0">r</text>
+      <text x="${vx + 1.2}" y="${vy + 2.7}" font-family="JetBrainsMono Nerd Font, monospace" font-size="1.9" fill="rgba(214,219,240,0.62)">bezel</text>
+      <text x="${vx + 1.4}" y="9.5" font-family="JetBrainsMono Nerd Font, monospace" font-size="2.1" fill="rgba(255,255,255,0.6)">bar</text>`;
+    // A ring around the resting notch's right fillet, and a leader to the loupe.
+    const fc = Notch.barPoint(rest, 184, 5);
+    const ringR = 13;
+    Notch.ring(card, fc, ringR, { color: "rgba(127,218,208,0.9)", clipTop: Notch.barPoint(rest, 0, 0)[1] });
+    const Lb = Notch.rectIn(L);
+    const from = Notch.onRing(fc, ringR + 3, 20);
+    Notch.arrow(card, from, [Lb.x - 5, Lb.y + 40], { color: "rgba(127,218,208,0.8)", startDot: false, via: [Lb.x - 26, from[1] + 6] });
+  })();
+
+  // The flow arrow between the two states.
+  (function flow() {
+    const f = $("flow"), svg = $("flowSvg");
+    const w = f.getBoundingClientRect().width;
+    svg.setAttribute("width", w);
+    const c = "rgba(198,188,255,0.9)";
+    svg.innerHTML = `<line x1="2" y1="5" x2="${w - 3}" y2="5" stroke="${c}" stroke-width="1.4" stroke-dasharray="4 4" stroke-linecap="round"/>
+      <path d="M ${w - 9} 1 L ${w - 2} 5 L ${w - 9} 9" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+  })();
+
+  // Open notch: group labels under the row.
+  const open = $("open");
+  const O = Notch.rectIn(open);
+  const labelY = O.y + O.h + 44;
+  function group(tagId, elId) {
+    const t = $(tagId);
+    const p = Notch.elPoint($(elId), 0.5, 1);
+    const r = Notch.place(t, [p[0], labelY], 0.5, 0.5);
+    Notch.arrow(card, [p[0], r.y - 3], [p[0], O.y + O.h + 5], { color: getComputedStyle(t).color, startDot: false });
+  }
+  group("t-ws", "g-ws");
+  group("t-media", "g-media");
+  group("t-clock", "g-clock");
+  group("t-status", "g-status");
+</script>
+</body>
+</html>

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notch — gallery card</title>
+<link rel="stylesheet" href="card.css">
+<style>
+  :root { --w: 1200px; --h: 600px; }
+
+  .card > .ambient.a { width: 900px; height: 800px; right: -300px; top: -460px; }
+  .card > .grid { background-size: 32px 32px; }
+
+  /* 48 px margins on both sides; the illustration column is 612..1152. */
+  .copy { left: 48px; top: 44px; width: 540px; }
+  .badge { height: 26px; font-size: 10.5px; padding: 0 12px 0 10px; gap: 8px; }
+  .badge .dot { width: 7px; height: 7px; }
+  .title { margin-top: 22px; font-size: 62px; gap: 16px; }
+  .tagline { margin-top: 18px; font-size: 25px; line-height: 1.26; }
+  .chips { margin-top: 24px; gap: 10px; }
+  .chip { height: 60px; padding: 0 12px; gap: 11px; border-radius: 10px; }
+  .chip .ic { width: 34px; height: 34px; font-size: 18px; border-radius: 8px; }
+  .chip b { font-size: 13.5px; }
+  .chip span { font-size: 12px; margin-top: 3px; }
+  .install { margin-top: 18px; height: 46px; padding: 0 16px; font-size: 13px; gap: 10px; border-radius: 10px; }
+  .footer { left: 48px; right: 48px; bottom: 20px; font-size: 12px; }
+
+  .tag { height: 24px; font-size: 11px; padding: 0 10px; gap: 7px; }
+
+  .between {
+    position: absolute; left: 612px; width: 540px; top: 256px; height: 28px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    white-space: nowrap; z-index: 6;
+  }
+  .key { height: 24px; padding: 0 8px; font-size: 11.5px; border-radius: 7px; }
+  .between .arrow { color: var(--lav); font-size: 16px; margin: 0 2px; }
+  .between .tag { position: static; box-shadow: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="grid"></div>
+  <div class="ambient a"></div>
+  <div class="ambient b"></div>
+  <div class="grain"></div>
+
+  <section class="copy">
+    <div class="badge"><i class="dot"></i>OMARCHY PLUGIN</div>
+    <h1 class="title"><span class="app-icon" id="appicon"></span>Notch</h1>
+    <p class="tagline">A notch for your <em class="blue">Omarchy bar</em>.<br><em class="purple">Pitch black</em>, and it grows<br>into <em class="pink">everything</em>.</p>
+    <div class="chips">
+      <div class="chip"><i class="ic pink pink">&#xf0954;</i><div class="tx"><b>At a glance</b><span>time · date · playing</span></div></div>
+      <div class="chip"><i class="ic purple purple">&#xf037d;</i><div class="tx"><b>Opens your way</b><span>hover · click · keys</span></div></div>
+      <div class="chip"><i class="ic amber amber">&#xf0084;</i><div class="tx"><b>Battery glow</b><span>charging · full · low</span></div></div>
+      <div class="chip"><i class="ic blue blue">&#xf035c;</i><div class="tx"><b>Menu + settings</b><span>inside the notch</span></div></div>
+    </div>
+    <div class="install"><span class="p">$</span><span><span class="k">omarchy plugin add</span> <span class="u">https://github.com/Kalinewb/omarchy-notch</span></span></div>
+  </section>
+
+  <!-- AT REST: same width and centre (x = 882) as the open screen below -->
+  <div class="screen fade" id="screenA" style="left:612px; top:57px; width:540px; height:190px; border-radius:12px 12px 0 0; padding:8px 8px 0;">
+    <div class="display" style="border-radius:5px 5px 0 0;">
+      <div class="notch" id="rest" data-w="180" data-h="32" data-s="1.6" data-center="1" data-glow="amber" style="top:0">
+        <div class="nc glance"><span class="cell"><i class="case"></i><i class="nub"></i><i class="fill" style="width:10.2px"></i>
+          <svg width="8" height="11" viewBox="0 0 8 11"><path d="M5 0 L1 6 L4 6 L3 11 L7 5 L4 5 Z" fill="#fff" stroke="#000" stroke-width="1" paint-order="stroke"/></svg></span>64%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="between">
+    <span class="key">hover</span><span class="key">click</span><span class="key">scroll</span><span class="key rec">your keys</span>
+    <span class="arrow">&#x2192;</span>
+    <span class="tag blue">OPEN · WIDGET ROW</span>
+  </div>
+
+  <!-- OPEN -->
+  <div class="screen fade" id="screenB" style="left:612px; top:296px; width:540px; height:174px; border-radius:12px 12px 0 0; padding:8px 8px 0;">
+    <div class="display" style="border-radius:5px 5px 0 0;">
+      <div class="notch" id="open" data-w="auto" data-h="32" data-s="1.05" data-center="1" data-glow="amber" data-glow-style="bottom" style="top:0">
+        <div class="nc row">
+          <div class="ws"><span>1</span><span class="on">2</span><span>3</span><span>4</span></div>
+          <div class="media"><i class="art"></i><span>Kestrel · Vey</span><i class="eq"><b style="height:9px"></b><b style="height:12px"></b><b style="height:6px"></b></i></div>
+          <div class="clock">Wed 17:42</div>
+          <div class="status"><span class="g">&#xf00af;</span><span class="g">&#xf0928;</span><span class="g">&#xf057e;</span>
+            <span class="batt"><span class="cell"><i class="case"></i><i class="nub"></i><i class="fill" style="width:10.2px"></i><svg width="8" height="11" viewBox="0 0 8 11"><path d="M5 0 L1 6 L4 6 L3 11 L7 5 L4 5 Z" fill="#fff" stroke="#000" stroke-width="1" paint-order="stroke"/></svg></span>64%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <span class="tag white" id="t-rest">AT REST</span>
+  <span class="tag purple" id="t-black">PITCH BLACK</span>
+  <span class="tag amber" id="t-glow">CHARGING GLOW</span>
+
+  <div class="footer"><span>Hyprland<span class="sep">·</span>Quickshell<span class="sep">·</span>Omarchy 4</span><span>graveklar.notch<span class="sep">·</span>MIT</span></div>
+</div>
+
+<script src="notch.js"></script>
+<script>
+  const card = document.querySelector(".card");
+  const $ = (id) => document.getElementById(id);
+  Notch.appIcon($("appicon"), 52);
+  Notch.buildAll();
+
+  const A = Notch.rectIn($("screenA"));
+  const badge = Notch.rectIn(document.querySelector(".badge"));
+  Notch.place($("t-rest"), [A.x + 14, badge.y + badge.h / 2], 0, 0.5);
+
+  // Two tags under the resting notch, each with a leader to what it names:
+  // PITCH BLACK to the bar's bottom edge, CHARGING GLOW into the light
+  // beside the right side.
+  const rest = $("rest");
+  const s = Number(rest.dataset.bs);
+  const tagY = Notch.barPoint(rest, 0, 32 + 32 + 18)[1];
+  const bottomMid = Notch.barPoint(rest, 64, 32);
+  const glowPt = Notch.barPoint(rest, 180 + 14, 22);
+  const tb = Notch.place($("t-black"), [bottomMid[0], tagY], 0.5, 0.5);
+  const tg = Notch.place($("t-glow"), [glowPt[0], tagY], 0.5, 0.5);
+  Notch.arrow(card, [bottomMid[0], tb.y - 3], [bottomMid[0], bottomMid[1] + 5], { color: getComputedStyle($("t-black")).color, startDot: false });
+  Notch.arrow(card, [glowPt[0], tg.y - 3], [glowPt[0], glowPt[1]], { color: getComputedStyle($("t-glow")).color, startDot: false, end: "dot" });
+</script>
+</body>
+</html>

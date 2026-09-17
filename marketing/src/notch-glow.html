@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notch — battery glow</title>
+<link rel="stylesheet" href="card.css">
+<style>
+  :root { --w: 1600px; --h: 800px; --accent: #9fb0ff; }
+
+  /* 72 px margins on both sides. Illustration: the three states and the
+     falloff chart in 716..1040, the settings panel in 1052..1528. */
+  .copy { left: 72px; top: 64px; width: 610px; }
+  .title { margin-top: 34px; font-size: 44px; align-items: flex-start; }
+  .title .app-icon { margin-top: 0; }
+  .title .lines { display: block; line-height: 1.14; white-space: nowrap; }
+  .title .accent { color: var(--amber); }
+  .tagline { margin-top: 34px; font-size: 26px; line-height: 1.36; }
+  .desc { margin-top: 22px; font-size: 16px; line-height: 1.66; }
+  .chips { margin-top: 38px; gap: 12px; }
+  .chip { height: 72px; padding: 0 14px; gap: 13px; }
+  .chip .ic { width: 40px; height: 40px; font-size: 21px; }
+  .chip b { font-size: 15px; }
+  .chip span { font-size: 12px; margin-top: 4px; }
+  .install { margin-top: 26px; height: 56px; padding: 0 18px; font-size: 15px; }
+  .footer { left: 72px; right: 72px; bottom: 26px; font-size: 12px; }
+
+  .strip {
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
+            mask-image: linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
+  }
+  .settings-screen {
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 92%, transparent 100%);
+            mask-image: linear-gradient(180deg, #000 0%, #000 92%, transparent 100%);
+  }
+
+  /* the falloff chart */
+  .figure { width: 324px; height: 192px; }
+  .figure .tag { position: absolute; left: 16px; top: 16px; box-shadow: none; }
+  .figure svg { left: 22px; top: 70px; overflow: visible; }
+
+  /* the settings panel (NotchSettings.qml), logical px */
+  .panel { padding: 0 16px 16px; color: var(--on-notch); font-size: 12px; }
+  .panel .head { height: 32px; display: flex; align-items: center; justify-content: space-between; }
+  .panel .head b { font-size: 15px; font-weight: 700; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 26px; padding: 0 10px; border-radius: 10px; font-size: 12px; white-space: nowrap;
+    color: var(--on-notch); border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.03);
+  }
+  .btn.bare { border-color: transparent; background: transparent; padding: 0 8px; color: var(--on-notch-2); font-size: 14px; }
+  .btn.on { background: rgba(159,176,255,0.22); border-color: rgba(159,176,255,0.75); color: #fff; }
+  .sec { height: 30px; display: flex; align-items: center; font-weight: 700; white-space: pre; }
+  .hr { height: 1px; background: rgba(255,255,255,0.10); }
+  .body { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; }
+  .srow { height: 34px; display: flex; align-items: center; justify-content: space-between; }
+  .srow > span:first-child { color: var(--on-notch-2); font-size: 11px; white-space: nowrap; }
+  .ctl { display: flex; align-items: center; gap: 8px; }
+  .switch { position: relative; width: 42px; height: 22px; border-radius: 10px; background: rgba(159,176,255,0.24); border: 1px solid rgba(159,176,255,0.75); }
+  .switch i { position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; border-radius: 8px; background: var(--accent); }
+  .slider { position: relative; width: 160px; height: 24px; }
+  .slider .track { position: absolute; left: 0; right: 0; top: 10px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.14); }
+  .slider .fill { position: absolute; left: 0; top: 10px; height: 4px; border-radius: 2px; background: var(--accent); }
+  .slider .knob { position: absolute; top: 4px; width: 16px; height: 16px; border-radius: 8px; background: #fff; }
+  .val { width: 44px; text-align: right; color: var(--on-notch-2); font-size: 11px; }
+  .num { width: 64px; height: 26px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.16); display: flex; align-items: center; padding: 0 10px; }
+  .hint { white-space: normal; font-size: 10.5px; line-height: 1.45; color: var(--on-notch-2); padding: 2px 0 4px; }
+  .reset { display: flex; justify-content: flex-end; padding-top: 8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="grid"></div>
+  <div class="ambient a"></div>
+  <div class="ambient b"></div>
+  <div class="grain"></div>
+
+  <section class="copy">
+    <div class="badge"><i class="dot"></i>OMARCHY PLUGIN</div>
+    <h1 class="title"><span class="app-icon" id="appicon"></span><span class="lines">A glow that tells you<br><span class="accent">it's charging</span></span></h1>
+    <p class="tagline">Light falls off the notch's outline:<br><em class="amber">amber</em> charging, <em class="green">green</em> full, <em class="low">red</em> low.</p>
+    <p class="desc">Each pixel's opacity comes from its distance to the outline,<br>fillets included. Soft light, never a border.</p>
+    <div class="chips">
+      <div class="chip"><i class="ic purple purple">&#xf062e;</i><div class="tx"><b>Outline or bottom</b><span>bottom under an open notch</span></div></div>
+      <div class="chip"><i class="ic amber amber">&#xf004c;</i><div class="tx"><b>Glow size</b><span>a slider, off to 2.5×</span></div></div>
+      <div class="chip"><i class="ic blue blue">&#xf06d0;</i><div class="tx"><b>Preview</b><span>each state, from settings</span></div></div>
+      <div class="chip"><i class="ic green green">&#xf06a5;</i><div class="tx"><b>Peek on plug-in</b><span>widens to show the battery</span></div></div>
+    </div>
+    <div class="install"><span class="p">$</span><span><span class="k">omarchy plugin add</span> <span class="u">https://github.com/Kalinewb/omarchy-notch</span></span></div>
+  </section>
+
+  <!-- three resting notches -->
+  <div class="screen strip" id="s1" style="left:716px; top:64px; width:324px; height:150px;">
+    <div class="display">
+      <div class="notch" id="n1" data-w="180" data-h="32" data-s="1.05" data-center="1" data-glow="amber" style="top:0">
+        <div class="nc glance"><span class="cell"><i class="case"></i><i class="nub"></i><i class="fill" style="width:10.2px"></i>
+          <svg width="8" height="11" viewBox="0 0 8 11"><path d="M5 0 L1 6 L4 6 L3 11 L7 5 L4 5 Z" fill="#fff" stroke="#000" stroke-width="1" paint-order="stroke"/></svg></span>64%</div>
+      </div>
+    </div>
+  </div>
+  <div class="screen strip" id="s2" style="left:716px; top:226px; width:324px; height:150px;">
+    <div class="display">
+      <div class="notch" id="n2" data-w="180" data-h="32" data-s="1.05" data-center="1" data-glow="green" style="top:0">
+        <div class="nc glance"><span class="cell"><i class="case"></i><i class="nub"></i><i class="fill" style="width:16px"></i>
+          <svg width="8" height="11" viewBox="0 0 8 11"><path d="M5 0 L1 6 L4 6 L3 11 L7 5 L4 5 Z" fill="#fff" stroke="#000" stroke-width="1" paint-order="stroke"/></svg></span>100%</div>
+      </div>
+    </div>
+  </div>
+  <div class="screen strip" id="s3" style="left:716px; top:388px; width:324px; height:150px;">
+    <div class="display">
+      <div class="notch" id="n3" data-w="180" data-h="32" data-s="1.05" data-center="1" data-glow="red" style="top:0">
+        <div class="nc glance"><span class="cell"><i class="case"></i><i class="nub"></i><i class="fill" style="width:2.9px"></i></span>18%</div>
+      </div>
+    </div>
+  </div>
+
+  <span class="tag amber" id="st1">CHARGING · #FFB340</span>
+  <span class="tag green" id="st2">FULL · #30D158</span>
+  <span class="tag low" id="st3">LOW · #FF453A</span>
+
+  <!-- the outline falloff, sampled from the curve the glow is drawn with -->
+  <div class="inset figure" id="figure">
+    <span class="tag amber">OUTLINE · 0.35 → 0 AT 32 PX</span>
+    <svg id="curve"></svg>
+  </div>
+
+  <!-- settings panel, grown from the same notch -->
+  <div class="screen settings-screen" id="s4" style="left:1052px; top:64px; width:476px; height:680px;">
+    <div class="display">
+      <div class="notch" id="panel" data-w="400" data-h="auto" data-s="1.0" data-center="1" data-glow="amber" data-glow-style="bottom" data-strength="0.24" style="top:0">
+        <div class="nc panel">
+          <div class="head"><b>Notch</b><span class="btn bare">✕</span></div>
+          <div class="sec">▸  What it shows</div><div class="hr"></div>
+          <div class="sec">▸  Behaviour</div><div class="hr"></div>
+          <div class="sec">▸  Size and shape</div><div class="hr"></div>
+          <div class="sec" id="battery">▾  Battery</div>
+          <div class="body">
+            <div class="srow"><span>Charging glow</span><span class="ctl"><span class="switch"><i></i></span></span></div>
+            <div class="srow" id="row-style"><span>Glow style</span><span class="ctl"><span class="btn on">Outline</span><span class="btn">Bottom</span></span></div>
+            <div class="srow" id="row-size"><span>Glow size</span><span class="ctl"><span class="slider"><i class="track"></i><i class="fill" style="width:64px"></i><i class="knob" style="left:56px"></i></span><span class="val">1.00×</span></span></div>
+            <div class="srow"><span>Green when charging above %</span><span class="ctl"><span class="num">100</span></span></div>
+            <div class="srow"><span>Low below %</span><span class="ctl"><span class="num">20</span></span></div>
+            <div class="srow" id="row-preview"><span>Preview</span><span class="ctl"><span class="btn">Off</span><span class="btn on">Charging</span><span class="btn">Full</span><span class="btn">Low</span></span></div>
+            <div class="hint" id="hint">Previewing: while the settings are open the glow sits under the panel's bottom edge. It stops when the settings close.</div>
+          </div>
+          <div class="hr"></div>
+          <div class="reset"><span class="btn">Reset to defaults</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <span class="tag amber" id="t-bottom">BOTTOM GLOW · 0.24</span>
+
+  <div class="footer"><span>Hyprland<span class="sep">·</span>Quickshell<span class="sep">·</span>Omarchy 4</span><span>graveklar.notch<span class="sep">·</span>MIT</span></div>
+</div>
+
+<script src="notch.js"></script>
+<script>
+  const card = document.querySelector(".card");
+  const $ = (id) => document.getElementById(id);
+  Notch.appIcon($("appicon"), 58);
+  Notch.buildAll();
+
+  // State tags under each resting notch, just past the glow's reach.
+  for (const [n, st] of [["n1", "st1"], ["n2", "st2"], ["n3", "st3"]]) {
+    const s = Number($(n).dataset.bs);
+    const p = Notch.barPoint($(n), 90, 32 + 32 + 6 / s);
+    Notch.place($(st), p, 0.5, 0);
+  }
+
+  // The bottom glow's tag, just under its reach.
+  const P = $("panel");
+  const PH = Number(P.dataset.bh);
+  const bottom = Notch.barPoint(P, 200, PH + 32 + 8);
+  Notch.place($("t-bottom"), bottom, 0.5, 0);
+
+  // The figure under the three states.
+  const S3 = Notch.rectIn($("s3"));
+  Notch.place($("figure"), [S3.x, S3.y + S3.h + 14], 0, 0);
+
+  // The outline falloff at the default reach of 32 px (glow.js).
+  (function curve() {
+    const W = 280, H = 76, reach = 32, amax = 0.35;
+    const X = (d) => (d / reach) * W, Y = (a) => H - (a / amax) * H;
+    let d = `M ${X(0)} ${Y(Notch.alpha(0, reach))}`;
+    for (let i = 1; i <= 240; i++) { const t = (i / 240) * reach; d += ` L ${X(t).toFixed(2)} ${Y(Notch.alpha(t, reach)).toFixed(2)}`; }
+    const knots = [[2.4, 0.35, "0.35"], [8, 0.18, "0.18 at 8 px"], [20, 0.07, "0.07 at 20 px"]];
+    const txt = (x, y, t, anchor = "start", fill = "rgba(214,219,240,0.72)") =>
+      `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="JetBrainsMono Nerd Font, monospace" font-size="11" fill="${fill}">${t}</text>`;
+    const pts = knots.map(([kd, ka, label]) => `<circle cx="${X(kd)}" cy="${Y(ka)}" r="2.6" fill="#FFB340"/>` + txt(X(kd) + 8, Y(ka) - 6, label)).join("");
+    const svg = $("curve");
+    svg.setAttribute("width", W); svg.setAttribute("height", H + 24);
+    svg.setAttribute("viewBox", `0 0 ${W} ${H + 24}`);
+    svg.innerHTML = `
+      <defs><linearGradient id="fall" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#FFB340" stop-opacity="0.32"/><stop offset="1" stop-color="#FFB340" stop-opacity="0"/></linearGradient></defs>
+      <line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="rgba(214,219,240,0.24)" stroke-width="1"/>
+      <path d="${d} L ${W} ${H} L 0 ${H} Z" fill="url(#fall)"/>
+      <path d="${d}" fill="none" stroke="#FFB340" stroke-width="1.8" stroke-linejoin="round"/>
+      ${pts}
+      ${txt(0, H + 18, "outline")}
+      ${txt(W, H + 18, "32 px", "end")}`;
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notch — the Omarchy menu, inside the notch</title>
+<link rel="stylesheet" href="card.css">
+<style>
+  :root { --w: 1600px; --h: 800px; }
+
+  /* 72 px margins on both sides; the illustration column is 800..1528. */
+  .copy { left: 72px; top: 64px; width: 680px; }
+  .title { margin-top: 30px; font-size: 56px; align-items: flex-start; }
+  .title .app-icon { margin-top: 2px; }
+  .title .lines { display: block; line-height: 1.1; }
+  .tagline { margin-top: 28px; font-size: 27px; line-height: 1.34; }
+  .desc { margin-top: 18px; font-size: 16px; line-height: 1.66; }
+  .chips { margin-top: 30px; gap: 12px; }
+  .chip { height: 72px; padding: 0 14px; gap: 13px; }
+  .chip .ic { width: 40px; height: 40px; font-size: 21px; }
+  .chip b { font-size: 15px; }
+  .chip span { font-size: 12px; margin-top: 4px; }
+  .install { margin-top: 22px; height: 56px; padding: 0 20px; font-size: 15px; }
+  .footer { left: 72px; right: 72px; bottom: 26px; font-size: 12px; }
+
+  .screen.menu-screen {
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 90%, transparent 100%);
+            mask-image: linear-gradient(180deg, #000 0%, #000 90%, transparent 100%);
+  }
+  .win.tile { background: rgba(24, 27, 46, 0.55); border-color: rgba(255, 255, 255, 0.07); }
+  .win.tile.active { border-color: rgba(150, 170, 255, 0.40); }
+
+  /* The menu, in logical px (notch.js zooms it). Sizes follow
+     menu/NotchMenu.qml with Omarchy's Style: a 300 px card, 18 px padding,
+     a 34 px "Go…" header at 58 % opacity (heading, 16 px), 6 px spacing,
+     50 px rows 3 px apart with a 36 px icon column (18 px icons), a 16 px
+     label and a dim 14 px chevron column; the selection is filled with the
+     notch's radius. */
+  .menu { padding: 18px; color: var(--on-notch); }
+  .menu .hdr { height: 34px; display: flex; align-items: center; font-size: 16px; color: rgba(255,255,255,0.58); }
+  .menu .rows { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+  .mrow { position: relative; height: 50px; display: flex; align-items: center; border-radius: 10px; }
+  .mrow i { font-style: normal; width: 36px; margin-left: 8px; text-align: center; font-size: 18px; line-height: 1; }
+  .mrow b { margin-left: 6px; font-size: 16px; font-weight: 400; flex: 1; }
+  .mrow s { text-decoration: none; width: 14px; margin-right: 8px; font-size: 16px; color: rgba(255,255,255,0.36); text-align: center; }
+  .mrow.sel { background: rgba(190, 178, 255, 0.17); }
+  .mrow.sel s { color: rgba(255,255,255,0.6); }
+
+  .sub { position: absolute; z-index: 6; font-size: 11px; color: rgba(214,219,240,0.78); white-space: nowrap; line-height: 1.5; }
+  .sub.r { text-align: right; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="grid"></div>
+  <div class="ambient a"></div>
+  <div class="ambient b"></div>
+  <div class="grain"></div>
+
+  <section class="copy">
+    <div class="badge"><i class="dot"></i>OMARCHY PLUGIN</div>
+    <h1 class="title"><span class="app-icon" id="appicon"></span><span class="lines">The Omarchy menu,<br><span class="accent">inside the notch</span></span></h1>
+    <p class="tagline">Same rows, <em class="blue">same search</em>, <em class="pink">same submenus</em>.<br>Drawn in the notch's <em class="purple">own black</em>.</p>
+    <p class="desc">The notch grows down into the menu, top edge on the screen edge.<br>No window of its own, no scrim, no border.</p>
+    <div class="chips">
+      <div class="chip"><i class="ic blue blue">&#xf0349;</i><div class="tx"><b>Type to search</b><span>filters rows as you type</span></div></div>
+      <div class="chip"><i class="ic pink pink">&#xf0645;</i><div class="tx"><b>Submenus + Apps</b><span>Style, Setup, System, apps</span></div></div>
+      <div class="chip"><i class="ic purple purple">&#xf030c;</i><div class="tx"><b>Any trigger</b><span>middle-click · keybind · IPC</span></div></div>
+      <div class="chip"><i class="ic teal teal">&#xf0279;</i><div class="tx"><b>Same entries</b><span>reads omarchy-menu.jsonc</span></div></div>
+    </div>
+    <div class="install"><span class="p">$</span><span><span class="k">omarchy plugin add</span> <span class="u">https://github.com/Kalinewb/omarchy-notch</span></span></div>
+  </section>
+
+  <div class="screen menu-screen" id="screen" style="left:800px; top:64px; width:728px; height:680px;">
+    <div class="display">
+      <!-- two tiled windows behind the menu, so it reads as a desktop; they
+           start under the fillets (10 px), which stay on the wallpaper -->
+      <div class="win tile" style="left:12px; top:14px; width:337px; height:700px;"></div>
+      <div class="win tile active" style="left:357px; top:14px; width:341px; height:700px;"></div>
+      <div class="notch" id="menu" data-w="300" data-h="auto" data-s="1.0" data-center="1" style="top:0">
+        <div class="nc menu">
+          <div class="hdr" id="hdr"><span id="go">Go…</span></div>
+          <div class="rows">
+            <div class="mrow"><i>&#xf003b;</i><b>Apps</b><s>›</s></div>
+            <div class="mrow"><i>&#xf09d1;</i><b>Learn</b><s>›</s></div>
+            <div class="mrow"><i>&#xf14de;</i><b>Trigger</b><s>›</s></div>
+            <div class="mrow sel" id="sel"><i>&#xebcf;</i><b>Style</b><s>›</s></div>
+            <div class="mrow"><i>&#xe615;</i><b>Setup</b><s>›</s></div>
+            <div class="mrow"><i>&#xf0249;</i><b>Install</b><s>›</s></div>
+            <div class="mrow"><i>&#xf0b4c;</i><b>Remove</b><s>›</s></div>
+            <div class="mrow"><i>&#xf021;</i><b>Update</b><s>›</s></div>
+            <div class="mrow"><i>&#xea74;</i><b>About</b><s></s></div>
+            <div class="mrow" id="sys"><i>&#xf011;</i><b>System</b><s id="chev">›</s></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <span class="tag blue" id="t-search">TYPE TO SEARCH</span>
+  <div class="sub" id="s-search">just start typing</div>
+  <span class="tag white" id="t-grow">GROWS DOWN</span>
+  <div class="sub" id="s-grow">on the notch's spring</div>
+  <span class="tag purple" id="t-surface">SAME SURFACE</span>
+  <div class="sub r" id="s-surface">one black shape,<br>fused to the screen edge</div>
+  <span class="tag teal" id="t-radius">ONE RADIUS</span>
+  <div class="sub r" id="s-radius">r 10, like the notch</div>
+  <span class="tag pink" id="t-sub">SUBMENUS</span>
+  <div class="sub r" id="s-sub">Backspace goes back</div>
+
+  <div class="footer"><span>Hyprland<span class="sep">·</span>Quickshell<span class="sep">·</span>Omarchy 4</span><span>graveklar.notch<span class="sep">·</span>MIT</span></div>
+</div>
+
+<script src="notch.js"></script>
+<script>
+  const card = document.querySelector(".card");
+  const $ = (id) => document.getElementById(id);
+  const col = (id) => getComputedStyle($(id)).color;
+  Notch.appIcon($("appicon"), 58);
+  Notch.buildAll();
+
+  const menu = $("menu");
+  const S = Notch.rectIn($("screen"));
+  const edgeY = Notch.barPoint(menu, 0, 0)[1];     // the screen edge
+  const leftSide = Notch.barPoint(menu, 0, 0)[0];  // the bar's left side
+  const rightSide = Notch.barPoint(menu, 300, 0)[0];
+  // Gutters between the display's edges and the notch.
+  const leftX = S.x + 9 + 24;
+  const rightX = S.x + S.w - 9 - 24;
+
+  // TYPE TO SEARCH (left gutter): points at "Go…" from just outside the left side.
+  {
+    const g = Notch.elPoint($("go"), 0, 0.5);
+    const t = Notch.place($("t-search"), [leftX, g[1]], 0, 0.5);
+    Notch.place($("s-search"), [leftX, t.y + t.h + 6], 0, 0);
+    Notch.arrow(card, [t.x + t.w + 6, g[1]], [leftSide - 6, g[1]], { color: col("t-search"), startDot: false });
+  }
+  // GROWS DOWN (left gutter): a vertical arrow beside the menu.
+  {
+    const top = Notch.barPoint(menu, 0, 150), bot = Notch.barPoint(menu, 0, 560);
+    const x = (leftX + leftSide) / 2 - 8;
+    const t = Notch.place($("t-grow"), [x, (top[1] + bot[1]) / 2 - 12], 0.5, 0.5);
+    const sg = Notch.place($("s-grow"), [x, t.y + t.h + 6], 0.5, 0);
+    // One arrow, broken around its label.
+    const c = "rgba(240,242,252,0.55)";
+    Notch.arrow(card, [x, top[1]], [x, t.y - 8], { color: c, end: "none" });
+    Notch.arrow(card, [x, sg.y + sg.h + 8], [x, bot[1]], { color: c, startDot: false });
+  }
+  // SAME SURFACE (right gutter): a ring around the right fillet, where the
+  // screen edge flows into the side.
+  {
+    const c = Notch.barPoint(menu, 300 + 5, 5);
+    const R = 15;
+    Notch.ring(card, c, R, { color: col("t-surface"), clipTop: edgeY });
+    const t = Notch.place($("t-surface"), [rightX, edgeY + 74], 1, 0.5);
+    Notch.place($("s-surface"), [rightX, t.y + t.h + 6], 1, 0);
+    const p = Notch.onRing(c, R + 4, 50);
+    Notch.arrow(card, [t.x + 22, t.y - 4], p, { color: col("t-surface"), startDot: false, via: [t.x + 22, p[1] + 6] });
+  }
+  // ONE RADIUS (right gutter): to the selected row's top-right corner.
+  {
+    const sel = Notch.rectIn($("sel"));
+    const tip = [sel.x + sel.w - 1, sel.y + 1];
+    const y = sel.y + sel.h / 2;
+    const t = Notch.place($("t-radius"), [rightX, y], 1, 0.5);
+    Notch.place($("s-radius"), [rightX, t.y + t.h + 6], 1, 0);
+    Notch.arrow(card, [t.x - 6, y], [tip[0] + 4, tip[1] - 4], { color: col("t-radius"), startDot: false, via: [tip[0] + 30, tip[1] - 16] });
+  }
+  // SUBMENUS (right gutter): to the chevron.
+  {
+    const p = Notch.elPoint($("chev"), 1, 0.5);
+    const t = Notch.place($("t-sub"), [rightX, p[1]], 1, 0.5);
+    Notch.place($("s-sub"), [rightX, t.y + t.h + 6], 1, 0);
+    Notch.arrow(card, [t.x - 6, p[1]], [p[0] + 5, p[1]], { color: col("t-sub"), startDot: false });
+  }
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 import "keys.js" as KeyCombo
+import "menu"
 
 // The notch's settings, drawn inside the notch itself: opening them grows the
 // notch -- the same surface, top edge on the screen edge -- into this panel.
@@ -38,23 +39,34 @@ Item {
   readonly property color dim: bar ? bar.notchSecondaryText : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
   // How far the glow reaches now, in px (for the preview's hint).
   property real glowReach: 32
-  // Where replacing the Omarchy menu stands, in words.
-  readonly property string menuReplaceStatus: {
+  // Replacing the menu needs the companion plugin. Turning the switch on
+  // installs it (after a word of warning: plugins reload); Setup is where a
+  // companion that is missing, off or broken is reported and repaired. The
+  // only thing this panel says about it is that the notch is busy, or that
+  // Setup has something for you.
+  readonly property string menuReplaceNote: {
     var b = bar
-    if (!b) return ""
+    if (!b || !b.notchReplaceMenu) return ""
     var companion = b.menuCompanion
-    if (!companion.actionsEnabled && companion.statusKey !== "active-on" && companion.statusKey !== "active-off")
-      return "A test notch doesn't set the companion up."
-    switch (companion.statusKey) {
-      case "working": return "Setting up…"
-      case "failed": return String((companion.job || {}).message || "That didn't work.")
-      case "absent": return "Needs the menu companion (one-time)."
-      case "disabled": return "The menu companion is installed but switched off."
-      case "outdated": return "The menu companion is out of date."
-      case "hidden-bar": return "While the bar is hidden, Omarchy's own menu opens."
-      case "active-on": return "SUPER + SPACE, the menu button and pickers open in the notch."
-      default: return "Omarchy's own menu opens. Nothing else changes."
-    }
+    if (companion.statusKey === "working") return "Setting up the menu companion…"
+    if (companion.companionState !== "active" && companion.actionsEnabled) return "Not set up yet — Setup has the fix."
+    return ""
+  }
+  property bool companionConfirmOpen: false
+  // Whether the switch's job is the companion install (dev/menu-replace.sh).
+  readonly property bool companionNeeded: !!bar && bar.menuCompanion.actionsEnabled && bar.menuCompanion.companionState !== "active"
+
+  function requestReplaceMenu(on) {
+    if (!on || !companionNeeded) { set("replaceMenu", on); return }
+    companionConfirmOpen = true
+  }
+
+  function confirmReplaceMenu() {
+    companionConfirmOpen = false
+    set("replaceMenu", true)
+    var companion = bar.menuCompanion
+    if (companion.companionState === "outdated") companion.update()
+    else companion.setUp()
   }
 
   // Where the notch's own updates stand, in words.
@@ -80,10 +92,13 @@ Item {
 
   // Unfold a section and scroll to it: "updates" (the Plugins page's notch row).
   function revealSection(name) {
-    if (name !== "updates") return
-    updatesSection.open = true
+    var sections = { shows: showsSection, opening: openingSection, appearance: appearanceSection,
+                     battery: batterySection, integrations: integrationsSection, updates: updatesSection }
+    var section = sections[name]
+    if (!section) return
+    section.open = true
     Qt.callLater(function() {
-      settingsFlick.contentY = Math.max(0, Math.min(updatesSection.y, settingsFlick.contentHeight - settingsFlick.height))
+      settingsFlick.contentY = Math.max(0, Math.min(section.y, settingsFlick.contentHeight - settingsFlick.height))
     })
   }
 
@@ -182,7 +197,13 @@ Item {
   }
 
   focus: true
-  Keys.onEscapePressed: root.closeRequested()
+  Keys.onEscapePressed: {
+    if (root.companionConfirmOpen) { root.companionConfirmOpen = false; return }
+    root.closeRequested()
+  }
+  Keys.onPressed: function(event) {
+    if (root.companionConfirmOpen && companionConfirm.handleKey(event)) event.accepted = true
+  }
 
   // Header, on the resting notch's row.
   Item {
@@ -232,6 +253,28 @@ Item {
     }
   }
 
+  // Turning "Replace the Omarchy menu" on installs the companion plugin, and
+  // that reloads every plugin: worth one sentence first.
+  NotchConfirmDialog {
+    id: companionConfirm
+    anchors.fill: parent
+    z: 10
+    opened: root.companionConfirmOpen
+    message: (root.bar && root.bar.menuCompanion.companionState === "outdated"
+      ? "The menu companion plugin is out of date. Updating it reloads Omarchy's plugins, and the notch closes for a moment."
+      : "This installs the notch's menu companion plugin and reloads Omarchy's plugins. The notch closes for a moment.")
+    confirmText: root.bar && root.bar.menuCompanion.companionState === "outdated" ? "Update" : "Set up"
+    background: root.surface
+    foreground: root.foreground
+    scrim: Qt.rgba(root.surface.r, root.surface.g, root.surface.b, 0.7)
+    selectedBackground: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
+    selectedText: root.foreground
+    fontFamily: root.fontFamily
+    cornerRadius: root.bar ? root.bar.notchRadius : 10
+    onCanceled: root.companionConfirmOpen = false
+    onConfirmed: root.confirmReplaceMenu()
+  }
+
   Flickable {
     id: settingsFlick
     x: root.padding
@@ -252,6 +295,7 @@ Item {
       // inside them, with a summary of what is picked.
 
       Section {
+        id: showsSection
         title: "What it shows"
         open: true
 
@@ -312,8 +356,11 @@ Item {
         }
       }
 
+      // Every row here answers "what makes the notch do a thing"; each
+      // gesture is followed by its keybind.
       Section {
-        title: "Behaviour"
+        id: openingSection
+        title: "How it opens"
 
         StackedRow {
           label: "Open the notch with"
@@ -354,47 +401,23 @@ Item {
         SettingRow {
           label: "Replace the Omarchy menu"
           Switch {
+            id: replaceMenuSwitch
             checked: root.bar ? root.bar.notchReplaceMenu : false
-            onToggled: root.set("replaceMenu", !checked)
+            enabled: !root.bar || root.bar.menuCompanion.statusKey !== "working"
+            onToggled: root.requestReplaceMenu(!checked)
           }
         }
 
-        SettingRow {
-          label: root.menuReplaceStatus
-          Row {
-            spacing: Style.space(6)
-            Button {
-              readonly property string key: root.bar ? root.bar.menuCompanion.statusKey : ""
-              visible: key === "absent" || key === "outdated" || key === "failed"
-              enabled: root.bar && root.bar.menuCompanion.actionsEnabled
-              opacity: enabled ? 1 : 0.35
-              text: key === "absent" ? "Set up" : key === "outdated" ? "Update" : "Dismiss"
-              bordered: true
-              selected: key !== "failed"
-              foreground: root.foreground
-              accent: root.accent
-              radius: root.radiusFor(Math.min(width, height))
-              fontFamily: root.fontFamily
-              fontSize: Style.font.bodySmall
-              horizontalPadding: Style.space(7)
-              onClicked: {
-                if (key === "absent") root.bar.menuCompanion.setUp()
-                else if (key === "outdated") root.bar.menuCompanion.update()
-                else root.bar.menuCompanion.dismiss()
-              }
-            }
-          }
+        Text {
+          visible: text !== ""
+          width: parent.width
+          wrapMode: Text.WordWrap
+          text: root.menuReplaceNote
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          bottomPadding: Style.space(4)
         }
-
-        SettingRow {
-          label: "Hide until the pointer reaches for it"
-          Switch {
-            checked: root.bar ? root.bar.notchAutoHide : false
-            onToggled: root.set("autoHide", !checked)
-          }
-        }
-
-        KeyRow { label: "Keybind for auto-hide"; key: "autoHideKey"; current: root.bar ? root.bar.notchAutoHideKey : "" }
 
         SettingRow {
           label: "Keep the notch open"
@@ -405,6 +428,29 @@ Item {
         }
 
         KeyRow { label: "Keybind to keep it open"; key: "stayOpenKey"; current: root.bar ? root.bar.notchStayOpenKey : "" }
+
+      }
+
+      // The notch's shape, and how it sits on the screen: auto-hide and
+      // windows-to-top are about its presence, not about what opens it.
+      Section {
+        id: appearanceSection
+        title: "Appearance"
+
+        NumberRow { label: "Width at rest"; key: "compactWidth"; value: root.bar ? root.bar.notchCompactWidth : 180; from: 100; to: 600; stepSize: 10 }
+        NumberRow { label: "Height at rest"; key: "compactHeight"; value: root.bar ? root.bar.notchCompactHeight : 32; from: 26; to: 60; stepSize: 2 }
+        NumberRow { label: "Bottom corners"; key: "bottomRadius"; value: root.bar ? root.bar.notchBottomRadius : 10; from: 0; to: 24; stepSize: 1 }
+        NumberRow { label: "Edge fillets"; key: "filletRadius"; value: root.bar ? root.bar.notchFilletRadius : 10; from: 0; to: 24; stepSize: 1 }
+
+        SettingRow {
+          label: "Hide until the pointer reaches for it"
+          Switch {
+            checked: root.bar ? root.bar.notchAutoHide : false
+            onToggled: root.set("autoHide", !checked)
+          }
+        }
+
+        KeyRow { label: "Keybind for auto-hide"; key: "autoHideKey"; current: root.bar ? root.bar.notchAutoHideKey : "" }
 
         SettingRow {
           label: "Windows reach the top edge"
@@ -424,6 +470,15 @@ Item {
           font.pixelSize: Style.font.caption
           bottomPadding: Style.space(4)
         }
+      }
+
+      // The two peeks are one idea -- the notch briefly showing you something
+      // -- so they sit together, ahead of the glow they used to be split by.
+      Section {
+        id: batterySection
+        title: "Peeks and battery"
+        summary: !root.bar ? "" : !root.bar.notchBatteryGlow ? "Glow off"
+          : (root.bar.notchGlowStyle === "bottom" ? "Bottom" : "Outline") + " · " + root.bar.notchGlowScale.toFixed(2) + "× · green above " + root.bar.notchGreenAbove + " %"
 
         SettingRow {
           label: "Peek on a new track"
@@ -432,19 +487,14 @@ Item {
             onToggled: root.set("peekOnTrackChange", !checked)
           }
         }
-      }
 
-      Section {
-        title: "Size and shape"
-
-        NumberRow { label: "Width at rest"; key: "compactWidth"; value: root.bar ? root.bar.notchCompactWidth : 180; from: 100; to: 600; stepSize: 10 }
-        NumberRow { label: "Height at rest"; key: "compactHeight"; value: root.bar ? root.bar.notchCompactHeight : 32; from: 26; to: 60; stepSize: 2 }
-        NumberRow { label: "Bottom corners"; key: "bottomRadius"; value: root.bar ? root.bar.notchBottomRadius : 10; from: 0; to: 24; stepSize: 1 }
-        NumberRow { label: "Edge fillets"; key: "filletRadius"; value: root.bar ? root.bar.notchFilletRadius : 10; from: 0; to: 24; stepSize: 1 }
-      }
-
-      Section {
-        title: "Battery"
+        SettingRow {
+          label: "Peek on plug-in and low battery"
+          Switch {
+            checked: root.bar ? root.bar.notchBatteryPeek : true
+            onToggled: root.set("batteryPeek", !checked)
+          }
+        }
 
         SettingRow {
           label: "Charging glow"
@@ -496,14 +546,6 @@ Item {
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
             }
-          }
-        }
-
-        SettingRow {
-          label: "Peek on plug-in and low battery"
-          Switch {
-            checked: root.bar ? root.bar.notchBatteryPeek : true
-            onToggled: root.set("batteryPeek", !checked)
           }
         }
 
@@ -664,21 +706,6 @@ Item {
             }
           }
         }
-
-        SettingRow {
-          label: "Your plugins"
-          Button {
-            text: "Manage…"
-            bordered: true
-            foreground: root.foreground
-            accent: root.accent
-            radius: root.radiusFor(Math.min(width, height))
-            fontFamily: root.fontFamily
-            fontSize: Style.font.bodySmall
-            horizontalPadding: Style.space(7)
-            onClicked: root.bar.openPluginsFromSettings()
-          }
-        }
       }
 
       PanelSeparator { width: parent.width; foreground: root.foreground }
@@ -791,6 +818,8 @@ Item {
   component Section: Column {
     id: section
     property string title: ""
+    // One line of the current state, shown on the fold so it isn't a dead end.
+    property string summary: ""
     property bool open: false
     default property alias content: sectionBody.data
     width: parent ? parent.width : 0
@@ -807,6 +836,16 @@ Item {
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
         font.bold: true
+      }
+
+      Text {
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        visible: !section.open && section.summary !== ""
+        text: section.summary
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
       }
 
       MouseArea {

@@ -38,7 +38,7 @@ a sandbox git remote.
 
 ### Plugins
 
-Settings → Updates → **Your plugins** → Manage… grows the notch into the Plugins page. It lists
+Setup → **Plugins** grows the notch into the Plugins page. It lists
 the plugins the notch knows how to install, **Face ID** (`graveklar.face`) and **Profiles**
 (`kalinewb.profiles`), with what each is doing: not installed, up to date, an update available
 (with the number of changes), installed but turned off, local edits, installed from somewhere
@@ -102,7 +102,7 @@ settings into the Setup page: a list of things about this machine that stop the 
 way you want, each in plain words, with a **Fix** button where the notch can safely put it right.
 `omarchy-shell notch view setup` opens it directly.
 
-It checks twenty things — whether the bar is hidden, whether the notch is the active bar and
+It checks nineteen things — whether the bar is hidden, whether the notch is the active bar and
 loaded, Hyprland config errors, the menu companion and menu keys that go around it, keybind
 clashes and leftover notch binds, widgets in the layout that aren't installed or drew nothing,
 settings naming plugins that are gone, Face ID and Profiles, stray test shells, old `.bak` files,
@@ -237,7 +237,7 @@ edge stays on the screen edge. It grows and shrinks with the spring as you move 
   directly.
 - **Close it** by picking a row, pressing Escape, clicking outside, or using the same trigger or
   call again.
-- **Replace the Omarchy menu** (Settings → Behaviour) makes every way into Omarchy's menu open
+- **Replace the Omarchy menu** (Settings → How it opens) makes every way into Omarchy's menu open
   the notch's: SUPER + SPACE and the other menu keybinds, `omarchy menu`, the bar's menu button,
   the screen-recording indicator and every picker. Off, they open Omarchy's own window, exactly
   as before. The switch takes effect on the next open, with no restart.
@@ -372,7 +372,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `expanded` | `["clock","date","media"]` | Glance items added to the widget row. Leaves out time and date when the layout already has `omarchy.clock`. |
 | `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
-| `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu (needs the one-time Set up in Settings → Behaviour). |
+| `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. Turning it on installs the notch's menu companion plugin (one confirmation; plugins reload). |
 | `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |
 | `openKey`, `settingsKey`, `menuKey`, `autoHideKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. |
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |

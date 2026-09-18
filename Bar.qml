@@ -1739,21 +1739,6 @@ Item {
     return out
   }
 
-  // Say yes to all of them at once, which is what Setup offers. One setting,
-  // nothing copied and nothing patched -- and each one can still be switched
-  // off on its own afterwards.
-  function integrateHostablePanels() {
-    var wanted = (notchHostedPanels || []).slice()
-    var offered = hostableWidgets()
-    var added = 0
-    for (var i = 0; i < offered.length; i++) {
-      if (wanted.indexOf(offered[i].id) !== -1) continue
-      wanted.push(offered[i].id)
-      added++
-    }
-    if (added === 0) return 0
-    return setNotchSetting("hostedPanels", wanted) ? added : 0
-  }
 
   // The live item of a widget the notch is drawing, by the name the layout
   // knows it as. Used to host that widget's own panel inside the notch.
@@ -2291,13 +2276,6 @@ Item {
   }
 
   function clearPluginHandoff() { pluginsHandoff = ({}) }
-
-  function openPluginsFromSettings() {
-    var w = null
-    for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].settingsOpen) w = notchWindows[i]
-    w = w || focusedNotchWindow()
-    if (w) w.openPlugins("")
-  }
 
   function closePluginsPages() {
     for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].pluginsOpen) notchWindows[i].pluginsOpen = false
@@ -3142,6 +3120,7 @@ Item {
       if (requested === "settings") { openSettings(); return }
       if (requested === "menu") { openMenu("root"); return }
       if (requested === "setup") { openSetup(); return }
+      if (requested === "plugins") { openPlugins(""); return }
       // A panel stays put for hovers; a click or a keybind leaves it for this view.
       if (panelOpen) {
         if (how !== "click" && how !== "key") return
@@ -4363,6 +4342,7 @@ Item {
         maxHeight: barWindow.panelMaxHeight
         focusId: barWindow.pluginsFocusId
         onCloseRequested: barWindow.pluginsOpen = false
+        onBackRequested: barWindow.openSetup()
       }
     }
     Component {
@@ -4373,6 +4353,7 @@ Item {
         maxHeight: barWindow.panelMaxHeight
         onCloseRequested: barWindow.setupOpen = false
         onBackRequested: barWindow.openSettings()
+        onPluginsRequested: barWindow.openPlugins("")
       }
     }
     Component {

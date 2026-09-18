@@ -299,18 +299,12 @@ check "46. releasing it gives the panel back" "false 0" \
 # Setup has to ask, or nobody finds the switch.
 harness setNotch '{"batteryPeek":false,"bottomRadius":10}' >/dev/null; sleep 0.8
 notch setup check "" >/dev/null 2>&1; sleep 2.5
-point=$(notch setup status "" 2>/dev/null | jq -c '.points[] | select(.id == "hostable-panels")')
-echo "  ${DIM}$(jq -c '{severity, title, handoff}' <<<"$point" 2>/dev/null)${RESET}"
-check "47. Setup asks about a panel the notch could draw, and offers to do it" "action Integrate them integrate-panels" \
-  "$(jq -r '.severity' <<<"$point") $(jq -r '.handoff.label' <<<"$point") $(jq -r '.handoff.action' <<<"$point")"
-check "48. …naming the plugin rather than its id" "Audio" "$(jq -r '.items[0].summary' <<<"$point")"
+# Whether a panel opens in the notch is a preference, set in Settings ->
+# Integrations. Setup reports what is wrong, and an unticked preference isn't.
+check "47. Setup says nothing about a panel nobody asked to host" "0" \
+  "$(notch setup status "" 2>/dev/null | jq -r '[.points[] | select(.id == "hostable-panels")] | length')"
 
-harness setNotch '{"batteryPeek":false,"bottomRadius":10,"hostedPanels":["audio"]}' >/dev/null; sleep 0.8
-notch setup check "" >/dev/null 2>&1; sleep 2.5
-point=$(notch setup status "" 2>/dev/null | jq -c '.points[] | select(.id == "hostable-panels")')
-check "49. …and stops asking once it is on" "ok" "$(jq -r '.severity' <<<"$point")"
-
-check "50. no QML errors in the notch either" "none" \
+check "48. no QML errors in the notch either" "none" \
   "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" || echo none)"
 
 echo

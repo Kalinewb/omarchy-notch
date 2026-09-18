@@ -21,6 +21,7 @@ Item {
   property real headerHeight: 32
   signal closeRequested()
   signal backRequested()
+  signal pluginsRequested()
 
   readonly property real padding: Style.space(16)
   implicitWidth: Style.space(400)
@@ -79,12 +80,6 @@ Item {
   }
 
   function act(point) {
-    // Something only the notch itself can do, rather than a job for the script.
-    if (point.handoff && point.handoff.action === "integrate-panels") {
-      root.bar.integrateHostablePanels()
-      root.setup.check(true)
-      return
-    }
     if (point.handoff && point.handoff.view) {
       root.bar.focusedNotchWindow().openView(point.handoff.view, "setup")
       return
@@ -135,6 +130,17 @@ Item {
         fontFamily: root.fontFamily
         horizontalPadding: Style.space(10)
         onClicked: root.backRequested()
+      }
+
+      // Installing a plugin is setup, so the Plugins page lives here.
+      Button {
+        foreground: root.foreground
+        accent: root.accent
+        radius: root.radiusFor(Math.min(width, height))
+        text: "Plugins"
+        fontFamily: root.fontFamily
+        horizontalPadding: Style.space(10)
+        onClicked: root.pluginsRequested()
       }
 
       Button {

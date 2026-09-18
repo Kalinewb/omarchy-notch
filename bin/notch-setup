@@ -314,9 +314,14 @@ detect_menu_replace_companion() {
         "$(strings "Fix runs \`omarchy plugin enable $COMPANION\`." "Undo runs \`omarchy plugin disable $COMPANION\`, which puts omarchy.menu back exactly.")" \
         '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
     inactive)
-      point menu-replace-companion warn "The menu companion didn't load" \
-        "It is installed and enabled, but the shell couldn't load it." \
-        "$(strings "Run \`omarchy plugin validate $PLUGINS/$COMPANION\`, then restart the shell.")" ;;
+      # Omarchy instantiates a menu plugin's entry point when the menu opens and
+      # drops it afterwards, so from out here "not active" and "the menu is
+      # currently shut" look identical. The notch overrides this with what its
+      # own bridge knows (SetupService.menuCompanionPoint); this is what is left
+      # when there is no notch to ask.
+      point menu-replace-companion unknown "Couldn't tell whether the menu companion loaded" \
+        "It is installed and enabled. Omarchy only builds a menu plugin's entry point while the menu is open, so from a terminal this looks the same whether it works or not." \
+        "$(strings "Open the notch's menu: if it opens in the notch, it works." "If it does not, run \`omarchy plugin validate $PLUGINS/$COMPANION\` and restart the shell.")" ;;
     *)
       local job="${XDG_RUNTIME_DIR:-/tmp}/$ID/companion.json" why=""
       [[ -f $job ]] && why=$(jq -r 'select(.phase == "failed") | .message // ""' "$job" 2>/dev/null)

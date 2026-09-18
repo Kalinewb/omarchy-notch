@@ -80,7 +80,25 @@ Item {
   function inProcessPoints() {
     var points = emptyWidgetPoint()
     points.push(themeTokensPoint())
+    var companion = menuCompanionPoint()
+    if (companion) points.push(companion)
     return points
+  }
+
+  // Omarchy creates a menu plugin's entry point when the menu is opened and
+  // drops it again afterwards, so `active: false` in the plugin list means
+  // "the menu is shut" far more often than "it failed to load".
+  // bin/notch-setup runs outside the shell and has nothing better to go on, so
+  // it reported a perfectly good companion as broken. The notch does know: its
+  // bridge either has the companion's facade or it does not. This corrects the
+  // script's verdict, and only ever downwards -- when the notch is not happy
+  // either, the script's point stands as it is.
+  function menuCompanionPoint() {
+    if (!bar || !bar.menuCompanion || !bar.notchReplaceMenu) return null
+    if (bar.menuCompanion.companionState !== "active") return null
+    return { id: "menu-replace-companion", severity: "ok", title: "The menu opens in the notch",
+             summary: "The companion is installed, enabled and talking to this notch.",
+             detail: [], items: [], fix: null, handoff: null }
   }
 
   // A theme can pin selection, hover and focus fills to a colour of its own

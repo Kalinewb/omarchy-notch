@@ -3469,6 +3469,41 @@ Item {
     readonly property real requestedBottomRadius: root.notchBottomRadius
     readonly property real requestedFilletRadius: root.notchFilletRadius
 
+    // The width the notch is DRAWN at. It is `shownWidth` for all but the last
+    // stretch of a hide, and the difference is why a tuck used to end looking
+    // sharp.
+    //
+    // The Island already gives every height the roundest bottom corners that
+    // height can hold: `bottomR` is capped to half the height, so a 2 px sliver
+    // gets a 1 px radius. Measured against an ideal circle it is exactly right
+    // at every height (dev/motion.sh checks the numbers, dev/geometry.sh the
+    // pixels). It still reads as a sharp-cornered rule, because the height
+    // falls to zero while the width stays at `compactWidth`: the last frames
+    // are a 300 px line whose 1 px of curvature is invisible beside it. No
+    // radius setting can fix that -- there is no radius left to give.
+    //
+    // So the width converges too, and by exactly the amount that holds the
+    // corner's share of the silhouette constant. Down to `tuckThreshold` --
+    // two bottom radii, the height below which the corners stop being a full
+    // quarter-circle -- the notch draws at its full width and nothing changes.
+    // Below it the Island's cap makes the radius h/2, so scaling the width by
+    // the same h/(2R) keeps `bottomR / drawnWidth` at the value it has at
+    // rest, at every height. The ends of the tuck are the resting silhouette's
+    // ends, scaled: a lozenge withdrawing into the edge rather than a bar
+    // flattened against it. At the default size the corner's share stays 6.7%
+    // all the way in; before this it fell to 0.7%.
+    //
+    // Keyed on the height alone, not on the state, so a reveal is the same
+    // curve run backwards -- the island grows out of the edge as a lozenge too
+    // -- with no width pop at the moment the state flips.
+    //
+    // Only the drawn shape is tapered. `shownWidth` is untouched, so the
+    // animations, the target widths and anything that reads them are as they
+    // were; and the widget row is sized from `rowWidth` rather than from the
+    // Island, so a narrowed notch clips its content without ever re-measuring
+    // it at the tapered width.
+    readonly property real tuckThreshold: Math.max(1, 2 * requestedBottomRadius)
+    readonly property real tuckWidth: shownWidth * Math.max(0, Math.min(1, shownHeight / tuckThreshold))
 
     function point(p) { return { x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)) } }
 
@@ -3827,7 +3862,7 @@ Item {
       // created inside a hidden item -- as they are when the bar is reloaded
       // with the widget registry already filled -- measure zero wide and stay
       // that way, which leaves the open notch with an empty row.
-      barWidth: Math.max(0, barWindow.shownWidth)
+      barWidth: Math.max(0, barWindow.tuckWidth)
       barHeight: Math.max(0, barWindow.shownHeight)
       bottomRadius: barWindow.requestedBottomRadius
       filletRadius: barWindow.requestedFilletRadius

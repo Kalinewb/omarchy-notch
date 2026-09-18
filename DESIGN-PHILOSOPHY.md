@@ -37,9 +37,18 @@ menu's background is the notch colour), `dev/colours.sh` (widgets' background is
   4.5:1, and a selection fill must actually show.
 - Secondary text is always the secondary label, never an arbitrary dimmer hue.
 - Omarchy's own controls default to theme colours. Everything drawn in the notch is handed the
-  notch's colours explicitly: `notchForeground`, `notchAccent`, `notchColor`. That stops at the
-  notch's edge: a widget's pop-out panel sits on the theme's background and keeps the theme's
-  colours, so the notch never makes something else unreadable.
+  notch's colours explicitly: `notchForeground`, `notchAccent`, `notchColor`. That includes
+  another plugin's panel while the notch is drawing it (`bar.foreground`, `background` and
+  `urgent` are the notch's for as long as it is hosted), the menu's cursor row, tooltips, the
+  panel-open mark and the confirm dialog — a destructive choice is marked by weight and wording,
+  not by the theme's red. It stops at the notch's edge: the same panel in its own window sits on
+  the theme's background and keeps the theme's colours, so the notch never makes something else
+  unreadable.
+- The one theme colour the notch cannot keep out: a theme whose style tokens route fills through
+  its accent (`selected-color = "accent"`). A hosted panel hands Omarchy's Style helpers the
+  notch's white, and that token makes the helper ignore it. Setup reports it (`theme-tokens`).
+- Not on the notch, so not the notch's: the battery glow's three colours are yours, in the
+  settings, and are light around the notch rather than anything on it.
 - A `foreground` setting always wins.
 
 Checked by: `dev/colours.sh` (the contrast function against WCAG values, the white/black

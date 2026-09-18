@@ -143,7 +143,10 @@ Item {
   // widget's creation (a warning per run, 18 MB of log in one startup).
   property var hostable: []
   function refreshHostable() { hostable = bar ? bar.hostableWidgets() : [] }
-  onVisibleChanged: if (visible) refreshHostable()
+  // `enabled` follows the host's `shown` exactly, so this is "the panel is
+  // being opened" with no dependence on the fade. Component.onCompleted alone
+  // caught only what had loaded by the notch's first second.
+  onEnabledChanged: if (enabled) refreshHostable()
   Component.onCompleted: refreshHostable()
 
   // Show this plugin inside the notch, or give it its own UI back. The list of
@@ -545,6 +548,7 @@ Item {
         id: integrationsSection
         title: "Integrations"
         visible: root.integrations.length > 0 || root.hostable.length > 0
+        onOpenChanged: if (open) root.refreshHostable()
 
         Repeater {
           model: root.integrations

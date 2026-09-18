@@ -109,18 +109,29 @@ Item {
   // does by itself, once per state it finds: a job that failed is not retried
   // until the switch changes or the notch restarts, and Setup reports it.
   property string keptInStep: ""
+  property real keptInStepAt: 0
   function keepInStep() {
-    if (!actionsEnabled || !bar || !bar.notchReplaceMenu) { keptInStep = ""; return }
+    if (!actionsEnabled || !bar || !bar.notchReplaceMenu) { keptInStep = ""; keptInStepAt = 0; return }
     var state = companionState
     if (state !== "absent" && state !== "disabled" && state !== "outdated") return
     if (statusKey === "working" || keptInStep === state) return
+    // An install copies the folder and then enables it, so the state moves
+    // absent -> disabled while the job is still running: without this, that
+    // second state launched a second job to find there was nothing to do.
+    if (keptInStepAt > 0 && Date.now() - keptInStepAt < 30000) return
     keptInStep = state
+    keptInStepAt = Date.now()
     startJob(state === "outdated" ? "sync" : "install")
   }
   onInstalledChanged: keepInStep()
   Connections {
     target: companion.bar
-    function onNotchReplaceMenuChanged() { companion.keptInStep = ""; companion.keepInStep() }
+    // Switching it off and on again is how you ask for another try.
+    function onNotchReplaceMenuChanged() {
+      companion.keptInStep = ""
+      companion.keptInStepAt = 0
+      companion.keepInStep()
+    }
   }
 
   function setUp() { return startJob("install") }

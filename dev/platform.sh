@@ -384,7 +384,12 @@ check "46. the beat is fresh" "true" "$(jq -r '(now * 1000) - .beatAt < 8000' "$
 
 # Switching an integration off gives the plugin its own UI back.
 harness setNotch '{"batteryPeek":false,"bottomRadius":8,"disabledIntegrations":["acme.demo"]}' >/dev/null
-for _ in $(seq 1 40); do sleep 0.1; [[ $(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | .accepted') == false ]] && break; done
+# Wait for the eviction to finish, not just for the verdict: the file is kept
+# for 300 ms so its panel can fade, and switching it back on before that is a
+# different case (checked below) from switching it on after.
+for _ in $(seq 1 40); do sleep 0.1
+  [[ $(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | "\(.accepted) \(.pendingUnload)"') == "false false" ]] && break
+done
 check "47. switching it off stops the notch accepting it, at once and with the reason" "false user-off false" \
   "$(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | "\(.accepted) \(.reason)"') $(widget state | jq -r .accepted)"
 check "48. …its panel is declined, so the plugin opens its own" "declined:not-accepted true" \
@@ -400,6 +405,14 @@ for _ in $(seq 1 40); do sleep 0.1; [[ $(ipc integrations | jq -r '.list[] | sel
 # that it never happens.
 check "49. switching it back on loads it again, cleanly, and accepts it" "true 2 ready  false" \
   "$(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | "\(.accepted) \(.loads) \(.loadStatus) \(.reason) \(.pendingUnload)"')"
+
+# Off and on again inside the fade: the file never left, so there is nothing to
+# reload -- and nothing may stay marked for an unload that will never come.
+harness setNotch '{"batteryPeek":false,"bottomRadius":8,"disabledIntegrations":["acme.demo"]}' >/dev/null
+harness setNotch '{"batteryPeek":false,"bottomRadius":8}' >/dev/null
+sleep 1.2
+check "49a. switched off and straight back on: still loaded once, accepted, nothing left pending" "true 2 false" \
+  "$(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | "\(.accepted) \(.loads) \(.pendingUnload)"')"
 
 check "50. no omarchy-shell was ever run from the harness" "0" "$(grep -c . "$sb/omarchy-shell.log" 2>/dev/null || echo 0)"
 stop

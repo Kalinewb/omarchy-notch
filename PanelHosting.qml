@@ -35,30 +35,42 @@ QtObject {
 
   // A widget's panel is not a visual child -- it is a window -- but everything
   // declared inside the widget's root lands in its `data`.
-  function panelOf(item) {
+  //
+  // Two shapes are in the wild. Omarchy's audio widget *is* its Panel
+  // (`entryPoints.barWidget: Panel.qml`), so the KeyboardPanel and the
+  // controller are its own children. Clock, weather and camera-test have a
+  // BarWidget that loads Panel.qml through a Loader, so the same parts sit one
+  // level further down -- and looking only at the direct children answered
+  // "no panel" for every widget built that way.
+  //
+  // One level of Loader, and no further: a panel behind two of them is as
+  // likely to belong to something else as to this widget.
+  function partOf(item, kind, depth) {
     if (!item) return null
+    if (String(item).indexOf(kind) === 0) return item
     var bag = item.data
     if (!bag) return null
+    var nested = []
     for (var i = 0; i < bag.length; i++) {
       var entry = bag[i]
       if (!entry) continue
-      if (String(entry).indexOf("KeyboardPanel") === 0) return entry
+      if (String(entry).indexOf(kind) === 0) return entry
+      // A Loader, duck-typed: `item` is the thing it loaded. Anything else
+      // with an `item` property is harmless to look inside.
+      if (depth > 0 && entry.item !== undefined && entry.item !== null) nested.push(entry.item)
+    }
+    for (var j = 0; j < nested.length; j++) {
+      var found = partOf(nested[j], kind, depth - 1)
+      if (found) return found
     }
     return null
   }
 
+  function panelOf(item) { return partOf(item, "KeyboardPanel", 1) }
+
   // The object holding the widget's open/closed state, so the notch can keep
   // the plugin's own window shut while it draws the panel itself.
-  function controllerOf(item) {
-    if (!item) return null
-    var bag = item.data
-    if (!bag) return null
-    for (var i = 0; i < bag.length; i++) {
-      var entry = bag[i]
-      if (entry && String(entry).indexOf("PanelController") === 0) return entry
-    }
-    return null
-  }
+  function controllerOf(item) { return partOf(item, "PanelController", 1) }
 
   // Can this widget's panel be drawn inside the notch? Every answer is "no"
   // unless every part is there: a panel with something in it, and a controller

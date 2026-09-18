@@ -1,0 +1,3 @@
+{ "schemaVersion": 1, "id": "acme.pulse", "name": "Acme Pulse", "version": "0.2.0",
+  "description": "Claims activities only; no panel.", "kinds": ["service"],
+  "entryPoints": { "service": "Service.qml" }, "notch": { "contract": 1 } }

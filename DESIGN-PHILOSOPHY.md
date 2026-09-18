@@ -115,10 +115,14 @@ rounded item's radius.
 - **Nothing is dead.** A control that has nothing to show says why, as the battery preview does
   at a glow size too small to see. A setting that can't apply doesn't pretend.
 - **Everything is reversible.** Settings save the moment they change, without a reload. A
-  setup fix that edits a file snapshots it first, and Restore puts it back.
+  setup fix that edits a file snapshots it first, and Restore puts it back byte for byte; a
+  fix that doesn't verify rolls itself back.
 - **The keyboard works everywhere.** Escape closes, typing searches, and a picked row runs.
 - **Verified by numbers, not by eye.** Radii, centres, timings, contrast and sizes are printed
   and checked. A screenshot is not proof.
+
+Checked by: `dev/setup.sh` (a fix snapshots the files it changes, verifies by re-running
+the check, rolls itself back when it doesn't take, and Restore puts the bytes back).
 
 ## Before a change lands
 

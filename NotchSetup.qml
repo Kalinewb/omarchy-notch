@@ -122,7 +122,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(6)
 
-      Button {
+      NotchButton {
         foreground: root.foreground
         accent: root.accent
         radius: root.radiusFor(Math.min(width, height))
@@ -133,7 +133,7 @@ Item {
       }
 
       // Installing a plugin is setup, so the Plugins page lives here.
-      Button {
+      NotchButton {
         foreground: root.foreground
         accent: root.accent
         radius: root.radiusFor(Math.min(width, height))
@@ -143,7 +143,7 @@ Item {
         onClicked: root.pluginsRequested()
       }
 
-      Button {
+      NotchButton {
         foreground: root.foreground
         accent: root.accent
         radius: root.radiusFor(Math.min(width, height))
@@ -333,7 +333,7 @@ Item {
         font.pixelSize: Style.font.caption
       }
 
-      Button {
+      NotchButton {
         id: action
         anchors.right: parent.right
         anchors.top: parent.top
@@ -443,7 +443,7 @@ Item {
           Row {
             spacing: Style.space(6)
 
-            Button {
+            NotchButton {
               foreground: root.foreground
               accent: root.accent
               radius: root.radiusFor(Math.min(width, height))
@@ -453,7 +453,7 @@ Item {
               onClicked: root.confirmRow = ""
             }
 
-            Button {
+            NotchButton {
               foreground: root.foreground
               accent: root.accent
               radius: root.radiusFor(Math.min(width, height))
@@ -527,7 +527,7 @@ Item {
         anchors.top: parent.top
         spacing: Style.space(6)
 
-        Button {
+        NotchButton {
           foreground: root.foreground
           accent: root.accent
           radius: root.radiusFor(Math.min(width, height))
@@ -538,7 +538,7 @@ Item {
           onClicked: { root.confirmRow = snapshotRow.snapshot.name; root.confirmKind = "restore" }
         }
 
-        Button {
+        NotchButton {
           foreground: root.foreground
           accent: root.accent
           radius: root.radiusFor(Math.min(width, height))
@@ -556,7 +556,7 @@ Item {
       spacing: Style.space(6)
       topPadding: Style.space(2)
 
-      Button {
+      NotchButton {
         foreground: root.foreground
         accent: root.accent
         radius: root.radiusFor(Math.min(width, height))
@@ -566,7 +566,7 @@ Item {
         onClicked: root.confirmRow = ""
       }
 
-      Button {
+      NotchButton {
         foreground: root.foreground
         accent: root.accent
         radius: root.radiusFor(Math.min(width, height))
@@ -581,7 +581,7 @@ Item {
       }
 
       // Offered after a restore was refused because the file moved on.
-      Button {
+      NotchButton {
         visible: root.confirmKind === "restore" && (root.job.phase === "conflict")
           && String(root.job.snapshot || "") === snapshotRow.snapshot.name
         foreground: root.foreground
@@ -632,7 +632,7 @@ Item {
       font.pixelSize: Style.font.caption
     }
 
-    Button {
+    NotchButton {
       id: jobDismiss
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter

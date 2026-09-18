@@ -103,9 +103,9 @@ Item {
                summary: "Its style tokens resolve to the text colour, so a panel the notch draws paints white.", detail: [], items: [], fix: null, handoff: null }
     }
     return {
-      id: "theme-tokens", severity: "warn",
+      id: "theme-tokens", severity: "info",
       title: "Your theme puts its own colour inside the notch",
-      summary: off.length + " style token(s) pin a fill or border to a theme colour, so a panel the notch draws shows that colour on its hover, selection and outlines.",
+      summary: off.length + " style token(s) pin a fill or border to a theme colour, so a plugin's panel drawn in the notch shows that colour on its hover, selection and outlines. The notch's own controls don't.",
       detail: ["The notch paints in white only, but a plugin's own panel asks Omarchy's Style helpers for its fills, and these tokens tell the helper to use the theme's colour instead of the white it was handed.",
                "Set them to \"foreground\" in the theme's shell.toml [style] section, or pick a theme that leaves them at the default. Text is unaffected either way."],
       items: off, fix: null, handoff: null

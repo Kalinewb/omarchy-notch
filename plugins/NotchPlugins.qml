@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../"
 import "PluginsModel.js" as PluginsModel
 
 // The Plugins page, drawn inside the notch: opening it grows the notch -- the
@@ -279,7 +280,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(4)
 
-      Button {
+      NotchButton {
         id: refreshButton
         text: root.bar && root.bar.pluginsStateProcessRunning ? "Checking…" : "Refresh"
         // Not while a job runs: a fetch would race the checkout it changes.
@@ -294,7 +295,7 @@ Item {
         onClicked: root.bar.refreshPlugins()
       }
 
-      Button {
+      NotchButton {
         text: "‹ Setup"
         foreground: root.foreground
         accent: root.accent
@@ -305,7 +306,7 @@ Item {
         onClicked: root.backRequested()
       }
 
-      Button {
+      NotchButton {
         text: "✕"
         foreground: root.foreground
         accent: root.accent
@@ -479,7 +480,7 @@ Item {
         width: parent.width
         height: cardButtons.height + Style.space(4)
 
-        Button {
+        NotchButton {
           id: reviewButton
           anchors.left: parent.left
           anchors.verticalCenter: cardButtons.verticalCenter
@@ -502,7 +503,7 @@ Item {
           y: Style.space(4)
           spacing: Style.space(6)
 
-          Button {
+          NotchButton {
             id: cancelButton
             // Refused: nothing to cancel, only to close.
             text: card.refused !== "" ? "Close" : "Cancel"
@@ -519,7 +520,7 @@ Item {
             onClicked: root.bar.cancelPluginAction()
           }
 
-          Button {
+          NotchButton {
             id: confirmButton
             text: card.ready ? (card.install ? "Install" : "Update") : card.p.id ? (card.install ? "Install" : "Update") : "Checking…"
             visible: card.refused === ""
@@ -622,7 +623,7 @@ Item {
 
       Repeater {
         model: row.view.actions || []
-        Button {
+        NotchButton {
           required property var modelData
           text: modelData.label
           enabled: modelData.enabled

@@ -127,7 +127,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(6)
 
-      Button {
+      NotchButton {
         id: laterButton
         visible: root.notice === "available"
         text: "Later"
@@ -142,7 +142,7 @@ Item {
         onClicked: if (root.bar) root.bar.snoozeUpdate()
       }
 
-      Button {
+      NotchButton {
         id: updateButton
         visible: root.notice === "available"
         // Not while a plugin job runs: both reload every plugin.
@@ -161,7 +161,7 @@ Item {
         onClicked: if (root.bar) root.bar.startUpdate()
       }
 
-      Button {
+      NotchButton {
         visible: root.notice === "failed"
         text: "Dismiss"
         bordered: true

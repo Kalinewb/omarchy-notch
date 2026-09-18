@@ -392,8 +392,14 @@ check "48. …its panel is declined, so the plugin opens its own" "declined:not-
 
 harness setNotch '{"batteryPeek":false,"bottomRadius":8}' >/dev/null
 for _ in $(seq 1 40); do sleep 0.1; [[ $(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | .accepted') == true ]] && break; done
-check "49. switching it back on accepts it again without reloading it" "true 1" \
-  "$(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | .accepted') $(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | .loads')"
+# Switching an integration off evicts the plugin's file: `pendingUnload` holds
+# the Loader open for 300 ms so the panel can fade out, and then it goes. That
+# is deliberate -- once the user has switched a third-party integration off,
+# leaving its QML loaded and running would be wrong -- so switching it back on
+# is a fresh load, and the contract is that the fresh load is clean rather than
+# that it never happens.
+check "49. switching it back on loads it again, cleanly, and accepts it" "true 2 ready  false" \
+  "$(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | "\(.accepted) \(.loads) \(.loadStatus) \(.reason) \(.pendingUnload)"')"
 
 check "50. no omarchy-shell was ever run from the harness" "0" "$(grep -c . "$sb/omarchy-shell.log" 2>/dev/null || echo 0)"
 stop

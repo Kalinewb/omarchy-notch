@@ -1,3 +1,17 @@
-{ "schemaVersion": 1, "id": "acme.off", "name": "Acme Off", "version": "1.0.0",
-  "description": "Valid, but switched off by the user.", "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "Widget.qml", "notch": "NotchIntegration.qml" }, "notch": { "contract": 1 } }
+{
+  "schemaVersion": 1,
+  "id": "acme.off",
+  "name": "Acme Off",
+  "version": "1.0.0",
+  "description": "Valid, but switched off by the user.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml",
+    "surface": "SurfaceIntegration.qml"
+  },
+  "surface": {
+    "contract": 1
+  }
+}

@@ -1,3 +1,17 @@
-{ "schemaVersion": 1, "id": "acme.window", "name": "Acme Window", "version": "1.0.0",
-  "description": "Its integration opens a window of its own.", "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "Widget.qml", "notch": "NotchIntegration.qml" }, "notch": { "contract": 1 } }
+{
+  "schemaVersion": 1,
+  "id": "acme.window",
+  "name": "Acme Window",
+  "version": "1.0.0",
+  "description": "Its integration opens a window of its own.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml",
+    "surface": "SurfaceIntegration.qml"
+  },
+  "surface": {
+    "contract": 1
+  }
+}

@@ -548,7 +548,7 @@ detect_plugin() { # detect_plugin <point id> <plugin id> <name> <setup argv>
   elif [[ $update == available ]]; then
     point "$pid" action "$name has an update" "A newer version is on its origin." '[]' '[]' null \
       '{"label": "Open Plugins", "view": "plugins"}'
-  elif [[ -d $PLUGINS/$plugin ]] && ! jq -e '.entryPoints.notch // .notch // empty' "$PLUGINS/$plugin/manifest.json" >/dev/null 2>&1; then
+  elif [[ -d $PLUGINS/$plugin ]] && ! jq -e '.entryPoints.surface // .notch // empty' "$PLUGINS/$plugin/manifest.json" >/dev/null 2>&1; then
     point "$pid" info "$name isn't integrated with the notch" \
       "It works on its own. A version that declares the notch entry point opens its panel inside the notch instead." '[]' '[]' null \
       "$(jq -nc --arg label "Open setup" --argjson argv "$setup_argv" '{label: $label, argv: $argv}')"

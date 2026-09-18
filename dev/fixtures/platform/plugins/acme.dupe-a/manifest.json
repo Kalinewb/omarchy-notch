@@ -1,3 +1,17 @@
-{ "schemaVersion": 1, "id": "acme.dupe", "name": "Acme Dupe", "version": "1.0.0",
-  "description": "Two folders claiming one id.", "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "Widget.qml", "notch": "NotchIntegration.qml" }, "notch": { "contract": 1 } }
+{
+  "schemaVersion": 1,
+  "id": "acme.dupe",
+  "name": "Acme Dupe",
+  "version": "1.0.0",
+  "description": "Two folders claiming one id.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml",
+    "surface": "SurfaceIntegration.qml"
+  },
+  "surface": {
+    "contract": 1
+  }
+}

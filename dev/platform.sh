@@ -47,12 +47,12 @@ SCAN="$REPO/bin/notch-integrations"
 echo "${BOLD}bin/notch-integrations${RESET}  ${DIM}sandbox $sb${RESET}"
 
 scan=$("$SCAN" scan "$PLUGINS")
-check "1. every manifest with a notch key is a candidate, sorted, dot folders skipped" \
+check "1. every manifest with a surface key is a candidate, sorted, dot folders skipped" \
   "acme.broken acme.demo acme.dupe acme.dupe acme.future acme.off acme.pulse acme.window" \
   "$(jq -r '[.[].id] | join(" ")' <<<"$scan")"
 check "2. a plugin that says nothing about the notch isn't listed" "0" \
   "$(jq '[.[] | select(.id == "acme.plain")] | length' <<<"$scan")"
-check "3. the entry file and contract are read from the manifest" "NotchIntegration.qml 1" \
+check "3. the entry file and contract are read from the manifest" "SurfaceIntegration.qml 1" \
   "$(jq -r '.[] | select(.id == "acme.demo") | "\(.entry) \(.contract)"' <<<"$scan")"
 check "4. a service with no entry file is still a candidate" "acme.pulse  1" \
   "$(jq -r '.[] | select(.id == "acme.pulse") | "\(.id) \(.entry) \(.contract)"' <<<"$scan")"
@@ -71,25 +71,25 @@ variant() { # variant <name> ; echoes the scan of a folder holding just it
 }
 
 dir=$(variant escape)
-jq '.entryPoints.notch = "sub/../../outside.qml"' "$dir/acme.demo/manifest.json" >"$dir/t" && mv "$dir/t" "$dir/acme.demo/manifest.json"
+jq '.entryPoints.surface = "sub/../../outside.qml"' "$dir/acme.demo/manifest.json" >"$dir/t" && mv "$dir/t" "$dir/acme.demo/manifest.json"
 check "7. an entry path that climbs out of the plugin folder is refused" "entry-unsafe" \
   "$("$SCAN" scan "$dir" | jq -r '.[0].problems[0]')"
 
 dir=$(variant symlink)
 echo 'import QtQuick' >"$sb/outside.qml"
-rm "$dir/acme.demo/NotchIntegration.qml"
-ln -s "$sb/outside.qml" "$dir/acme.demo/NotchIntegration.qml"
+rm "$dir/acme.demo/SurfaceIntegration.qml"
+ln -s "$sb/outside.qml" "$dir/acme.demo/SurfaceIntegration.qml"
 check "8. an entry that is a symlink out of the folder is refused" "entry-unsafe" \
   "$("$SCAN" scan "$dir" | jq -r '.[0].problems[0]')"
 
 dir=$(variant missing)
-rm "$dir/acme.demo/NotchIntegration.qml"
+rm "$dir/acme.demo/SurfaceIntegration.qml"
 check "9. a missing entry file is refused" "entry-missing" \
   "$("$SCAN" scan "$dir" | jq -r '.[0].problems[0]')"
 
 dir=$(variant comments)
-printf 'import QtQuick\n// PanelWindow in a comment\n/* PopupWindow too */\nItem { property var notchHost: null }\n' \
-  >"$dir/acme.demo/NotchIntegration.qml"
+printf 'import QtQuick\n// PanelWindow in a comment\n/* PopupWindow too */\nItem { property var surfaceHost: null }\n' \
+  >"$dir/acme.demo/SurfaceIntegration.qml"
 check "10. a window type named in a comment is not a problem" "0" \
   "$("$SCAN" scan "$dir" | jq '.[0].problems | length')"
 
@@ -99,7 +99,7 @@ check "11. a manifest that isn't schema 1 is refused" "schema" \
   "$("$SCAN" scan "$dir" | jq -r '.[0].problems[0]')"
 
 dir=$(variant contract-zero)
-jq '.notch.contract = 0' "$dir/acme.demo/manifest.json" >"$dir/t" && mv "$dir/t" "$dir/acme.demo/manifest.json"
+jq '.surface.contract = 0' "$dir/acme.demo/manifest.json" >"$dir/t" && mv "$dir/t" "$dir/acme.demo/manifest.json"
 check "12. contract 0 is refused" "bad-contract" \
   "$("$SCAN" scan "$dir" | jq -r '.[0].problems[0]')"
 
@@ -142,7 +142,7 @@ EOF
 
 out=$(run_js '
     function scan(over) {
-      var base = { id: "acme.demo", contract: 1, entry: "NotchIntegration.qml", problems: [] }
+      var base = { id: "acme.demo", contract: 1, entry: "SurfaceIntegration.qml", problems: [] }
       for (var key in over) base[key] = over[key]
       return base
     }
@@ -310,7 +310,7 @@ check "26. a widget of an enabled plugin counts through the host's catalogue" "c
 # The widget's own view of the notch.
 state=$(widget state)
 check "27. the plugin's widget is handed a scoped host, the notch's radius and its own screen" "true true 8 true" \
-  "$(jq -r .accepted <<<"$state") $(jq -r .present <<<"$state") $(jq -r .radius <<<"$state") $(jq -r '.notchScreen != ""' <<<"$state")"
+  "$(jq -r .accepted <<<"$state") $(jq -r .present <<<"$state") $(jq -r .radius <<<"$state") $(jq -r '.surfaceScreen != ""' <<<"$state")"
 check "28. …and the contract version it may check against" "1" "$(jq -r .contract <<<"$state")"
 
 # Opening the panel from the widget, as a click does.

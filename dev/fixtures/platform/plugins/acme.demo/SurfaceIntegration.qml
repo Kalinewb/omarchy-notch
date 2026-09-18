@@ -7,7 +7,7 @@ Item {
   id: integration
 
   // The notch sets this. Until it does, there is no notch.
-  property var notchHost: null
+  property var surfaceHost: null
   // Say false to decline for now; the notch shows the reason and the plugin
   // keeps its own UI.
   property bool available: true

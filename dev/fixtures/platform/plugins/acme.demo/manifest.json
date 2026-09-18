@@ -4,7 +4,14 @@
   "name": "Acme Demo",
   "version": "1.0.0",
   "description": "A plugin that draws its panel inside the notch.",
-  "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "Widget.qml", "notch": "NotchIntegration.qml" },
-  "notch": { "contract": 1 }
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml",
+    "surface": "SurfaceIntegration.qml"
+  },
+  "surface": {
+    "contract": 1
+  }
 }

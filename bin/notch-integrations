@@ -5,7 +5,7 @@
 #
 # Read-only. Omarchy gives a plugin no way to list the others, so the notch
 # reads the plugins folder itself, the way the host scans it: every top-level
-# folder with a manifest.json, dot entries skipped. A manifest with a `notch`
+# folder with a manifest.json, dot entries skipped. A manifest with a `surface`
 # key is a candidate.
 #
 # Each entry is {id, name, version, dir, contract, entry, problems}. `problems`
@@ -45,7 +45,7 @@ scan() {
     [[ $name == .* ]] && continue
     local manifest="$sub/manifest.json"
     [[ -f $manifest ]] || continue
-    jq -e 'has("notch")' "$manifest" >/dev/null 2>&1 || {
+    jq -e 'has("surface")' "$manifest" >/dev/null 2>&1 || {
       # Unreadable JSON still counts as a candidate when the folder name looks
       # like one: a broken manifest is worth reporting, not hiding.
       jq -e . "$manifest" >/dev/null 2>&1 && continue
@@ -58,8 +58,8 @@ scan() {
     id=$(jq -r '.id // ""' "$manifest")
     version=$(jq -r '.version // ""' "$manifest")
     display=$(jq -r '.name // .id // ""' "$manifest")
-    contract=$(jq -r '.notch.contract // 0' "$manifest")
-    entry=$(jq -r '.entryPoints.notch // ""' "$manifest")
+    contract=$(jq -r '.surface.contract // 0' "$manifest")
+    entry=$(jq -r '.entryPoints.surface // ""' "$manifest")
 
     add() { problems=$(jq -c --arg p "$1" '. + [$p]' <<<"$problems"); }
 

@@ -8,7 +8,7 @@ import "activities.js" as Activities
 //
 // Omarchy gives a plugin no way to see the others, so this reads the plugins
 // folder itself (bin/notch-integrations, read-only), finds the ones whose
-// manifest declares `entryPoints.notch` and a `notch.contract`, decides which
+// manifest declares `entryPoints.surface` and a `surface.contract`, decides which
 // of them the notch accepts (platform.js), and loads each accepted
 // integration's QML **once** -- not once per monitor, so an integration never
 // duplicates its files, processes or IPC targets. Its panel Component is then
@@ -332,7 +332,7 @@ Item {
         }
 
         onLoaded: {
-          if (item && "notchHost" in item) item.notchHost = platform.hostFor(pluginId)
+          if (item && "surfaceHost" in item) item.surfaceHost = platform.hostFor(pluginId)
           var counted = JSON.parse(JSON.stringify(platform.loads))
           counted[pluginId] = Number(counted[pluginId] || 0) + 1
           platform.loads = counted

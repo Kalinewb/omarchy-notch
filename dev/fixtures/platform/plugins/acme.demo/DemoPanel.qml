@@ -1,13 +1,13 @@
 import QtQuick
 
 // The panel, drawn inside the notch. Everything it paints with comes from
-// `notchHost`: a panel never picks its own colours or radius.
+// `surfaceHost`: a panel never picks its own colours or radius.
 Item {
   id: panel
 
   // Set by the notch, once.
-  property var notchHost: null
-  property string notchScreen: ""
+  property var surfaceHost: null
+  property string surfaceScreen: ""
   // Bound by the notch: a later openPanel at another route changes this on the
   // same item.
   property string route: "main"
@@ -15,8 +15,8 @@ Item {
   property real maxHeight: 400
   signal closeRequested()
 
-  readonly property color background: notchHost ? notchHost.color : "#000000"
-  readonly property color foreground: notchHost ? notchHost.foreground : "#ffffff"
+  readonly property color background: surfaceHost ? surfaceHost.color : "#000000"
+  readonly property color foreground: surfaceHost ? surfaceHost.foreground : "#ffffff"
 
   property int opens: 0
   property int closes: 0
@@ -33,7 +33,7 @@ Item {
     anchors.centerIn: parent
     width: 120
     height: 28
-    radius: panel.notchHost ? panel.notchHost.radiusFor(Math.min(width, height)) : 8
+    radius: panel.surfaceHost ? panel.surfaceHost.radiusFor(Math.min(width, height)) : 8
     color: "transparent"
     border.width: 1
     border.color: panel.foreground
@@ -42,7 +42,7 @@ Item {
       anchors.centerIn: parent
       text: "Acme · " + panel.route
       color: panel.foreground
-      font.family: panel.notchHost ? panel.notchHost.fontFamily : ""
+      font.family: panel.surfaceHost ? panel.surfaceHost.fontFamily : ""
     }
   }
 }

@@ -5,13 +5,13 @@ import Quickshell
 //
 // This is the only notch object a plugin ever gets: its integration file, the
 // panels that integration draws, and its bar widget all receive the same
-// `notchHost`. It is scoped to that plugin -- every call is attributed to
+// `surfaceHost`. It is scoped to that plugin -- every call is attributed to
 // `pluginId`, and nothing here reaches the rest of the notch or another
 // plugin's state.
 //
 // Everything a panel needs to look like part of the notch is here (colours,
 // radius, font, motion), because a plugin may not pick its own
-// (DESIGN-PHILOSOPHY.md §1, §2, §5). PLUGINS.md documents every member.
+// (DESIGN-PHILOSOPHY.md §1, §2, §5). SURFACE-HOSTING.md documents every member.
 QtObject {
   id: host
 
@@ -64,7 +64,7 @@ QtObject {
   readonly property string panelScreen: platform ? platform.panelScreenFor(pluginId) : ""
 
   // Open this plugin's panel inside the notch. `screenName` is the screen the
-  // click came from -- a widget passes its injected `notchScreen`; "" means the
+  // click came from -- a widget passes its injected `surfaceScreen`; "" means the
   // focused screen. Answers "opened", "closed" or "declined:<reason>", and only
   // "opened" means the notch is showing it, so anything else is the plugin's
   // cue to open its own UI instead.

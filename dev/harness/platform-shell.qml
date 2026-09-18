@@ -9,7 +9,7 @@ import "notch" as Notch
 // The fixtures' bar widgets are registered from their real files, with the
 // registry metadata Omarchy gives a third-party widget (`firstParty: false`
 // plus `pluginId`), because that is what decides whether a widget is handed the
-// notch's API facade and a `notchHost` at all. A first-party stand-in would
+// notch's API facade and a `surfaceHost` at all. A first-party stand-in would
 // test the wrong path.
 ShellRoot {
   id: shellRoot

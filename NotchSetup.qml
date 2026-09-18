@@ -26,9 +26,9 @@ Item {
   implicitWidth: Style.space(400)
   implicitHeight: Math.min(maxHeight, headerHeight + column.implicitHeight + padding)
 
-  readonly property color foreground: bar ? bar.notchForeground : Color.foreground
-  readonly property color accent: bar ? bar.notchAccent : Color.accent
-  readonly property color surface: bar ? bar.notchColor : Color.background
+  readonly property color foreground: bar ? bar.notchForeground : "#ffffff"
+  readonly property color accent: bar ? bar.notchAccent : "#ffffff"
+  readonly property color surface: bar ? bar.notchColor : "#000000"
   readonly property color dim: bar ? bar.notchSecondaryText : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   function radiusFor(size) { return bar ? bar.radiusFor(size) : Math.min(8, size / 2) }

@@ -149,17 +149,20 @@ Item {
     rowsCeiling = -1
     root.closeRequested()
   }
-  // Bound to the central [menu] section in shell.toml via Color.qml.
-  // Each color already includes its alpha companion (composed in the
-  // singleton), so consumers can drop them straight into a Rectangle.
-  // The surface is the notch's own colour.
+  // Upstream binds these to the [menu] section of shell.toml. Here the surface
+  // is the notch's own colour and so is everything on it: the theme's menu
+  // colours never reach the notch, and the cursor row differs from the others
+  // by alpha, not hue (DESIGN-PHILOSOPHY.md, 2). The theme still decides how
+  // wide a selected row's border is; only the colour is the notch's.
   property color background: bar ? bar.notchColor : "#000000"
-  property color foreground: bar ? bar.notchForeground : Color.menu.text
-  property color scrim: bar ? Qt.rgba(background.r, background.g, background.b, 0.7) : Color.menu.scrim
-  property color selectedBackground: bar ? bar.visibleTint(Color.menu.selectedBackground, background, foreground) : Color.menu.selectedBackground
-  property color selectedText: bar ? bar.readableOn(background, [Color.menu.selectedText, foreground], 4.5) : Color.menu.selectedText
-  property color selectedBorder: Color.menu.selectedBorder
-  property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", selectedBorder, 0)
+  property color foreground: bar ? bar.notchForeground : "#ffffff"
+  property color scrim: Qt.rgba(background.r, background.g, background.b, 0.7)
+  property color selectedBackground: Util.alpha(foreground, Style.selectedFillAlpha)
+  property color selectedText: foreground
+  property color selectedBorder: Util.alpha(foreground, Style.selectedBorderAlpha)
+  property var selectedBorderSpec: ({ color: selectedBorder,
+                                      widths: Border.surfaceSpec("menu", "selected-border", "transparent", 0).widths,
+                                      gradient: { colors: [], angle: 0, enabled: false } })
   readonly property real rowReservedBorderLeft: Border.left(selectedBorderSpec)
   readonly property real rowReservedBorderRight: Border.right(selectedBorderSpec)
   readonly property real cornerRadius: bar ? bar.notchRadius : Style.cornerRadius

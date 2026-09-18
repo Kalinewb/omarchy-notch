@@ -6,7 +6,10 @@ import qs.Ui
 // changes: its Cancel/Confirm buttons and its scrim take the dialog's corner
 // radius (the notch's, capped at half their size) instead of square corners
 // (DESIGN-PHILOSOPHY.md, 5), so the scrim never shows square corners past the
-// notch's rounded ones. The verbatim upstream file is dev/upstream/ui/.
+// notch's rounded ones; and nothing in it is a theme colour -- the defaults
+// are the notch's palette, and a destructive choice is marked by weight and
+// wording, not by the theme's red (DESIGN-PHILOSOPHY.md, 2). The verbatim
+// upstream file is dev/upstream/ui/.
 Item {
   id: root
 
@@ -15,11 +18,12 @@ Item {
   property string cancelText: "Cancel"
   property string confirmText: "Confirm"
   property int selectedIndex: 1
-  property color background: Color.background
-  property color foreground: Color.foreground
-  property color scrim: Util.alpha(Color.background, 0.7)
-  property color selectedBackground: Util.alpha(Color.foreground, 0.08)
-  property color selectedText: Color.accent
+  property color background: "#000000"
+  property color foreground: "#ffffff"
+  property color scrim: Util.alpha(background, 0.7)
+  property color selectedBackground: Util.alpha(foreground, 0.08)
+  property color selectedText: foreground
+  property color urgent: foreground
   property string fontFamily: Style.font.family
   property real cornerRadius: Style.cornerRadius
 
@@ -105,10 +109,10 @@ Item {
               width: Style.space(88)
               height: Style.space(34)
               color: selected
-                ? (destructive ? Util.alpha(Color.urgent, 0.22) : root.selectedBackground)
+                ? (destructive ? Util.alpha(root.urgent, 0.22) : root.selectedBackground)
                 : "transparent"
               borderSpec: Border.flat(destructive
-                ? (selected ? Color.urgent : Util.alpha(Color.urgent, 0.56))
+                ? (selected ? root.urgent : Util.alpha(root.urgent, 0.56))
                 : (selected ? root.selectedText : Util.alpha(root.foreground, 0.38)), Style.normalBorderWidth)
               radius: Math.max(0, Math.min(root.cornerRadius, height / 2))
 
@@ -116,7 +120,7 @@ Item {
                 textFormat: Text.PlainText
                 anchors.centerIn: parent
                 text: modelData
-                color: destructive ? (selected ? Color.urgent : root.foreground) : (selected ? root.selectedText : root.foreground)
+                color: destructive ? (selected ? root.urgent : root.foreground) : (selected ? root.selectedText : root.foreground)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
               }

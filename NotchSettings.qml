@@ -32,9 +32,9 @@ Item {
 
   // Drawn on the notch, so colours come from the notch: text that reads on the
   // notch colour whatever the theme (see Bar.qml, "colours on the notch").
-  readonly property color foreground: bar ? bar.notchForeground : Color.foreground
-  readonly property color accent: bar ? bar.notchAccent : Color.accent
-  readonly property color surface: bar ? bar.notchColor : Color.background
+  readonly property color foreground: bar ? bar.notchForeground : "#ffffff"
+  readonly property color accent: bar ? bar.notchAccent : "#ffffff"
+  readonly property color surface: bar ? bar.notchColor : "#000000"
   readonly property color dim: bar ? bar.notchSecondaryText : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
   // How far the glow reaches now, in px (for the preview's hint).
   property real glowReach: 32

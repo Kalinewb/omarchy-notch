@@ -48,9 +48,9 @@ Item {
 
   readonly property color foreground: bar ? bar.notchForeground : "#ffffff"
   readonly property color secondary: bar ? bar.notchSecondaryText : Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6)
-  readonly property color accent: bar ? bar.notchAccent : Color.accent
+  readonly property color accent: bar ? bar.notchAccent : "#ffffff"
   readonly property color surface: bar ? bar.notchColor : "#000000"
-  readonly property color selectedFill: bar ? bar.visibleTint(Color.menu.selectedBackground, surface, foreground) : Qt.rgba(1, 1, 1, 0.12)
+  readonly property color selectedFill: Util.alpha(foreground, Style.selectedFillAlpha)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   function radiusFor(size) { return bar ? bar.radiusFor(size) : Math.max(0, Math.min(10, size / 2)) }

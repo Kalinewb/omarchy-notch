@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 
 // What Setup knows, and how it starts a job.
 //
@@ -80,7 +81,37 @@ Item {
     var points = emptyWidgetPoint()
     var panels = hostablePanelsPoint()
     if (panels) points.push(panels)
+    points.push(themeTokensPoint())
     return points
+  }
+
+  // A theme can pin selection, hover and focus fills to a colour of its own
+  // (`selected-color = "accent"`, or a hex, in its style section -- Catppuccin
+  // Latte pins all four to #4c4f69). A panel the notch hosts hands Style's
+  // helpers the notch's white, but such a token makes the helper ignore what
+  // it was handed -- the one way a theme colour still gets inside the notch.
+  // Only the notch can see the resolved tokens.
+  function themeTokensPoint() {
+    var tokens = { "normal-color": Style.normalColorToken, "hover-cursor-color": Style.hoverColorToken,
+                   "selected-color": Style.selectedColorToken, "pressed-color": Style.pressedColorToken,
+                   "focus-color": Style.focusColorToken, "selection-color": Style.selectionColorToken }
+    var off = []
+    for (var key in tokens) {
+      var role = String(tokens[key] || "").replace(/^\s+|\s+$/g, "").toLowerCase()
+      if (role !== "foreground" && role !== "text" && role !== "transparent" && role !== "") off.push({ arg: key, summary: key + " = \"" + tokens[key] + "\"" })
+    }
+    if (!off.length) {
+      return { id: "theme-tokens", severity: "ok", title: "Your theme keeps its colours out of the notch",
+               summary: "Its style tokens resolve to the text colour, so a panel the notch draws paints white.", detail: [], items: [], fix: null, handoff: null }
+    }
+    return {
+      id: "theme-tokens", severity: "warn",
+      title: "Your theme puts its own colour inside the notch",
+      summary: off.length + " style token(s) pin a fill or border to a theme colour, so a panel the notch draws shows that colour on its hover, selection and outlines.",
+      detail: ["The notch paints in white only, but a plugin's own panel asks Omarchy's Style helpers for its fills, and these tokens tell the helper to use the theme's colour instead of the white it was handed.",
+               "Set them to \"foreground\" in the theme's shell.toml [style] section, or pick a theme that leaves them at the default. Text is unaffected either way."],
+      items: off, fix: null, handoff: null
+    }
   }
 
   // Widgets already in the bar whose own panel the notch could draw, that the
@@ -349,10 +380,18 @@ Item {
 
   function report_() { return report }
 
+  // Tallied over the merged points, so the counts describe what the page
+  // shows -- the script's own tally does not know the in-process points.
+  function countsOf(list) {
+    var out = ({})
+    for (var i = 0; i < list.length; i++) { var s = list[i].severity || "unknown"; out[s] = (out[s] || 0) + 1 }
+    return out
+  }
+
   function status() {
     return {
       enabled: enabled, checking: checking, checkedAt: checkedAt, issueCount: issueCount,
-      counts: (report && report.counts) ? report.counts : {},
+      counts: countsOf(points),
       context: (report && report.context) ? report.context : {},
       points: points, job: job || {}, snapshots: snapshots,
       statusPath: statusPath, waiting: waitingForJob, pendingReopen: pendingReopen

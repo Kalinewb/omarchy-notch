@@ -82,18 +82,25 @@ Item {
   property color transparentForeground: Color.bar.text
   // `barForeground` is what widgets paint with in the bar itself, so in the
   // notch it is the notch's readable colour (see "colours on the notch").
-  // `foreground` and `background` stay the theme's: widgets also use them in
-  // their own pop-out panels, which sit on the theme's background, and white
-  // text on a light panel reads no better than dark text on a black notch.
-  property color foreground: themeForeground
+  // `foreground`, `background` and `urgent` are what widgets use in their own
+  // pop-out panels. A panel in its own window sits on the theme's background,
+  // so there they stay the theme's -- white text on a light panel reads no
+  // better than dark text on a black notch. While the notch is drawing that
+  // panel inside itself (PanelHosting) they are the notch's, for the same
+  // reason the other way round. The flip is instant, not animated: the panel
+  // is already fading in on the notch's timing, and a 420 ms crossfade from
+  // the theme's text would show the wrong colour for the first frames.
+  property color themeBackground: Color.bar.background
+  property color themeUrgent: Color.bar.active
+  property color foreground: hosting.active ? notchForeground : themeForeground
   property color barForeground: useTransparentForeground ? transparentForeground : notchForeground
   property bool foregroundAnimationEnabled: true
-  property color background: Color.bar.background
-  property color urgent: Color.bar.active
+  property color background: hosting.active ? notchColor : themeBackground
+  property color urgent: hosting.active ? notchForeground : themeUrgent
 
   Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
-  Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
-  Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on themeBackground { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on themeUrgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   property var tooltipTarget: null
   property var pendingTooltipTarget: null
   property string tooltipText: ""
@@ -3575,6 +3582,7 @@ Item {
         background: m ? String(m.background).toUpperCase() : "", notchColor: String(root.notchColor).toUpperCase(),
         colours: m ? {
           text: String(m.foreground), selectedText: String(m.selectedText), selectedBackground: String(m.selectedBackground),
+          selectedBorder: String(m.selectedBorder),
           textContrast: Number(root.contrast(m.foreground, m.background).toFixed(2)),
           selectedTextContrast: Number(root.contrast(m.selectedText, m.background).toFixed(2)),
           selectionContrast: Number(root.contrast(Qt.rgba(
@@ -3619,7 +3627,16 @@ Item {
         textContrast: Number(root.contrast(root.notchForeground, root.notchColor).toFixed(3)),
         accentContrast: Number(root.contrast(root.notchAccent, root.notchColor).toFixed(3)),
         widgets: { foreground: hex(root.foreground), barForeground: hex(root.barForeground), background: hex(root.background) },
+        urgent: hex(root.urgent), hosting: root.hosting.active,
         themeText: hex(Color.bar.text), themeBarBackground: hex(Color.bar.background),
+        tooltip: { background: hex(tooltipBubble.color), text: hex(tooltipLabel.color), border: String(tooltipBubble.borderSpec.color).toUpperCase() },
+        // Every colour the notch may paint with, apart from its surface and the
+        // battery glow. dev/colours.sh asserts none of them has a hue.
+        palette: [root.notchForeground, root.notchAccent, root.notchSecondaryText, root.barForeground,
+                  tooltipLabel.color, tooltipBubble.borderSpec.color]
+          .concat(menuHost.item ? [menuHost.item.selectedBackground, menuHost.item.selectedText, menuHost.item.selectedBorder] : [])
+          .concat(settings ? [settings.foreground, settings.accent] : [])
+          .map(function (c) { return String(c).toUpperCase() }),
         glance: hex(compactGlance.foreground),
         settings: settings ? { foreground: hex(settings.foreground), accent: hex(settings.accent), surface: hex(settings.surface), glowReach: Number(settings.glowReach.toFixed(3)) } : null,
         // What another plugin's panel is actually painting with: it may only use
@@ -4409,12 +4426,14 @@ Item {
         }
       }
 
+      // A tooltip hangs off the notch, so it is the notch's: its surface, its
+      // text, its radius. The theme's tooltip colours never reach it.
       BorderSurface {
         id: tooltipBubble
         implicitWidth: tooltipLabel.implicitWidth + 20
         implicitHeight: tooltipLabel.implicitHeight + 14
-        color: Color.tooltip.background
-        borderSpec: Border.surfaceSpec("tooltip", "border", Color.tooltip.border, 1)
+        color: root.notchColor
+        borderSpec: Border.flat(Util.alpha(root.notchForeground, Style.normalBorderAlpha), 1)
         radius: root.radiusFor(height)
 
         Text {
@@ -4422,7 +4441,7 @@ Item {
           textFormat: Text.PlainText
           anchors.centerIn: parent
           text: root.tooltipText
-          color: Color.tooltip.text
+          color: root.notchForeground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
           horizontalAlignment: Text.AlignHCenter
@@ -4497,7 +4516,7 @@ Item {
       y: targetRect ? Math.round(targetRect.y) : 0
       width: targetRect ? targetRect.width : 0
       height: targetRect ? targetRect.height : 0
-      color: Color.accent
+      color: root.barForeground
       radius: Math.min(width, height) / 2
     }
   }
@@ -4969,7 +4988,8 @@ Item {
 
       visible: opacity > 0
       opacity: slot.panelOpen && !slot.dragSource ? 0.9 : 0
-      color: Color.accent
+      // The notch's white, like every other mark on it (DESIGN-PHILOSOPHY.md, 2).
+      color: root.barForeground
       radius: Math.min(width, height) / 2
       width: root.vertical ? Style.space(2) : slot.panelIndicatorExtent
       height: root.vertical ? slot.panelIndicatorExtent : Style.space(2)

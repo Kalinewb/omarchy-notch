@@ -180,6 +180,10 @@ g=$(notch geometry)
 echo "  ${DIM}$(jq -c '{state, view, hosted: {open: .hosted.open, items: .hosted.items, size: [.hosted.width, .hosted.height], wanted: .hosted.report.wanted}}' <<<"$g")${RESET}"
 check "23. it is on the notch's surface, in the notch's view" "expanded hosted true" \
   "$(field "$g" '.state') $(field "$g" '.view') $(field "$g" '.hosted.open')"
+# The panel reads its colours off the bar object it was given. Inside the
+# notch those are the notch's -- white on black -- not the theme's.
+check "23a. …painting with the notch's colours: text, background and urgent are the notch's, not the theme's" "true true true" \
+  "$(field "$g" '.colours | "\(.widgets.foreground == .text) \(.widgets.background == .notch) \(.urgent == .text)"')"
 check "24. every item of the panel came, not just the first" "true" \
   "$(field "$g" '.hosted.items >= 1')"
 check "25. the notch grew to the size the PLUGIN asked its own card for" "true" \
@@ -230,6 +234,8 @@ g=$(notch geometry)
 check "32. closing gives the panel back and the notch rests" "compact false 0" \
   "$(field "$g" '.state') $(field "$g" '.hosted.open') $(field "$g" '.hosted.items')"
 check "33. …and the notch is holding nothing" "false" "$(notch hosting | jq -r '.active')"
+check "33a. …and the panel's colours are the theme's again, for its own window" "true true" \
+  "$(field "$g" '.colours | "\(.widgets.foreground == .themeText) \(.widgets.background == .themeBarBackground)"')"
 
 # Opening it again after a round trip.
 check "34. it can be hosted again afterwards" "opened" "$(notch hostPanel audio)"

@@ -3662,6 +3662,13 @@ Item {
         window: { height: barWindow.height, exclusiveZone: barWindow.reservedZone, windowsToTop: root.notchWindowsToTop,
                   applied: { zone: barWindow.exclusiveZone, mode: barWindow.exclusionMode === ExclusionMode.Ignore ? "ignore" : "normal", onScreen: barWindow.reservesOnScreen } },
         bar: { x: Number(bx.toFixed(3)), y: island.y, width: Number(island.barWidth.toFixed(3)), height: Number(island.barHeight.toFixed(3)) },
+        // The panel window's copy of the shape. The two overlap during the
+        // handoff, so they have to agree on every number: one of them drawn
+        // from a different width is two notches on screen, and nothing that
+        // reads only `bar` can see it.
+        panelBar: { width: Number(panelIsland.barWidth.toFixed(3)), height: Number(panelIsland.barHeight.toFixed(3)),
+                    bottom: Number(panelIsland.bottomR.toFixed(3)), fillet: Number(panelIsland.fillet.toFixed(3)),
+                    painted: barWindow.panelShape },
         target: { width: Number(targetWidth.toFixed(3)), height: Number(targetHeight.toFixed(3)) },
         widgets: {
           rowWidth: widgetRow.implicitWidth, slots: root.moduleSlots.length,
@@ -4134,8 +4141,10 @@ Item {
     //
     // The notch's tall shapes: the settings, the menu and the update notice. A
     // surface sized once for the tallest the notch can grow, drawing the same
-    // Island from the same shownWidth/shownHeight as the bar window, so the bar
-    // window never changes height. It takes input only where the shape is and
+    // Island from the same tuckWidth/shownHeight as the bar window, so the bar
+    // window never changes height. The width must be the DRAWN one, not
+    // shownWidth: the two windows overlap during the handoff, and a panelIsland
+    // at full width behind a tapered bar island is two notches on screen. It takes input only where the shape is and
     // only while it draws it, and the keyboard while a panel is open.
     //
     // Handoff: while the notch is tall (a panel or the notice is up, or it is
@@ -4179,7 +4188,7 @@ Item {
         id: panelIsland
         x: (barWindow.width - width) / 2
         y: 0
-        barWidth: Math.max(0, barWindow.shownWidth)
+        barWidth: Math.max(0, barWindow.tuckWidth)
         barHeight: Math.max(0, barWindow.shownHeight)
         bottomRadius: barWindow.requestedBottomRadius
         filletRadius: barWindow.requestedFilletRadius

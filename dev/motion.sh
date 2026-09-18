@@ -49,9 +49,9 @@ for r in "8 10" "10 10" "4 12"; do
   run="[]"
   for round in 1 2 3; do
     ipc expand >/dev/null
-    for _ in $(seq 1 14); do run=$(jq -c --argjson g "$(ipc geometry | jq -c '{bar, radii}')" '. + [$g]' <<<"$run"); done
+    for _ in $(seq 1 14); do run=$(jq -c --argjson g "$(ipc geometry | jq -c '{bar, radii, panelBar}')" '. + [$g]' <<<"$run"); done
     ipc collapse >/dev/null
-    for _ in $(seq 1 14); do run=$(jq -c --argjson g "$(ipc geometry | jq -c '{bar, radii}')" '. + [$g]' <<<"$run"); done
+    for _ in $(seq 1 14); do run=$(jq -c --argjson g "$(ipc geometry | jq -c '{bar, radii, panelBar}')" '. + [$g]' <<<"$run"); done
   done
   kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""
   samples=$(jq -c --argjson run "$run" --argjson b "$1" --argjson f "$2" '. + [$run[] | . + {b: $b, f: $f}]' <<<"$samples")
@@ -90,11 +90,23 @@ flat = [{"h": round(x["bar"]["height"], 2), "w": round(x["bar"]["width"], 2),
          "share": round(share(x), 4), "rest": round(shares[x["b"]], 4)}
         for x in s if x["bar"]["height"] >= 1 and x["b"] > 0 and x["b"] in shares
         and share(x) < shares[x["b"]] * 0.99]
+# The notch draws its shape in two windows and they overlap during the handoff,
+# so every number has to agree. A panel island drawn from a different width is
+# literally a second notch on screen, and every other check here reads only the
+# bar window's island, so none of them can see it.
+twoNotches = [{"h": round(x["bar"]["height"], 2), "bar": round(x["bar"]["width"], 2),
+               "panel": round(x["panelBar"]["width"], 2)}
+              for x in s if "panelBar" in x
+              and (abs(x["panelBar"]["width"] - x["bar"]["width"]) > 0.01
+                   or abs(x["panelBar"]["height"] - x["bar"]["height"]) > 0.01
+                   or abs(x["panelBar"]["bottom"] - x["radii"]["bottomLeft"]) > 0.01
+                   or abs(x["panelBar"]["fillet"] - x["radii"]["fillet"]) > 0.01)]
 worst = min((share(x) / shares[x["b"]] for x in s
              if x["bar"]["height"] >= 1 and x["b"] > 0 and x["b"] in shares), default=1)
 heights = sorted({round(x["bar"]["height"], 1) for x in partial})
 print(json.dumps({"samples": len(s), "partial": len(partial), "heights": heights[:12], "bad": bad[:5], "badCount": len(bad), "sharp": sharp, "top": top,
-                  "worstShare": round(worst, 3), "flat": flat[:5], "flatCount": len(flat)}))
+                  "worstShare": round(worst, 3), "flat": flat[:5], "flatCount": len(flat),
+                  "twoNotches": twoNotches[:5], "twoNotchesCount": len(twoNotches)}))
 PY
 )
 echo "  ${DIM}$(jq -c '{samples, partial, heights}' <<<"$report")${RESET}"
@@ -105,6 +117,8 @@ check "never sharp: bottom corners and fillets above zero whenever at least 1 px
 check "top corners square in every sample" "0" "$(jq -r .top <<<"$report")"
 echo "  ${DIM}$(jq -c '{worstShare}' <<<"$report")${RESET}"
 check "never a rule: the bottom corner keeps its share of the drawn width all the way in" "0" "$(jq -r .flatCount <<<"$report")"
+check "one notch: the panel window's island matches the bar window's, size and radii" "0" "$(jq -r .twoNotchesCount <<<"$report")"
+[[ $(jq -r .twoNotchesCount <<<"$report") != 0 ]] && jq -c '.twoNotches' <<<"$report"
 [[ $(jq -r .flatCount <<<"$report") != 0 ]] && jq -c '.flat' <<<"$report"
 
 echo

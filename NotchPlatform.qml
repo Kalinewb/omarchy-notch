@@ -241,6 +241,20 @@ Item {
         releaseOwner(id)
         closePanelFor(id)
       }
+
+      // Switched off and on again inside the 300 ms fade: the file never left,
+      // so the mark to unload it has to go too. Left set it stuck true for the
+      // life of the notch -- the timer only ever clears it for something that
+      // is still not accepted -- and the next switch-off then had a deadline
+      // already in the past.
+      if (verdict.accepted && next[id].pendingUnload) {
+        next[id].pendingUnload = false
+        if (unloadAt[id] !== undefined) {
+          var cleared = JSON.parse(JSON.stringify(unloadAt))
+          delete cleared[id]
+          unloadAt = cleared
+        }
+      }
     }
 
     // A candidate that vanished takes its host, claims and panel with it.

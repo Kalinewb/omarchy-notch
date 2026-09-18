@@ -304,6 +304,47 @@ notch setup check "" >/dev/null 2>&1; sleep 2.5
 check "47. Setup says nothing about a panel nobody asked to host" "0" \
   "$(notch setup status "" 2>/dev/null | jq -r '[.points[] | select(.id == "hostable-panels")] | length')"
 
+# --- the other shape: a panel behind a Loader ------------------------------------
+#
+# Omarchy's audio widget *is* its Panel, so its parts are its own children.
+# Clock, weather and camera-test have a BarWidget that loads Panel.qml through
+# a Loader, and looking only at the direct children answered "no panel" for
+# every widget built that way -- which is why they never appeared in Settings →
+# Integrations. Same mechanism, one level down.
+LOADER_WIDGET=${HOSTING_LOADER_WIDGET:-$SHELL_PATH/shell/plugins/panels/clock/BarWidget.qml}
+if [[ -f $LOADER_WIDGET ]]; then
+  echo
+  echo "  ${DIM}$(basename "$(dirname "$LOADER_WIDGET")")/$(basename "$LOADER_WIDGET") — the panel is behind a Loader${RESET}"
+  loader_root="$sb/loader"
+  mkdir -p "$loader_root"
+  ln -s "$SHELL_PATH/shell/Commons" "$loader_root/Commons"
+  ln -s "$SHELL_PATH/shell/Ui" "$loader_root/Ui"
+  ln -s "$SHELL_PATH/shell/services" "$loader_root/services"
+  ln -s "$REPO" "$loader_root/notch"
+  cp "$REPO/dev/harness/hosting-shell.qml" "$loader_root/shell.qml"
+  lipc() { quickshell ipc -p "$loader_root" call hosting "$@" 2>/dev/null; }
+
+  OMARCHY_SHELL_PATH="$SHELL_PATH/shell" HOSTING_WIDGET="$LOADER_WIDGET" \
+    quickshell -p "$loader_root" -n >"$sb/loader.log" 2>&1 &
+  loader_pid=$!
+  for _ in $(seq 1 60); do sleep 0.1; [[ $(lipc ready) == yes ]] && break; done
+  sleep 0.6
+
+  check "49. the widget loads" "yes" "$(lipc ready)"
+  check "50. its panel is found through the Loader, not declined as missing" "" "$(lipc hostable)"
+  check "51. taking it works the same way" "true" \
+    "$(lipc take >/dev/null; lipc state | jq -r '.hosting')"
+  check "52. every item came, and the plugin's own window stayed down" "true false" \
+    "$(lipc state | jq -r '"\(.slotChildren >= 1) \(.ownWindowVisible)"')"
+  check "53. …and giving it back leaves the notch holding nothing" "false 0" \
+    "$(lipc giveBack >/dev/null; lipc state | jq -r '"\(.hosting) \(.slotChildren)"')"
+  check "54. no QML errors loading it" "none" \
+    "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/loader.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/loader.log" || echo none)"
+
+  lipc quit >/dev/null 2>&1; wait "$loader_pid" 2>/dev/null; loader_pid=""
+  echo
+fi
+
 check "48. no QML errors in the notch either" "none" \
   "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" || echo none)"
 

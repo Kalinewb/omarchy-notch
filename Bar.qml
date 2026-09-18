@@ -4905,8 +4905,7 @@ Item {
     // `open` is what maps the plugin's window, and a Timer would show it for a
     // frame. This also catches a click the notch's own handler did not win.
     Connections {
-      target: root.hostsPanelOf(slot.moduleName) && slot.activeItem
-        ? root.hosting.controllerOf(slot.activeItem) : null
+      target: root.hostsPanelOf(slot.moduleName) ? slot.panelController : null
       enabled: !!target
       ignoreUnknownSignals: true
       function onOpenChanged() {
@@ -5085,8 +5084,21 @@ Item {
       }
     }
 
-    onActiveItemChanged: Qt.callLater(injectProps)
     onModuleSettingsChanged: injectProps()
+
+    // The widget's own panel controller, resolved once when the widget loads.
+    // As a binding it walked every widget's children on every pass -- QML warns
+    // that `data` is not bindable, 70 times per start -- and the answer only
+    // ever changes when the widget itself does. The second pass catches a panel
+    // whose own Loader finishes after the widget's root does.
+    property var panelController: null
+    function resolvePanelController() { slot.panelController = root.hosting.controllerOf(slot.activeItem) }
+
+    onActiveItemChanged: {
+      Qt.callLater(injectProps)
+      resolvePanelController()
+      Qt.callLater(resolvePanelController)
+    }
 
     function injectProps() {
       var target = activeItem

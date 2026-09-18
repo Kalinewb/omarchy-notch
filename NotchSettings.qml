@@ -144,6 +144,9 @@ Item {
 
   // Plugins that declare an integration, whatever the notch made of it.
   readonly property var integrations: bar ? bar.platform.list : []
+  // Widgets whose own panel the notch could draw, whether or not they know
+  // anything about the notch.
+  readonly property var hostable: bar ? bar.hostableWidgets() : []
 
   // Show this plugin inside the notch, or give it its own UI back. The list of
   // ids that are off is the setting; everything else follows from it.
@@ -155,6 +158,19 @@ Item {
     else if (!off && at !== -1) next.splice(at, 1)
     else return
     set("disabledIntegrations", next)
+  }
+
+  // Draw this widget's own panel inside the notch, or give it back to its own
+  // window. Takes effect on the next click; a panel open right now is released.
+  function toggleHostedPanel(id, hosted) {
+    if (!bar) return
+    var next = (bar.notchHostedPanels || []).slice()
+    var at = next.indexOf(id)
+    if (hosted && at === -1) next.push(id)
+    else if (!hosted && at !== -1) next.splice(at, 1)
+    else return
+    if (!hosted) bar.releaseHostedPanel()
+    set("hostedPanels", next)
   }
 
   function resetAll() {
@@ -537,7 +553,7 @@ Item {
       Section {
         id: integrationsSection
         title: "Integrations"
-        visible: root.integrations.length > 0
+        visible: root.integrations.length > 0 || root.hostable.length > 0
 
         Repeater {
           model: root.integrations
@@ -558,6 +574,33 @@ Item {
               Switch {
                 checked: !modelData.userOff
                 onToggled: root.toggleIntegration(modelData.id, !checked)
+              }
+            }
+          }
+        }
+
+        // Widgets already in the bar whose own panel the notch can draw. These
+        // need nothing from the plugin: the notch takes its panel while it is
+        // open and gives it back untouched.
+        Repeater {
+          model: root.hostable
+
+          SettingRow {
+            label: modelData.name
+            Row {
+              spacing: Style.space(8)
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: modelData.hosted ? "Opens in the notch" : "Opens in its own window"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+
+              Switch {
+                checked: modelData.hosted
+                onToggled: root.toggleHostedPanel(modelData.id, !checked)
               }
             }
           }

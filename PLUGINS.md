@@ -64,6 +64,27 @@ The `own-window` check reads only the entry file, so it catches the obvious case
 and no more. **The rule is binding anyway:** an integration draws inside the
 notch and never opens a window.
 
+### You may not need any of this
+
+If your plugin is an ordinary Omarchy bar widget with a pop-out panel — a
+`KeyboardPanel` holding your content — **the notch can already draw it inside
+itself, with no change to your plugin at all.** It takes your panel's content
+while the panel is open, grows to the size you asked your own card for, and
+gives it back exactly as it found it when it closes. Your own window never maps,
+so there is nothing for you to suppress.
+
+That covers most widgets. Declare an integration when you want more than your
+panel in the notch:
+
+- a panel that is **not** a pop-out (your UI lives somewhere else entirely)
+- **activities** — a line in the resting notch while something is happening
+- control over *when* the notch may show you, through `available`
+- your own layout for the notch specifically, rather than the panel you already
+  draw
+
+Both can be true at once: a plugin with a hostable panel and a declared
+integration gets the integration's panel, because you asked for it explicitly.
+
 ## 2. The integration file
 
 ```qml

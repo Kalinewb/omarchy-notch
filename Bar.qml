@@ -1357,6 +1357,10 @@ Item {
   // ...and what it actually hides: plugins declaring hideable: false stay.
   // Integrations the user has switched off in Settings → Integrations.
   readonly property var notchDisabledIntegrations: notchItems("disabledIntegrations", [])
+  // Widgets whose own pop-out panel opens inside the notch instead of in a
+  // window of its own. Empty by default: nothing changes until it is asked for.
+  readonly property var notchHostedPanels: notchItems("hostedPanels", []).map(function (id) { return canonicalWidgetId(id) })
+  function hostsPanelOf(name) { return notchHostedPanels.indexOf(canonicalWidgetId(name)) !== -1 }
   readonly property var notchEffectiveHidden: Contract.effectiveHidden(notchHiddenPlugins, notchPlugins.byId)
 
   // --- the plugin contract (contract.js) --------------------------------------
@@ -1700,6 +1704,38 @@ Item {
     onTriggered: root.healEmptyWidgets()
   }
   Process { id: healProcess; command: ["omarchy-shell", "-q", "shell", "rescanPlugins"] }
+  // Widgets in the bar whose own pop-out panel the notch could draw inside
+  // itself, and whether the user has asked it to. Read by Settings →
+  // Integrations; empty until some widget in the layout has a panel.
+  function hostableWidgets() {
+    var out = []
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
+      if (!slot || !slot.activeItem) continue
+      var id = canonicalWidgetId(slot.moduleName)
+      if (!hosting.hostable(slot.activeItem)) continue
+      var meta = barWidgetRegistry.metadataFor(id)
+      out.push({
+        id: id,
+        name: meta && meta.displayName ? String(meta.displayName) : id,
+        hosted: hostsPanelOf(id)
+      })
+    }
+    return out
+  }
+
+  // The live item of a widget the notch is drawing, by the name the layout
+  // knows it as. Used to host that widget's own panel inside the notch.
+  function widgetItemFor(name) {
+    var wanted = String(name || "")
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
+      if (!slot || !slot.activeItem) continue
+      if (String(slot.moduleName) === wanted || canonicalWidgetId(slot.moduleName) === wanted) return slot.activeItem
+    }
+    return null
+  }
+
   // Which widgets loaded but drew nothing. The same test healEmptyWidgets
   // uses; Setup shows what is still empty after the one heal rescan.
   function emptyWidgetIds() {
@@ -1887,6 +1923,30 @@ Item {
   //
   // Other plugins' panels, drawn inside the notch (NotchPlatform.qml, PLUGINS.md).
   NotchPlatform { id: platformService; bar: root }
+
+  // Another plugin's pop-out panel, drawn inside the notch instead of in a
+  // window of its own (PanelHosting.qml). One at a time, on one screen.
+  PanelHosting { id: panelHosting; opted: root.notchHostedPanels }
+  readonly property var hosting: panelHosting
+
+  // Open `item`'s panel inside the notch, on the screen it was clicked on.
+  // Answers "opened", or why not -- the caller draws its own panel on anything
+  // but "opened", so a decline is never a plugin with no UI.
+  function hostPanel(item, screenName) {
+    var window = null
+    var windows = notchWindows
+    for (var i = 0; i < windows.length; i++)
+      if (screenName && windows[i].screen && windows[i].screen.name === screenName) window = windows[i]
+    if (!window) window = focusedNotchWindow()
+    if (!window) return "declined:no-screen"
+    if (barHidden) return "declined:hidden"
+    return window.openHosted(item)
+  }
+
+  function releaseHostedPanel() {
+    var windows = notchWindows
+    for (var i = 0; i < windows.length; i++) if (windows[i].hostedOpen) windows[i].hostedOpen = false
+  }
   readonly property var platform: platformService
   // Activities are claimed and queued, but nothing draws them at rest yet, so a
   // claim that would be shown answers "queued" (plan-activities-notifications).
@@ -2565,6 +2625,26 @@ Item {
     // What other plugins integrate, and their panels. Nothing here installs,
     // enables or runs anything: a panel opens, a claim is queued, that's all.
 
+    // Draw an installed widget's own panel inside the notch. `id` is the
+    // widget's module name as the layout knows it. Answers "opened", "closed"
+    // or "declined:<reason>" -- the same words a plugin acts on.
+    function hostPanel(id: string): string {
+      var item = root.widgetItemFor(id)
+      if (!item) return "declined:no such widget"
+      return root.hostPanel(item, "")
+    }
+
+    function releasePanel(): string { root.releaseHostedPanel(); return "ok" }
+
+    function hosting(): string { return JSON.stringify(root.hosting.report()) }
+
+    // What Settings → Integrations is showing, so a check can read the same
+    // list the user does.
+    function settingsReport(): string {
+      return JSON.stringify({ hostable: root.hostableWidgets(), opted: root.notchHostedPanels,
+                              integrations: root.platform.list.length })
+    }
+
     function integrations(): string { return JSON.stringify(root.platform.report()) }
 
     // One plugin's view of the notch, for its own service or CLI to read.
@@ -2766,11 +2846,13 @@ Item {
     property bool setupOpen: false
     // A plugin's own panel, drawn inside the notch.
     property bool integrationOpen: false
+    // Another plugin's own panel, hosted in this notch.
+    property bool hostedOpen: false
     property string integrationId: ""
     property string integrationRoute: ""
     // The catalogue entry the page opened on ("" for the top).
     property string pluginsFocusId: ""
-    readonly property bool panelOpen: settingsOpen || menuOpen || pluginsOpen || setupOpen || integrationOpen
+    readonly property bool panelOpen: settingsOpen || menuOpen || pluginsOpen || setupOpen || integrationOpen || hostedOpen
     readonly property bool popoutHere: root.activePopout !== null && root.targetBelongsToWindow(root.activePopout, barWindow)
     readonly property bool dragHere: root.barDragSource !== null && root.barDragWindow === barWindow
     // stayOpen: the notch stays open on its open view.
@@ -2821,13 +2903,14 @@ Item {
       pluginsOpen = false
       setupOpen = false
       integrationOpen = false
+      hostedOpen = false
     }
 
     // The view stayOpen keeps: the open action, or the widgets when that is a panel.
     function showPinnedView() {
       // The flags themselves, not panelOpen: this runs from their change
       // handlers, before panelOpen's binding has caught up.
-      if (settingsOpen || menuOpen || pluginsOpen || setupOpen || integrationOpen) return
+      if (settingsOpen || menuOpen || pluginsOpen || setupOpen || integrationOpen || hostedOpen) return
       var action = root.notchOpenAction
       if (["widgets", "clock", "battery", "plugin"].indexOf(action) === -1) action = "widgets"
       if (action === "plugin" && !root.notchOpenPlugin) action = "widgets"
@@ -2845,6 +2928,7 @@ Item {
       pluginsOpen = false
       setupOpen = false
       integrationOpen = false
+      hostedOpen = false
     }
 
     // Open the menu at `route` (a menu id or alias; "" is the root menu). A
@@ -2862,6 +2946,7 @@ Item {
       pluginsOpen = false
       setupOpen = false
       integrationOpen = false
+      hostedOpen = false
       view = "menu"
       menuOpen = true
       var menu = menuHost.item
@@ -2886,6 +2971,7 @@ Item {
       pluginsOpen = true
       setupOpen = false
       integrationOpen = false
+      hostedOpen = false
     }
 
     // Setup: what's stopping the notch from working the way you want.
@@ -2901,6 +2987,7 @@ Item {
       menuOpen = false
       pluginsOpen = false
       integrationOpen = false
+      hostedOpen = false
       if (root.setup) root.setup.check(true)
     }
 
@@ -2925,9 +3012,52 @@ Item {
       integrationRoute = String(route || "")
       view = "integration"
       integrationOpen = true
+      hostedOpen = false
       if (integrationHost.item && typeof integrationHost.item.open === "function")
         integrationHost.item.open(integrationRoute)
       return "opened"
+    }
+
+    // Draw another plugin's own panel in this notch. The content is taken from
+    // the plugin's panel and parented into the notch's surface, so the notch
+    // grows to it on its own spring and it fades in on the notch's timings --
+    // the plugin's window never maps.
+    function openHosted(item) {
+      var why = root.hosting.reasonNotHostable(item)
+      if (why !== "") return "declined:" + why
+      if (hostedOpen && root.hosting.widget === item) { hostedOpen = false; return "closed" }
+      if (root.hosting.active) root.hosting.giveBack()
+      var taken = root.hosting.take(item, hostedSlot)
+      if (taken !== "") return "declined:" + taken
+      expandTimer.stop()
+      peeking = false
+      settingsOpen = false
+      menuOpen = false
+      pluginsOpen = false
+      setupOpen = false
+      integrationOpen = false
+      view = "hosted"
+      hostedOpen = true
+      return "opened"
+    }
+
+    onHostedOpenChanged: {
+      if (hostedOpen) return
+      hoverExpanded = false
+      clickExpanded = false
+      keyExpanded = false
+      if (pinned) showPinnedView()
+      // Given back only once the notch has shrunk past it, so the panel fades
+      // with the surface instead of vanishing out of a closing box.
+      hostedReturn.restart()
+    }
+
+    // The fade out is 90 ms and the shrink 240 (Bar.qml's own timings), so the
+    // content stays where it is until both are done.
+    Timer {
+      id: hostedReturn
+      interval: 260
+      onTriggered: if (!barWindow.hostedOpen && root.hosting.active) root.hosting.giveBack()
     }
 
     // Closing keeps `integrationId` and `integrationRoute`: the host is bound to
@@ -3213,6 +3343,12 @@ Item {
     readonly property real pluginsHeight: Math.max(root.notchCompactHeight, pluginsHost.item ? pluginsHost.item.implicitHeight : 0)
     readonly property real setupWidth: Math.max(compactWidth, setupHost.item ? setupHost.item.implicitWidth : 0)
     readonly property real setupHeight: Math.max(root.notchCompactHeight, setupHost.item ? setupHost.item.implicitHeight : 0)
+    // What the plugin asked its own card for, clamped to what the notch can
+    // give it. Side padding matches the notch's other panels.
+    readonly property real hostedWidth: Math.max(compactWidth,
+      Math.min(maxBarWidth, root.hosting.wantedWidth + 2 * root.notchSidePadding))
+    readonly property real hostedHeight: Math.max(root.notchCompactHeight,
+      Math.min(panelMaxHeight, root.hosting.wantedHeight + 2 * root.notchSidePadding))
     readonly property real integrationWidth: Math.max(compactWidth, integrationHost.item ? integrationHost.item.implicitWidth : 0)
     readonly property real integrationHeight: Math.max(root.notchCompactHeight,
       Math.min(integrationHost.item ? integrationHost.item.implicitHeight : 0, panelMaxHeight))
@@ -3222,6 +3358,7 @@ Item {
     // are the same row (filtered), so both measure the row.
     readonly property real expandedWidth: view === "settings" ? settingsWidth : view === "menu" ? menuWidth : view === "plugins" ? pluginsWidth
       : view === "setup" ? setupWidth : view === "integration" ? integrationWidth
+      : view === "hosted" ? hostedWidth
       : view === "clock" ? clockWidth : view === "battery" ? batteryWidth : rowWidth
 
     readonly property real targetWidth: Math.min(maxBarWidth,
@@ -3234,6 +3371,7 @@ Item {
       : notchState === "expanded" && view === "plugins" ? pluginsHeight
       : notchState === "expanded" && view === "setup" ? setupHeight
       : notchState === "expanded" && view === "integration" ? integrationHeight
+      : notchState === "expanded" && view === "hosted" ? hostedHeight
       : notchState === "notice" ? noticeHeight : root.notchCompactHeight
 
     property real shownWidth: 0
@@ -3404,6 +3542,7 @@ Item {
         menu: menuHost.item ? root.radiusAudit(menuHost.item) : [],
         plugins: pluginsHost.item ? root.radiusAudit(pluginsHost.item) : [],
         setup: setupHost.item ? root.radiusAudit(setupHost.item) : [],
+        hosted: hostedSlot.children.length > 0 ? root.radiusAudit(hostedSlot) : [],
         integration: integrationHost.item ? root.radiusAudit(integrationHost.item) : []
       }
     }
@@ -3448,6 +3587,10 @@ Item {
         // reports it); applied: what the window actually asks Hyprland for.
         panel: { height: barWindow.panelWindow.height, shape: barWindow.panelShape, barShapeHidden: barWindow.barShapeHidden, tall: barWindow.tallShape,
                  keyboard: barWindow.panelWindow.WlrLayershell.keyboardFocus === WlrKeyboardFocus.OnDemand ? "onDemand" : "none" },
+        hosted: { open: barWindow.hostedOpen, items: hostedSlot.children.length,
+                  width: Number(barWindow.hostedWidth.toFixed(3)), height: Number(barWindow.hostedHeight.toFixed(3)),
+                  opacity: Number(hostedHost.opacity.toFixed(3)),
+                  report: root.hosting.report() },
         integration: { open: barWindow.integrationOpen, id: barWindow.integrationId, route: barWindow.integrationRoute,
                        loaded: integrationHost.item !== null,
                        itemRoute: integrationHost.item && ("route" in integrationHost.item) ? String(integrationHost.item.route) : "",
@@ -4004,9 +4147,9 @@ Item {
         Item {
           id: panelContent
           width: Math.max(barWindow.settingsWidth, barWindow.menuWidth, barWindow.pluginsWidth, barWindow.setupWidth,
-                          barWindow.integrationWidth, barWindow.noticeWidth)
+                          barWindow.integrationWidth, barWindow.hostedWidth, barWindow.noticeWidth)
           height: Math.max(root.notchCompactHeight, barWindow.settingsHeight, barWindow.menuHeight, barWindow.pluginsHeight,
-                           barWindow.setupHeight, barWindow.integrationHeight, barWindow.noticeHeight)
+                           barWindow.setupHeight, barWindow.integrationHeight, barWindow.hostedHeight, barWindow.noticeHeight)
           x: (panelIsland.barWidth - width) / 2
           y: 0
 
@@ -4058,6 +4201,28 @@ Item {
             shown: barWindow.setupOpen
             x: (panelContent.width - width) / 2
           }
+          // Another plugin's OWN panel, taken out of its window and drawn here.
+          // It fades on the notch's timings like every other view, and is given
+          // back untouched when it closes (PanelHosting.qml).
+          Item {
+            id: hostedHost
+            width: barWindow.hostedWidth
+            height: barWindow.hostedHeight
+            x: (panelContent.width - width) / 2
+            opacity: barWindow.hostedOpen ? 1 : 0
+            visible: opacity > 0
+            enabled: barWindow.hostedOpen
+            Behavior on opacity { NumberAnimation { duration: barWindow.hostedOpen ? 220 : 90; easing.type: Easing.OutCubic } }
+
+            // The notch's own side padding, so a hosted panel sits in the
+            // surface the way the notch's own panels do.
+            Item {
+              id: hostedSlot
+              anchors.fill: parent
+              anchors.margins: root.notchSidePadding
+            }
+          }
+
           // Another plugin's panel. Its Component comes from that plugin's own
           // integration file; the notch hands it everything it may use.
           ExpandedHost {
@@ -4645,6 +4810,24 @@ Item {
     }
 
     HoverHandler { id: moduleHover }
+
+    // A widget the user has asked to see inside the notch: its click is taken
+    // here, before it reaches the widget's own button, so the plugin's
+    // controller never opens and its window never maps. Everything else about
+    // the widget -- hover, tooltip, scroll, its other buttons -- is untouched,
+    // and a click the notch cannot serve is passed straight on.
+    TapHandler {
+      enabled: root.hostsPanelOf(slot.moduleName) && !slot.filteredOut && !!slot.activeItem
+      acceptedButtons: Qt.LeftButton
+      gesturePolicy: TapHandler.ReleaseWithinBounds
+      onSingleTapped: function (point, button) {
+        var answer = root.hostPanel(slot.activeItem, root.slotScreenName(slot))
+        // Not something the notch could draw: let the widget do what it always
+        // does, rather than swallowing the click.
+        if (answer.indexOf("declined") === 0 && slot.activeItem && typeof slot.activeItem.toggle === "function")
+          slot.activeItem.toggle()
+      }
+    }
 
     BorderSurface {
       visible: slot.dragSource

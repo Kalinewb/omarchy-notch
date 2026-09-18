@@ -149,8 +149,15 @@ cp "$REPO/dev/harness/hosting-notch-shell.qml" "$notch_root/shell.qml"
 
 notch() { quickshell ipc -p "$notch_root" call notch "$@" 2>/dev/null; }
 
+# Setup reads a sandbox, never this machine's real config.
+mkdir -p "$sb/setup-home/.config/omarchy" "$sb/setup-state" "$sb/setup-run"
+echo '{"bar":{"id":"graveklar.notch","layout":{"left":[],"center":[],"right":[]}}}' >"$sb/setup-home/.config/omarchy/shell.json"
+
 OMARCHY_SHELL_PATH="$SHELL_PATH/shell" HOSTING_WIDGET="$WIDGET" \
   NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 \
+  NOTCH_FORCE_SETUP=1 NOTCH_SETUP_HOME="$sb/setup-home" NOTCH_SETUP_CONFIG_DIR="$sb/setup-home/.config" \
+  NOTCH_SETUP_TOGGLES_DIR="$sb/setup-home/toggles" NOTCH_SETUP_STATE_DIR="$sb/setup-state" \
+  NOTCH_SETUP_STATUS="$sb/setup-run/setup.json" \
   NOTCH_HARNESS_CONFIG='{"batteryPeek":false,"bottomRadius":10}' \
   quickshell -p "$notch_root" -n >>"$sb/qs.log" 2>&1 &
 qs_pid=$!
@@ -249,7 +256,55 @@ check "38. a widget nobody opted into is not intercepted, and nothing is opted i
 check "39. the settings offer the widget, named, as something the notch can draw" "1 Audio false" \
   "$(notch settingsReport 2>/dev/null | jq -r '.hostable | length') $(notch settingsReport 2>/dev/null | jq -r '.hostable[0].name') $(notch settingsReport 2>/dev/null | jq -r '.hostable[0].hosted')"
 
-check "40. no QML errors in the notch either" "none" \
+# A plugin opening its own panel -- its keybind, or `omarchy-shell <id> open` --
+# has to land in the notch too, or the integration only half applies.
+harness() { quickshell ipc -p "$notch_root" call harness "$@" 2>/dev/null; }
+
+check "40. nothing is hosted before the summon" "false" "$(notch geometry | jq -r '.hosted.open')"
+check "41. summoning a widget nobody opted into leaves the notch alone" "ok false" \
+  "$(harness summon) $(sleep 0.8; notch geometry | jq -r '.hosted.open')"
+own=$(harness ownWindow)
+check "42. …and that plugin opened its own window, as it always did" "true" \
+  "$(jq -r '.open' <<<"$own")"
+
+# Put the plugin's own panel back down first: `open` is already true, and
+# setting it true again would fire no change for the notch to act on.
+harness dismiss >/dev/null; sleep 0.6
+
+# Now opt it in, the way the settings switch does, and summon again.
+harness setNotch '{"batteryPeek":false,"bottomRadius":10,"hostedPanels":["audio"]}' >/dev/null; sleep 0.8
+check "43. the settings switch is what turns it on" '["audio"]' "$(notch hosting | jq -c '.opted')"
+harness summon >/dev/null; sleep 1.0
+g=$(notch geometry)
+own=$(harness ownWindow)
+check "44. the plugin's own summon now opens inside the notch" "expanded hosted true" \
+  "$(field "$g" '.state') $(field "$g" '.view') $(field "$g" '.hosted.open')"
+# This shows the window is down once the notch has it. That it never appears at
+# all rests on the handler running in the same turn as the plugin's own `open`,
+# which is reasoned rather than measured: an IPC round trip is ~50 ms and a
+# frame is ~8, so this harness cannot see a single-frame flicker either way.
+check "45. …and the plugin's own window was put straight back down" "false false" \
+  "$(jq -r '.visible' <<<"$own") $(jq -r '.open' <<<"$own")"
+
+notch releasePanel >/dev/null; sleep 1.0
+check "46. releasing it gives the panel back" "false 0" \
+  "$(notch geometry | jq -r '.hosted.open') $(notch geometry | jq -r '.hosted.items')"
+
+# Setup has to ask, or nobody finds the switch.
+harness setNotch '{"batteryPeek":false,"bottomRadius":10}' >/dev/null; sleep 0.8
+notch setup check "" >/dev/null 2>&1; sleep 2.5
+point=$(notch setup status "" 2>/dev/null | jq -c '.points[] | select(.id == "hostable-panels")')
+echo "  ${DIM}$(jq -c '{severity, title, handoff}' <<<"$point" 2>/dev/null)${RESET}"
+check "47. Setup asks about a panel the notch could draw, and offers to do it" "action Integrate them integrate-panels" \
+  "$(jq -r '.severity' <<<"$point") $(jq -r '.handoff.label' <<<"$point") $(jq -r '.handoff.action' <<<"$point")"
+check "48. …naming the plugin rather than its id" "Audio" "$(jq -r '.items[0].summary' <<<"$point")"
+
+harness setNotch '{"batteryPeek":false,"bottomRadius":10,"hostedPanels":["audio"]}' >/dev/null; sleep 0.8
+notch setup check "" >/dev/null 2>&1; sleep 2.5
+point=$(notch setup status "" 2>/dev/null | jq -c '.points[] | select(.id == "hostable-panels")')
+check "49. …and stops asking once it is on" "ok" "$(jq -r '.severity' <<<"$point")"
+
+check "50. no QML errors in the notch either" "none" \
   "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" || echo none)"
 
 echo

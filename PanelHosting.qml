@@ -153,6 +153,7 @@ QtObject {
   // Which widgets the user has asked to see inside the notch. Set by the notch.
   property var opted: []
 
+
   // What the notch's reports say about it.
   function report() {
     return {

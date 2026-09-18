@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import "notch" as Notch
 
 // The real notch, drawing one real Omarchy bar widget, for dev/hosting.sh part B.
@@ -13,6 +14,7 @@ ShellRoot {
   readonly property string widgetPath: Quickshell.env("HOSTING_WIDGET")
     || (Quickshell.env("OMARCHY_SHELL_PATH") + "/plugins/panels/audio/Panel.qml")
   readonly property string widgetId: "audio"
+  property var notchOverride: ({})
 
   QtObject {
     id: fakeRegistry
@@ -35,13 +37,54 @@ ShellRoot {
     function has(id) { return widgets[String(id)] !== undefined }
   }
 
+  // Reach the widget the notch is drawing, to open its panel the way the
+  // plugin's own keybind does -- through its own controller, with nothing the
+  // notch could intercept first.
+  IpcHandler {
+    target: "harness"
+
+    // The notch writes its settings through the host in a real session; here
+    // the harness stands in for that, so a check can turn hosting on the way
+    // the settings switch does.
+    function setNotch(json: string): string {
+      try { shellRoot.notchOverride = JSON.parse(json) } catch (e) { return "bad-json" }
+      return "ok"
+    }
+
+    function summon(): string {
+      var item = notch.widgetItemFor(shellRoot.widgetId)
+      if (!item) return "no widget"
+      var controller = notch.hosting.controllerOf(item)
+      if (!controller) return "no controller"
+      controller.open = true
+      return "ok"
+    }
+
+    function dismiss(): string {
+      var item = notch.widgetItemFor(shellRoot.widgetId)
+      var controller = item ? notch.hosting.controllerOf(item) : null
+      if (controller) controller.open = false
+      return "ok"
+    }
+
+    // Whether the plugin's own window is mapped right now, and whether its own
+    // panel thinks it is open.
+    function ownWindow(): string {
+      var item = notch.widgetItemFor(shellRoot.widgetId)
+      var panel = item ? notch.hosting.panelOf(item) : null
+      return JSON.stringify({ visible: panel ? panel.visible === true : false,
+                              open: panel ? panel.open === true : false })
+    }
+  }
+
   Notch.Bar {
+    id: notch
     barWidgetRegistry: fakeRegistry
     barConfig: ({
       position: "top",
       transparent: false,
       layout: { left: [], center: [], right: [{ id: shellRoot.widgetId }] },
-      notch: JSON.parse(Quickshell.env("NOTCH_HARNESS_CONFIG") || "{}")
+      notch: Object.assign({}, JSON.parse(Quickshell.env("NOTCH_HARNESS_CONFIG") || "{}"), shellRoot.notchOverride)
     })
   }
 }

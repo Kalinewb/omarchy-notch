@@ -1724,6 +1724,22 @@ Item {
     return out
   }
 
+  // Say yes to all of them at once, which is what Setup offers. One setting,
+  // nothing copied and nothing patched -- and each one can still be switched
+  // off on its own afterwards.
+  function integrateHostablePanels() {
+    var wanted = (notchHostedPanels || []).slice()
+    var offered = hostableWidgets()
+    var added = 0
+    for (var i = 0; i < offered.length; i++) {
+      if (wanted.indexOf(offered[i].id) !== -1) continue
+      wanted.push(offered[i].id)
+      added++
+    }
+    if (added === 0) return 0
+    return setNotchSetting("hostedPanels", wanted) ? added : 0
+  }
+
   // The live item of a widget the notch is drawing, by the name the layout
   // knows it as. Used to host that widget's own panel inside the notch.
   function widgetItemFor(name) {
@@ -4826,6 +4842,24 @@ Item {
         // does, rather than swallowing the click.
         if (answer.indexOf("declined") === 0 && slot.activeItem && typeof slot.activeItem.toggle === "function")
           slot.activeItem.toggle()
+      }
+    }
+
+    // A plugin can open its own panel without going through its bar icon: its
+    // own keybind, or `omarchy-shell <plugin> open`. Nothing the notch can
+    // intercept comes first, so it watches the plugin's own open state instead
+    // and takes the panel the moment it goes up -- in the same turn, because
+    // `open` is what maps the plugin's window, and a Timer would show it for a
+    // frame. This also catches a click the notch's own handler did not win.
+    Connections {
+      target: root.hostsPanelOf(slot.moduleName) && slot.activeItem
+        ? root.hosting.controllerOf(slot.activeItem) : null
+      enabled: !!target
+      ignoreUnknownSignals: true
+      function onOpenChanged() {
+        if (!target || target.open !== true) return
+        if (root.hosting.widget === slot.activeItem && root.hosting.active) { target.open = false; return }
+        if (root.hostPanel(slot.activeItem, root.slotScreenName(slot)) === "opened") target.open = false
       }
     }
 

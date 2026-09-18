@@ -59,9 +59,17 @@ PLUGIN_HOOKS=(NOTCH_FORCE_PLUGINS=1 NOTCH_PLUGINS_DIR="$root/plugins" NOTCH_PLUG
               NOTCH_PLUGINS_SCRATCH="$root/scratch"
               NOTCH_PLUGINS_DETACH=setsid)
 
+# Setup is drawn from a sandbox too: its own state and status, and a detect
+# that can't reach the real config.
+mkdir -p "$root/setup-home/.config/hypr" "$root/setup-home/.config/omarchy" "$root/setup-state" "$root/setup-run"
+echo '{"bar":{"id":"graveklar.notch","layout":{"left":[],"center":[],"right":[]}}}' >"$root/setup-home/.config/omarchy/shell.json"
+SETUP_HOOKS=(NOTCH_FORCE_SETUP=1 NOTCH_SETUP_DETACH=setsid NOTCH_SETUP_HOME="$root/setup-home"
+             NOTCH_SETUP_CONFIG_DIR="$root/setup-home/.config" NOTCH_SETUP_TOGGLES_DIR="$root/setup-home/toggles"
+             NOTCH_SETUP_STATE_DIR="$root/setup-state" NOTCH_SETUP_STATUS="$root/setup-run/setup.json")
+
 ipc() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
 start() {
-  env NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 NOTCH_HARNESS_CONFIG="$1" "${PLUGIN_HOOKS[@]}" quickshell -p "$root" -n >>"$root/qs.log" 2>&1 &
+  env NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 NOTCH_HARNESS_CONFIG="$1" "${PLUGIN_HOOKS[@]}" "${SETUP_HOOKS[@]}" quickshell -p "$root" -n >>"$root/qs.log" 2>&1 &
   qs_pid=$!
   for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
   for _ in $(seq 1 30); do sleep 0.1; [[ $(ipc geometry | jq -r .menu.rowsLoaded) == true ]] && break; done
@@ -90,7 +98,13 @@ for r in ${RADII:-10 8 3 16}; do
   cardAudit=$(ipc design | jq -c .plugins)
   carded=$(ipc geometry | jq -r .plugins.card)
   ipc pluginsPress escape >/dev/null; ipc plugins close >/dev/null
-  d=$(jq -c --argjson page "$page" --argjson card "$cardAudit" '.plugins = $page | .pluginsCard = $card' <<<"$d")
+  # The Setup page (forced on, so a test notch draws it).
+  ipc view setup >/dev/null; sleep 1.0
+  setupOpen=$(ipc geometry | jq -r .setup.open)
+  setupAudit=$(ipc design | jq -c '.setup // []')
+  ipc toggle >/dev/null
+  d=$(jq -c --argjson page "$page" --argjson card "$cardAudit" --argjson setup "$setupAudit" \
+       '.plugins = $page | .pluginsCard = $card | .setup = $setup' <<<"$d")
   report=$(python3 - "$d" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
@@ -112,13 +126,13 @@ def audit(items):
         bad.append(f'{i["type"]} {i["width"]}x{i["height"]} radius {i["radius"]} (want {want:g}) at {i["path"]}')
     return {"total": len(items), "drawn": len(drawn), "roundParts": round_parts, "bad": bad}
 out = {"radius": r, "settings": audit(d["settings"]), "menu": audit(d["menu"]),
-       "plugins": audit(d["plugins"]), "pluginsCard": audit(d["pluginsCard"]),
+       "plugins": audit(d["plugins"]), "pluginsCard": audit(d["pluginsCard"]), "setup": audit(d.get("setup", [])),
        "tooltipOk": abs(d["tooltip"]["radius"] - max(0, min(r, d["tooltip"]["height"] / 2))) <= 0.01}
 print(json.dumps(out))
 PY
 )
   echo "  ${DIM}$(jq -c '{radius, settings: (.settings | {total, drawn, roundParts, bad: (.bad | length)}), menu: (.menu | {total, drawn, roundParts, bad: (.bad | length)}), plugins: (.plugins | {total, drawn, bad: (.bad | length)}), card: (.pluginsCard | {total, drawn, bad: (.bad | length)})}' <<<"$report")${RESET}"
-  jq -r '(.settings.bad[:6] + .menu.bad[:14] + .plugins.bad[:6] + .pluginsCard.bad[:6])[] | "        \(.)"' <<<"$report"
+  jq -r '(.settings.bad[:6] + .menu.bad[:14] + .plugins.bad[:6] + .pluginsCard.bad[:6] + .setup.bad[:6])[] | "        \(.)"' <<<"$report"
   check "the notch's radius is bottomRadius ($r)" "$r" "$(jq -r .radius <<<"$d")"
   check "settings: every drawn rounded item has radius min($r, height / 2, width / 2)" "true 0" \
     "$(jq -r '.settings | "\(.drawn > 20) \(.bad | length)"' <<<"$report")"
@@ -128,6 +142,10 @@ PY
     "$(jq -r '.plugins | "\(.drawn > 3) \(.bad | length)"' <<<"$report")"
   check "plugins card (shown): every drawn rounded item (Cancel, Install) has radius min($r, height / 2, width / 2)" "true true 0" \
     "$carded $(jq -r '.pluginsCard | "\(.drawn >= 2) \(.bad | length)"' <<<"$report")"
+  # How many rows the page has depends on what detection found in the sandbox,
+  # so this asserts the radii, not the amount of content.
+  check "setup page: every drawn rounded item (rows, buttons) has radius min($r, height / 2, width / 2)" "true 0" \
+    "$setupOpen $(jq -r '.setup.bad | length' <<<"$report")"
   check "the tooltip bubble has the notch's radius" "true" "$(jq -r .tooltipOk <<<"$report")"
   stop
 done

@@ -1,0 +1,115 @@
+#!/bin/bash
+# Which installed plugins say they integrate with the notch.
+#
+#   notch-integrations scan <plugins dir>   one JSON array, sorted by id
+#
+# Read-only. Omarchy gives a plugin no way to list the others, so the notch
+# reads the plugins folder itself, the way the host scans it: every top-level
+# folder with a manifest.json, dot entries skipped. A manifest with a `notch`
+# key is a candidate.
+#
+# Each entry is {id, name, version, dir, contract, entry, problems}. `problems`
+# is what would stop the notch loading it:
+#
+#   bad-json        the manifest isn't JSON
+#   schema          schemaVersion isn't 1
+#   bad-id          the id isn't a plain id, or claims Omarchy's namespace
+#   self            it says it is the notch
+#   bad-contract    notch.contract isn't a positive integer
+#   entry-unsafe    the entry path is absolute, climbs out, or resolves outside
+#                   the plugin folder (a symlink)
+#   entry-missing   the entry isn't there
+#   entry-not-qml   the entry isn't a .qml file
+#   own-window      the entry file mentions PanelWindow, PopupWindow or
+#                   FloatingWindow: an integration draws inside the notch, it
+#                   doesn't open windows of its own. Shallow by design -- it
+#                   reads only the entry file, so a window in an imported file
+#                   isn't caught, and the name inside a string is a false
+#                   positive. The rule is binding; this check is a courtesy.
+#   duplicate-id    another folder, earlier by name, already claimed this id
+#
+# Nothing here decides whether a plugin is *enabled*: that is the notch's job
+# (NotchPlatform.qml), from the widget catalogue the host hands it.
+
+set -uo pipefail
+
+scan() {
+  local dir=${1:-}
+  [[ -n $dir && -d $dir ]] && [[ $(realpath -m "$dir") != "/" ]] || { echo "[]"; return 0; }
+
+  local entries=""
+  local sub
+  for sub in "$dir"/*/; do
+    [[ -d $sub ]] || continue
+    local name; name=$(basename "$sub")
+    [[ $name == .* ]] && continue
+    local manifest="$sub/manifest.json"
+    [[ -f $manifest ]] || continue
+    jq -e 'has("notch")' "$manifest" >/dev/null 2>&1 || {
+      # Unreadable JSON still counts as a candidate when the folder name looks
+      # like one: a broken manifest is worth reporting, not hiding.
+      jq -e . "$manifest" >/dev/null 2>&1 && continue
+      entries+=$(jq -nc --arg id "$name" --arg dir "$sub" \
+        '{id: $id, name: $id, version: "", dir: $dir, contract: 0, entry: "", problems: ["bad-json"]}')$'\n'
+      continue
+    }
+
+    local id version display contract entry problems='[]'
+    id=$(jq -r '.id // ""' "$manifest")
+    version=$(jq -r '.version // ""' "$manifest")
+    display=$(jq -r '.name // .id // ""' "$manifest")
+    contract=$(jq -r '.notch.contract // 0' "$manifest")
+    entry=$(jq -r '.entryPoints.notch // ""' "$manifest")
+
+    add() { problems=$(jq -c --arg p "$1" '. + [$p]' <<<"$problems"); }
+
+    # The number 1, not the string "1": a manifest that gets the type wrong is
+    # one the host would refuse too.
+    jq -e '.schemaVersion == 1' "$manifest" >/dev/null 2>&1 || add schema
+    if [[ -z $id || ! $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ || $id == omarchy.* ]]; then add bad-id; fi
+    [[ $id == graveklar.notch ]] && add self
+    [[ $contract =~ ^[0-9]+$ && $contract -gt 0 ]] || add bad-contract
+
+    if [[ -n $entry ]]; then
+      local resolved="" folder
+      folder=$(realpath -m "$sub")
+      if [[ $entry == /* || $entry == *..* ]]; then
+        add entry-unsafe
+      else
+        resolved=$(realpath -m "$sub/$entry")
+        # realpath follows symlinks, so an entry pointing out of the plugin
+        # folder is caught even when the path itself looks innocent.
+        if [[ $resolved != "$folder"/* ]]; then add entry-unsafe
+        elif [[ ! -f $sub/$entry ]]; then add entry-missing
+        elif [[ $entry != *.qml ]]; then add entry-not-qml
+        elif [[ -L $sub/$entry ]]; then add entry-unsafe
+        else
+          # Comments don't count, so a note about windows isn't a problem.
+          local stripped
+          stripped=$(perl -0777 -pe 's{/\*.*?\*/}{}gs; s{//[^\n]*}{}g' "$sub/$entry" 2>/dev/null \
+            || sed -e 's|//.*||' "$sub/$entry")
+          grep -qE '\b(PanelWindow|PopupWindow|FloatingWindow)\b' <<<"$stripped" && add own-window
+        fi
+      fi
+    fi
+
+    entries+=$(jq -nc --arg id "${id:-$name}" --arg name "$display" --arg version "$version" \
+      --arg dir "$sub" --argjson contract "$([[ $contract =~ ^[0-9]+$ ]] && echo "$contract" || echo 0)" \
+      --arg entry "$entry" --argjson problems "$problems" --arg folder "$name" \
+      '{id: $id, name: $name, version: $version, dir: $dir, contract: $contract, entry: $entry,
+        problems: $problems, folder: $folder}')$'\n'
+  done
+
+  [[ -z $entries ]] && { echo "[]"; return 0; }
+  # Two folders claiming one id: the earlier folder name keeps it.
+  jq -sc 'sort_by(.folder)
+    | reduce .[] as $e ({seen: {}, out: []};
+        if .seen[$e.id] then .out += [$e | .problems += ["duplicate-id"]]
+        else .seen[$e.id] = true | .out += [$e] end)
+    | .out | sort_by(.id)' <<<"$entries"
+}
+
+case "${1:-}" in
+  scan) scan "${2:-}" ;;
+  *) echo "usage: notch-integrations scan <plugins dir>" >&2; exit 2 ;;
+esac

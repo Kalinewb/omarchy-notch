@@ -95,6 +95,72 @@ to `~/.local/state/graveklar.notch/backups/` first.
 
 Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clone).
 
+### Setup
+
+Settings → **Setup** (the button left of ✕, with a count when something needs attention) turns the
+settings into the Setup page: a list of things about this machine that stop the notch working the
+way you want, each in plain words, with a **Fix** button where the notch can safely put it right.
+`omarchy-shell notch view setup` opens it directly.
+
+It checks twenty things — whether the bar is hidden, whether the notch is the active bar and
+loaded, Hyprland config errors, the menu companion and menu keys that go around it, keybind
+clashes and leftover notch binds, widgets in the layout that aren't installed or drew nothing,
+settings naming plugins that are gone, Face ID and Profiles, stray test shells, old `.bak` files,
+Omarchy files that moved upstream, layer rules that fight the notch's animation, and whether the
+notch can update itself.
+
+**Nothing is done behind your back.** Fix unfolds a confirmation that names the files it will
+change. Before it changes them they are copied into
+`~/.local/state/graveklar.notch/setup/snapshots/`, and **Snapshots** at the bottom of the page
+puts any of them back byte for byte. A restore of a file you have edited since is refused and says
+so; you can then remove just the notch's marked block and keep your own edits, or restore anyway
+(which snapshots the current state first). Whether a fix worked is decided by running the check
+again and hashing the files, never by a command's exit status: a fix that doesn't take is rolled
+back by itself.
+
+Some of what it finds means there is no notch to press a button in (the bar is hidden, the notch
+isn't the active bar, it failed to load), so all of it works from a terminal too:
+
+```sh
+~/.config/omarchy/plugins/graveklar.notch/bin/notch-setup detect      # the same list, as a table
+~/.config/omarchy/plugins/graveklar.notch/bin/notch-setup fix <point>
+~/.config/omarchy/plugins/graveklar.notch/bin/notch-setup snapshots
+~/.config/omarchy/plugins/graveklar.notch/bin/notch-setup restore <snapshot>
+```
+
+`detect` only reads. It works out your effective keybinds by loading your Hyprland config with a
+recording stand-in for Hyprland's own `hl` table (the same trick Omarchy's keybindings menu uses),
+which is the only way to see a `code:` key or a bind written in Lua. Setup never runs anything
+privileged, never touches a plugin's own setup, and never writes the plugins folder.
+
+## Plugin integrations
+
+Any Omarchy plugin can draw its own panel **inside** the notch. It declares one
+line in its manifest (`"notch": { "contract": 1 }`) plus an
+`entryPoints.notch` QML file, and the notch does the rest: the panel opens on
+the notch's black surface, in its text colours, at its radius, on its motion,
+and the plugin's own popup stays shut for as long as the notch is showing it.
+
+The written contract is **[PLUGINS.md](PLUGINS.md)** — what to declare, the
+`notchHost` object a plugin is handed, how panels are sized and closed, how to
+claim a line in the resting notch, and the rule for switching your own UI off
+safely (a surface that exists to *warn* the user never stands down on an answer
+that came from outside the shell).
+
+Settings → **Integrations** lists every plugin that declares one, with a switch
+per plugin and, when it isn't shown, the reason in words. Switching one off
+gives that plugin its own window back at once, with no reload. The section is
+hidden until some plugin declares an integration.
+
+```sh
+omarchy-shell notch integrations           # every candidate, and why
+omarchy-shell notch panel <id> <route>     # open one plugin's panel
+omarchy-shell notch activities             # the resting-notch queue
+```
+
+`dev/fixtures/platform/plugins/acme.demo` is a complete worked example, and it
+is what `dev/platform.sh` tests.
+
 ## How it behaves
 
 | State | What you see |

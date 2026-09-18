@@ -1,0 +1,1594 @@
+#!/bin/bash
+# What's stopping the notch from working the way you want -- and, where it is
+# safe, how to put it right.
+#
+#   notch-setup detect [--json] [--local] [--only <id>]
+#   notch-setup fix <point> [--arg <value>] [--dry-run] [--status <file>] [--reopen]
+#   notch-setup snapshots [--json]
+#   notch-setup show <snapshot> [--diff]
+#   notch-setup restore <snapshot> [--force | --block-only] [--status <file>] [--reopen]
+#   notch-setup forget <snapshot>
+#   notch-setup prune
+#   notch-setup ack <status file>
+#
+# The notch's Setup page is a view over `detect`, and its buttons run the verbs
+# above. The commands exist in their own right because some of what they find
+# (the bar is hidden, the notch isn't the active bar, the notch failed to load)
+# means there is no page to press a button in.
+#
+# Nothing here is privileged: no sudo, no pkexec, and no plugin's setup verbs.
+# Before a fix changes a file, every file it touches is copied into
+# ~/.local/state/graveklar.notch/setup/snapshots/, and `restore` puts them back
+# byte for byte. Success is decided by re-running detection and hashing files,
+# never from a command's exit status.
+#
+# Exit codes of `fix` and `restore`:
+#   0 done · 1 failed and rolled back · 2 usage, or refused · 3 files changed
+#   since the fix · 4 not detected, nothing to fix · 5 another job holds the lock
+#
+# Sandboxing: every path and every command it runs can be pointed elsewhere
+# (NOTCH_SETUP_*, see below), which is how dev/setup.sh tests it without
+# touching the session. As a backstop, a writing verb refuses outright when it
+# looks like a test (NOTCH_HARNESS=1, or any override set) unless the paths are
+# sandboxed too -- so a half-set-up test can never write the real config.
+
+set -uo pipefail
+
+SCHEMA=1
+ID="graveklar.notch"
+COMPANION="graveklar.notch-menu"
+
+# --- where things are ---------------------------------------------------------------
+
+SANDBOX="${NOTCH_SETUP_SANDBOX:-}"
+if [[ -n $SANDBOX ]]; then
+  : "${NOTCH_SETUP_HOME:=$SANDBOX/home}"
+  : "${NOTCH_SETUP_CONFIG_DIR:=$SANDBOX/home/.config}"
+  : "${NOTCH_SETUP_TOGGLES_DIR:=$SANDBOX/home/.local/state/omarchy/toggles}"
+  : "${NOTCH_SETUP_STATE_DIR:=$SANDBOX/home/.local/state/$ID/setup}"
+  : "${NOTCH_SETUP_STATUS:=$SANDBOX/run/$ID/setup.json}"
+fi
+
+HOME_DIR="${NOTCH_SETUP_HOME:-$HOME}"
+CONFIG="${NOTCH_SETUP_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME_DIR/.config}}"
+TOGGLES="${NOTCH_SETUP_TOGGLES_DIR:-$HOME_DIR/.local/state/omarchy/toggles}"
+STATE="${NOTCH_SETUP_STATE_DIR:-${XDG_STATE_HOME:-$HOME_DIR/.local/state}/$ID/setup}"
+STATUS_DEFAULT="${NOTCH_SETUP_STATUS:-${XDG_RUNTIME_DIR:-/tmp}/$ID/setup.json}"
+OMARCHY_DIR="${NOTCH_SETUP_OMARCHY_PATH:-${OMARCHY_PATH:-/usr/share/omarchy}}"
+PLUGINS="${NOTCH_SETUP_PLUGINS_DIR:-$CONFIG/omarchy/plugins}"
+SHELL_JSON="$CONFIG/omarchy/shell.json"
+HYPR="$CONFIG/hypr"
+
+# The notch's own folder. Resolved before the self-copy (see `relocate`), because
+# afterwards the script runs from the state directory.
+if [[ -n ${_NOTCH_SETUP_REAL_DIR:-} && $(realpath -m "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null) == "$STATE/run" ]]; then
+  NOTCH_DIR="$_NOTCH_SETUP_REAL_DIR"
+else
+  NOTCH_DIR="${NOTCH_SETUP_NOTCH_DIR:-$(realpath -m "$(dirname -- "${BASH_SOURCE[0]}")/.." 2>/dev/null)}"
+fi
+
+# --- the commands it runs, each replaceable by a stub -------------------------------
+
+split() { local -n _out=$1; read -ra _out <<<"$2"; }
+split HYPRCTL "${NOTCH_SETUP_HYPRCTL:-hyprctl}"
+split OMARCHY_SHELL "${NOTCH_SETUP_OMARCHY_SHELL:-omarchy-shell}"
+split OMARCHY "${NOTCH_SETUP_OMARCHY:-omarchy}"
+split OMARCHY_VERSION "${NOTCH_SETUP_OMARCHY_VERSION:-omarchy-version}"
+split TOGGLE_BAR "${NOTCH_SETUP_TOGGLE_BAR:-omarchy-toggle-bar}"
+split QS "${NOTCH_SETUP_QS:-qs}"
+split KILL_CMD "${NOTCH_SETUP_KILL:-kill}"
+split LUA "${NOTCH_SETUP_LUA:-lua}"
+split SESSION_LOCKED "${NOTCH_SETUP_SESSION_LOCKED:-omarchy-hyprland-session-locked}"
+split RESTART_SHELL "${NOTCH_SETUP_RESTART_SHELL:-omarchy restart shell}"
+PLUGINS_STATE="${NOTCH_SETUP_PLUGINS_STATE:-}"
+
+PROC="${NOTCH_SETUP_PROC:-/proc}"
+RETENTION_DAYS="${NOTCH_SETUP_RETENTION_DAYS:-30}"
+RETENTION_CAP="${NOTCH_SETUP_RETENTION_CAP:-50}"
+
+now_ms() { if [[ -n ${NOTCH_SETUP_NOW_MS:-} ]]; then echo "$NOTCH_SETUP_NOW_MS"; else date +%s%3N; fi; }
+now_s() { echo $(( $(now_ms) / 1000 )); }
+stamp() { date -u -d "@$(now_s)" +%Y%m%dT%H%M%SZ 2>/dev/null || date -u +%Y%m%dT%H%M%SZ; }
+sha() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+canonical_sha() { jq -S -c . "$1" 2>/dev/null | sha256sum | cut -d' ' -f1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+runnable() { local -n _c=$1; have "${_c[0]}" || [[ -x ${_c[0]} ]]; }
+
+# --- the guard ----------------------------------------------------------------------
+#
+# Triggered by anything that says "this is a test": NOTCH_HARNESS, or any path or
+# command override. Once triggered, a writing verb runs only when the paths are
+# sandboxed away from the real ones -- so stubbed commands with real paths, which
+# would append to the real bindings.lua, refuse instead.
+
+OVERRIDE_NAMES=(NOTCH_SETUP_SANDBOX NOTCH_SETUP_HOME NOTCH_SETUP_CONFIG_DIR NOTCH_SETUP_TOGGLES_DIR
+  NOTCH_SETUP_STATE_DIR NOTCH_SETUP_STATUS NOTCH_SETUP_OMARCHY_PATH NOTCH_SETUP_PLUGINS_DIR
+  NOTCH_SETUP_NOTCH_DIR NOTCH_SETUP_HYPRCTL NOTCH_SETUP_OMARCHY_SHELL NOTCH_SETUP_OMARCHY
+  NOTCH_SETUP_OMARCHY_VERSION NOTCH_SETUP_TOGGLE_BAR NOTCH_SETUP_QS NOTCH_SETUP_KILL
+  NOTCH_SETUP_LUA NOTCH_SETUP_PLUGINS_STATE NOTCH_SETUP_SESSION_LOCKED NOTCH_SETUP_RESTART_SHELL)
+
+guard_triggered() {
+  [[ ${NOTCH_HARNESS:-} == 1 ]] && return 0
+  local name
+  for name in "${OVERRIDE_NAMES[@]}"; do [[ -n ${!name:-} ]] && return 0; done
+  return 1
+}
+
+# The default a path override replaces, computed from the process's real HOME.
+default_for() {
+  case $1 in
+    config) echo "${XDG_CONFIG_HOME:-$HOME/.config}" ;;
+    toggles) echo "$HOME/.local/state/omarchy/toggles" ;;
+    state) echo "${XDG_STATE_HOME:-$HOME/.local/state}/$ID/setup" ;;
+    status) echo "${XDG_RUNTIME_DIR:-/tmp}/$ID/setup.json" ;;
+  esac
+}
+
+paths_sandboxed() {
+  [[ -n $SANDBOX ]] || { local n; for n in NOTCH_SETUP_CONFIG_DIR NOTCH_SETUP_TOGGLES_DIR NOTCH_SETUP_STATE_DIR NOTCH_SETUP_STATUS; do
+    [[ -n ${!n:-} ]] || return 1; done; }
+  local pair
+  for pair in "config:$CONFIG" "toggles:$TOGGLES" "state:$STATE" "status:$STATUS_DEFAULT"; do
+    local kind=${pair%%:*} live=${pair#*:}
+    [[ $(realpath -m "$live" 2>/dev/null) == $(realpath -m "$(default_for "$kind")" 2>/dev/null) ]] && return 1
+  done
+  return 0
+}
+
+commands_stubbed() {
+  local name
+  for name in NOTCH_SETUP_HYPRCTL NOTCH_SETUP_OMARCHY_SHELL NOTCH_SETUP_OMARCHY NOTCH_SETUP_TOGGLE_BAR \
+              NOTCH_SETUP_KILL NOTCH_SETUP_SESSION_LOCKED NOTCH_SETUP_RESTART_SHELL; do
+    [[ -n ${!name:-} ]] || return 1
+  done
+  return 0
+}
+
+# check_guard <verb kind: write|run>
+check_guard() {
+  guard_triggered || return 0
+  if ! paths_sandboxed; then
+    echo "notch-setup: refusing to write: this looks like a test run, but the paths are the real ones" >&2
+    return 2
+  fi
+  if [[ $1 == run ]] && ! commands_stubbed; then
+    echo "notch-setup: refusing to run: this looks like a test run, but the commands are the real ones" >&2
+    return 2
+  fi
+  return 0
+}
+
+# --- reading the machine ------------------------------------------------------------
+
+SCAN_CACHE=""
+scan_binds() { # every effective bind, one JSON object per line
+  [[ -n $SCAN_CACHE ]] && { printf '%s\n' "$SCAN_CACHE"; return 0; }
+  runnable LUA || return 1
+  local stub="$NOTCH_DIR/bin/notch-setup-binds.lua"
+  [[ -f ${_NOTCH_SETUP_STUB:-} ]] && stub="$_NOTCH_SETUP_STUB"
+  [[ -f $stub ]] || return 1
+  SCAN_CACHE=$(NOTCH_SETUP_HOME="$HOME_DIR" NOTCH_SETUP_OMARCHY_PATH="$OMARCHY_DIR" \
+    HOME="$HOME_DIR" XDG_CONFIG_HOME="$CONFIG" XDG_STATE_HOME="$HOME_DIR/.local/state" OMARCHY_PATH="$OMARCHY_DIR" \
+    timeout 20 "${LUA[@]}" "$stub" 2>/dev/null) || return 1
+  [[ -n $SCAN_CACHE ]] || return 1
+  printf '%s\n' "$SCAN_CACHE"
+}
+
+json_or() { local text=$1 fallback=$2; jq -e . >/dev/null 2>&1 <<<"$text" && printf '%s' "$text" || printf '%s' "$fallback"; }
+
+shell_config() { cat "$SHELL_JSON" 2>/dev/null; }
+setting() { jq -r "$1 // empty" "$SHELL_JSON" 2>/dev/null; }
+
+PLUGIN_LIST_CACHE=""
+plugin_list() {
+  [[ -n $PLUGIN_LIST_CACHE ]] && { printf '%s' "$PLUGIN_LIST_CACHE"; return; }
+  local out=""
+  runnable OMARCHY && out=$(timeout 15 "${OMARCHY[@]}" plugin list --json 2>/dev/null)
+  PLUGIN_LIST_CACHE=$(json_or "$out" "[]")
+  printf '%s' "$PLUGIN_LIST_CACHE"
+}
+
+HYPR_BINDS_CACHE=""
+hypr_binds() {
+  [[ -n $HYPR_BINDS_CACHE ]] && { printf '%s' "$HYPR_BINDS_CACHE"; return; }
+  local out=""
+  runnable HYPRCTL && out=$(timeout 10 "${HYPRCTL[@]}" binds -j 2>/dev/null)
+  HYPR_BINDS_CACHE=$(json_or "$out" "[]")
+  printf '%s' "$HYPR_BINDS_CACHE"
+}
+
+hypr_config_errors() {
+  local out=""
+  runnable HYPRCTL && out=$(timeout 10 "${HYPRCTL[@]}" configerrors -j 2>/dev/null)
+  json_or "$out" "[]"
+}
+
+omarchy_version() {
+  runnable OMARCHY_VERSION && timeout 10 "${OMARCHY_VERSION[@]}" 2>/dev/null | tr -d '\n' && return
+  echo ""
+}
+
+notch_version() { jq -r '.version // ""' "$NOTCH_DIR/manifest.json" 2>/dev/null; }
+
+session_locked() { runnable SESSION_LOCKED && "${SESSION_LOCKED[@]}" >/dev/null 2>&1; }
+
+# --- points -------------------------------------------------------------------------
+#
+# Each emits one JSON object. `severity` is fix, action, warn, info, ok or
+# unknown; `fix` is null when there is nothing to press.
+
+point() { # point <id> <severity> <title> <summary> <detail json> <items json> <fix json> <handoff json>
+  jq -nc --arg id "$1" --arg severity "$2" --arg title "$3" --arg summary "$4" \
+    --argjson detail "${5:-[]}" --argjson items "${6:-[]}" --argjson fix "${7:-null}" --argjson handoff "${8:-null}" \
+    '{id: $id, severity: $severity, title: $title, summary: $summary, detail: $detail, items: $items, fix: $fix, handoff: $handoff}'
+}
+
+fixspec() { # fixspec <kind> <label> <files json> <reload json> <risk> <destroysNotch> [disabledReason]
+  jq -nc --arg kind "$1" --arg label "$2" --argjson files "$3" --argjson reload "$4" \
+    --arg risk "$5" --argjson destroys "$6" --arg disabled "${7:-}" \
+    '{kind: $kind, label: $label, files: $files, reload: $reload, risk: $risk, destroysNotch: $destroys, disabledReason: $disabled}'
+}
+
+strings() { printf '%s\n' "$@" | jq -R . | jq -sc .; }
+
+# The family of default binds that open Omarchy's menu, computed from Omarchy's
+# own utilities.lua rather than written down here.
+menu_family() {
+  local file="$OMARCHY_DIR/default/hypr/bindings/utilities.lua"
+  [[ -f $file ]] || return 1
+  grep -oP '^o\.bind\("\K[^"]+(?=".*"omarchy-menu toggle)' "$file"
+}
+
+companion_state() { # absent | disabled | inactive | active
+  local list; list=$(plugin_list)
+  local entry; entry=$(jq -c --arg id "$COMPANION" 'map(select(.id == $id)) | .[0] // null' <<<"$list")
+  [[ $entry == null ]] && { echo absent; return; }
+  [[ $(jq -r '.enabled // false' <<<"$entry") == true ]] || { echo disabled; return; }
+  [[ $(jq -r '.active // false' <<<"$entry") == true ]] || { echo inactive; return; }
+  echo active
+}
+
+detect_bar_off() {
+  if [[ -f $TOGGLES/bar-off ]]; then
+    point bar-off fix "The bar is hidden" \
+      "Omarchy's bar toggle is off, so the notch isn't drawn at all." \
+      "$(strings "The flag is $TOGGLES/bar-off." "Fix runs \`omarchy-toggle-bar off\`, which removes the flag and tells the bar to come back. The direction is inverted on purpose: \`omarchy toggle bar on\` is what hides it.")" \
+      '[]' "$(fixspec flag "Fix" "$(strings "$TOGGLES/bar-off")" '[]' low false)"
+  else
+    point bar-off ok "The bar is shown" "Omarchy's bar toggle is on."
+  fi
+}
+
+detect_notch_not_bar() {
+  local bar; bar=$(setting .bar.id)
+  if [[ -z $bar ]]; then
+    point notch-not-bar unknown "Couldn't read the active bar" "Couldn't check: shell.json couldn't be read."
+  elif [[ $bar == "$ID" ]]; then
+    point notch-not-bar ok "The notch is the bar" "\`bar.id\` is $ID."
+  elif [[ -d $PLUGINS/$ID ]]; then
+    point notch-not-bar fix "Another bar is active" "The active bar is $bar, so the notch isn't showing." \
+      "$(strings "Fix runs \`omarchy plugin enable $ID\`. Undo puts $bar back.")" '[]' \
+      "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
+  else
+    point notch-not-bar info "The notch isn't installed here" "The active bar is $bar and $PLUGINS/$ID doesn't exist."
+  fi
+}
+
+detect_notch_failed() {
+  local bar; bar=$(setting .bar.id)
+  [[ $bar == "$ID" ]] || { point notch-failed ok "Nothing to report" "The notch isn't the active bar."; return; }
+  local active; active=$(jq -r --arg id "$ID" 'map(select(.id == $id)) | .[0].active // "unknown"' <<<"$(plugin_list)")
+  if [[ $active == false ]]; then
+    point notch-failed warn "The notch failed to load" \
+      "It is the chosen bar, but the shell couldn't load it, so Omarchy fell back to another bar." \
+      "$(strings "Run \`omarchy plugin validate $PLUGINS/$ID\` to see why." "Then \`./install.sh\` from the dev checkout, or restart the shell.")"
+  else
+    point notch-failed ok "The notch loaded" "It is the active bar and the shell has it."
+  fi
+}
+
+detect_hypr_config_errors() {
+  local errors; errors=$(hypr_config_errors)
+  local count; count=$(jq '[.[] | select(. != null and . != "")] | length' <<<"$errors" 2>/dev/null || echo 0)
+  if (( count > 0 )); then
+    point hypr-config-errors warn "Hyprland reports config errors" \
+      "$count error(s) in your Hyprland config. While they are there, fixes that write Hyprland files are switched off, because none of them could be verified." \
+      "$(jq -c '[.[] | select(. != null and . != "")]' <<<"$errors")"
+  else
+    point hypr-config-errors ok "Hyprland's config is clean" "\`hyprctl configerrors\` is empty."
+  fi
+}
+
+detect_menu_replace_companion() {
+  local want; want=$(setting .bar.notch.replaceMenu)
+  local state; state=$(companion_state)
+  if [[ $want != true ]]; then
+    point menu-replace-companion ok "Omarchy's own menu is in use" "\"Replace the Omarchy menu\" is off."
+    return
+  fi
+  case $state in
+    active) point menu-replace-companion ok "The menu opens in the notch" "The menu companion is installed and running." ;;
+    disabled)
+      point menu-replace-companion fix "The menu companion is switched off" \
+        "\"Replace the Omarchy menu\" is on, but $COMPANION is disabled, so the menu still opens in Omarchy's own window." \
+        "$(strings "Fix runs \`omarchy plugin enable $COMPANION\`." "Undo runs \`omarchy plugin disable $COMPANION\`, which puts omarchy.menu back exactly.")" \
+        '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
+    inactive)
+      point menu-replace-companion warn "The menu companion didn't load" \
+        "It is installed and enabled, but the shell couldn't load it." \
+        "$(strings "Run \`omarchy plugin validate $PLUGINS/$COMPANION\`, then restart the shell.")" ;;
+    *)
+      point menu-replace-companion action "The menu companion isn't installed" \
+        "\"Replace the Omarchy menu\" is on, but nothing is intercepting the menu yet." \
+        "$(strings "Press Set up next to \"Replace the Omarchy menu\" in the notch's settings.")" '[]' null \
+        '{"label": "Open Settings", "view": "settings"}' ;;
+  esac
+}
+
+# Binds whose command reaches the notch's menu directly, so they skip the toggle.
+bypass_binds() {
+  local family; family=$(menu_family) || return 1
+  local family_json; family_json=$(printf '%s\n' "$family" | jq -R . | jq -sc .)
+  local scan; scan=$(scan_binds) || return 1
+  local marker; marker=$(jq -s 'map(select(.marker == "hypr.bindings-end")) | .[0].seq // 0' <<<"$scan")
+  jq -sc --argjson family "$family_json" --argjson marker "$marker" '
+    def norm: split(" + ") | map(ascii_upcase) | sort | join("+");
+    (($family | map(norm)) | unique) as $keys
+    | [ .[] | select(.bind) | .bind
+        | select((.combo | norm) as $c | $keys | index($c))
+        | select(.command | test("notch[- ]menu|notch menu|graveklar\\.notch"; "i"))
+        | { arg: .combo, command: .command, source: .source, line: .line, seq: .seq,
+            late: (.seq > $marker),
+            summary: ("\(.combo) runs `\(.command)`") } ]' <<<"$scan"
+}
+
+detect_menu_keys_bypass() {
+  local items
+  if ! items=$(bypass_binds); then
+    point menu-keys-bypass unknown "Couldn't read your keybinds" \
+      "Couldn't check: the Hyprland config couldn't be read (is \`lua\` installed?)."
+    return
+  fi
+  local count; count=$(jq 'length' <<<"$items")
+  if (( count == 0 )); then
+    point menu-keys-bypass ok "Menu keys go through Omarchy" "Every menu key runs \`omarchy-menu\`, so the toggle decides where it opens."
+    return
+  fi
+  local state; state=$(companion_state)
+  local late; late=$(jq '[.[] | select(.late)] | length' <<<"$items")
+  local files; files=$(strings "$HYPR/bindings.lua")
+  local keys; keys=$(jq -r '[.[].arg] | join(", ")' <<<"$items")
+  if [[ $state != active ]]; then
+    point menu-keys-bypass info "Menu keys call the notch directly" \
+      "$keys open the notch's menu without going through Omarchy. That works today; once the menu companion is set up and \"Replace the Omarchy menu\" is on, these keys will skip the toggle." \
+      "$(strings "Set up the menu replacement first, then come back here to put the keys on Omarchy's defaults.")" "$items"
+    return
+  fi
+  local disabled=""
+  (( late > 0 )) && disabled="$(jq -r '[.[] | select(.late) | .source] | unique | join(", ")' <<<"$items") loads after bindings.lua, so a block appended there can't override it. Change it in that file."
+  point menu-keys-bypass fix "Menu keys skip the menu toggle" \
+    "$keys open the notch's menu directly, so \"Replace the Omarchy menu\" can't switch them back." \
+    "$(strings "Fix appends a marked block to ~/.config/hypr/bindings.lua that puts each key back on Omarchy's own default, which the menu companion then routes to the notch." "Nothing in the block mentions the notch, so it keeps working if the notch is gone.")" \
+    "$items" "$(fixspec block "Fix" "$files" "$(strings "hyprctl reload")" medium false "$disabled")"
+}
+
+# The notch's own keys, and whether anything else already uses them.
+notch_keys() {
+  jq -nc --argjson config "$(json_or "$(shell_config)" '{}')" '
+    ($config.bar.notch // {}) as $n
+    | [ {name: "openKey", combo: ($n.openKey // "")}, {name: "settingsKey", combo: ($n.settingsKey // "")},
+        {name: "menuKey", combo: ($n.menuKey // "")}, {name: "autoHideKey", combo: ($n.autoHideKey // "")},
+        {name: "stayOpenKey", combo: ($n.stayOpenKey // "")} ]
+    | map(select(.combo != ""))'
+}
+
+detect_notch_key_collision() {
+  local keys; keys=$(notch_keys)
+  [[ $(jq 'length' <<<"$keys") == 0 ]] && { point notch-key-collision ok "No keybind clashes" "The notch has no keys set."; return; }
+  local scan items
+  if scan=$(scan_binds); then
+    local binds; binds=$(jq -sc '[.[] | select(.bind) | .bind]' <<<"$scan")
+    local family; family=$(menu_family 2>/dev/null | jq -R . | jq -sc . || echo '[]')
+    local replace; replace=$(setting .bar.notch.replaceMenu)
+    items=$(jq -c --argjson binds "$binds" --argjson family "$family" --arg replace "${replace:-false}" '
+      def norm: split(" + ") | map(ascii_upcase) | sort | join("+");
+      . as $keys
+      | [ $keys[] | . as $k
+          | ( [ $binds[] | select((.combo | norm) == ($k.combo | norm)) ] ) as $clash
+          | ( [ $keys[] | select(.name != $k.name and (.combo | norm) == ($k.combo | norm)) ] ) as $selves
+          | ( if $replace == "true" and ($k.name == "menuKey") and (($family | map(norm)) | index($k.combo | norm)) then
+                "it is also a menu key, so with the menu replaced one press would toggle the menu twice"
+              elif ($clash | length) > 0 then "\($clash[0].description // "another bind") already uses it"
+              elif ($selves | length) > 0 then "the notch also uses it for \($selves[0].name)"
+              else "" end ) as $why
+          | select($why != "")
+          | { arg: $k.name, combo: $k.combo, summary: "\($k.name) (\($k.combo)): \($why)" } ]' <<<"$keys")
+  else
+    point notch-key-collision unknown "Couldn't read your keybinds" "Couldn't check: the Hyprland config couldn't be read."
+    return
+  fi
+  local count; count=$(jq 'length' <<<"$items")
+  if (( count == 0 )); then
+    point notch-key-collision ok "No keybind clashes" "The notch's keys are its own."
+  else
+    point notch-key-collision fix "A notch key is already taken" \
+      "$(jq -r '[.[].combo] | join(", ")' <<<"$items") is used by something else too." \
+      "$(strings "Fix clears the notch's key. Your own bind is never touched." "Set a different key in the notch's settings afterwards.")" \
+      "$items" "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
+  fi
+}
+
+detect_stale_notch_binds() {
+  local binds; binds=$(hypr_binds)
+  local keys; keys=$(notch_keys)
+  local bar; bar=$(setting .bar.id)
+  local items; items=$(jq -c --argjson keys "$keys" --arg bar "${bar:-}" --arg id "$ID" '
+    def norm: split(" + ") | map(ascii_upcase) | sort | join("+");
+    def mask($mods): ($mods | map({SUPER: 64, CTRL: 4, ALT: 8, SHIFT: 1}[.] // 0) | add // 0);
+    def combomask($combo): ($combo | split(" + ") | .[:-1] | map(ascii_upcase) | mask(.));
+    def combokey($combo): ($combo | split(" + ") | last | ascii_upcase);
+    [ .[] | select(.description // "" | test("^Notch")) ] as $mine
+    | [ $mine[] | . as $b
+        | ( [ $keys[] | select(combomask(.combo) == $b.modmask and combokey(.combo) == ($b.key | ascii_upcase)) ] ) as $want
+        | ( if $bar != $id then "the notch isn'"'"'t the active bar"
+            elif ($b.description | test("\\[")) then "it carries a test tag"
+            elif ($want | length) == 0 then "no notch setting asks for it"
+            elif ([ $mine[] | select(.key == $b.key and .modmask == $b.modmask) ] | length) > 1 then "it is bound twice"
+            else "" end ) as $why
+        | select($why != "")
+        | { arg: (.description), summary: "\(.description): \($why)" } ]' <<<"$binds")
+  local count; count=$(jq 'length' <<<"$items")
+  if (( count == 0 )); then
+    point stale-notch-binds ok "No leftover notch keybinds" "Hyprland's binds match the notch's settings."
+  else
+    point stale-notch-binds fix "Leftover notch keybinds" \
+      "Hyprland still has $count keybind(s) the notch no longer asks for." \
+      "$(strings "Fix runs \`hyprctl reload\`, which drops every runtime bind; the notch adds its own back at once." "Your monitor layout is re-applied by the same reload.")" \
+      "$items" "$(fixspec runtime "Fix" '[]' "$(strings "hyprctl reload")" low false)"
+  fi
+}
+
+# The layout holds objects ({"id": …} plus that widget's own settings), so the
+# id is a field, not the entry.
+layout_ids() {
+  jq -r '[.bar.layout.left // [], .bar.layout.center // [], .bar.layout.right // []]
+         | flatten | .[] | if type == "object" then (.id // empty) else . end' "$SHELL_JSON" 2>/dev/null
+}
+
+detect_layout_missing_plugin() {
+  local list; list=$(plugin_list)
+  local items='[]' id
+  while read -r id; do
+    [[ -z $id ]] && continue
+    local entry; entry=$(jq -c --arg id "$id" 'map(select(.id == $id)) | .[0] // null' <<<"$list")
+    local why=""
+    if [[ $entry == null ]]; then why="it isn't installed"
+    elif [[ $(jq -r '[.kinds // [] | .[]] | index("bar-widget") // "no"' <<<"$entry") == no ]]; then why="it isn't a bar widget"; fi
+    [[ -z $why ]] && continue
+    items=$(jq -c --arg id "$id" --arg why "$why" '. + [{arg: $id, summary: "\($id): \($why)"}]' <<<"$items")
+  done < <(layout_ids)
+  local count; count=$(jq 'length' <<<"$items")
+  if (( count == 0 )); then
+    point layout-missing-plugin ok "Every widget in the bar exists" "The layout only names installed bar widgets."
+  else
+    point layout-missing-plugin fix "The bar layout names a missing widget" \
+      "$(jq -r '[.[].arg] | join(", ")' <<<"$items") is in the layout but can't be drawn." \
+      "$(strings "Fix removes it from the layout with \`omarchy plugin disable <id>\`." "Undo puts it back where it was.")" \
+      "$items" "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
+  fi
+}
+
+detect_layout_empty_widget() {
+  point layout-empty-widget unknown "Only the notch can check this" \
+    "Empty bar widgets can only be seen from inside the running notch. Open the Setup page for this one."
+}
+
+detect_settings_stale_ids() {
+  local list; list=$(plugin_list)
+  local known; known=$(jq -c '[.[].id]' <<<"$list")
+  local layout; layout=$(layout_ids | jq -R . | jq -sc .)
+  local items; items=$(jq -nc --argjson config "$(json_or "$(shell_config)" '{}')" --argjson known "$known" --argjson layout "$layout" '
+    ($config.bar.notch // {}) as $n
+    | ($known + $layout | unique) as $ok
+    | [ ({key: "hoverPlugin", ids: (if ($n.hoverPlugin // "") == "" then [] else [$n.hoverPlugin] end)},
+         {key: "openPlugin", ids: (if ($n.openPlugin // "") == "" then [] else [$n.openPlugin] end)},
+         {key: "hoverPlugins", ids: ($n.hoverPlugins // [])},
+         {key: "hiddenPlugins", ids: ($n.hiddenPlugins // [])})
+        | . as $entry | $entry.ids[] | select($ok | index(.) | not)
+        | {arg: $entry.key, id: ., summary: "\($entry.key) still names \(.)"} ]')
+  local count; count=$(jq 'length' <<<"$items")
+  if (( count == 0 )); then
+    point settings-stale-ids ok "The notch's settings are current" "Every plugin the settings name is installed."
+  else
+    point settings-stale-ids fix "The notch's settings name a missing plugin" \
+      "$(jq -r '[.[].id] | unique | join(", ")' <<<"$items") was removed but is still in the settings." \
+      "$(strings "Fix rewrites the setting without those ids. Undo puts the old value back.")" \
+      "$items" "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
+  fi
+}
+
+detect_windows_to_top() {
+  if [[ $(setting .bar.notch.windowsToTop) == true ]]; then
+    point windows-to-top info "Windows reach the top edge" \
+      "Your windows fill the screen to the top and the notch sits over them. That's a choice, not a problem; turn it off in the notch's settings if you want the space reserved."
+  else
+    point windows-to-top ok "The notch reserves its space" "Windows start below the bar."
+  fi
+}
+
+plugins_state() { # the installer's view of Face and Profiles
+  local script="$NOTCH_DIR/bin/notch-plugins"
+  [[ -n $PLUGINS_STATE ]] && { bash -c "$PLUGINS_STATE" 2>/dev/null; return; }
+  [[ -x $script ]] || return 1
+  timeout 30 "$script" state 2>/dev/null
+}
+
+detect_plugin() { # detect_plugin <point id> <plugin id> <name> <setup argv>
+  local pid=$1 plugin=$2 name=$3 setup_argv=$4 state
+  if ! state=$(plugins_state) || ! jq -e . >/dev/null 2>&1 <<<"$state"; then
+    point "$pid" unknown "Couldn't check $name" "Couldn't check: bin/notch-plugins didn't answer."
+    return
+  fi
+  local entry; entry=$(jq -c --arg id "$plugin" '(.entries // .plugins // []) | map(select(.id == $id)) | .[0] // null' <<<"$state")
+  [[ $entry == null ]] && { point "$pid" info "$name isn't listed" "The notch's plugin catalogue doesn't know it."; return; }
+  local installed enabled update setup
+  installed=$(jq -r '.installed // false' <<<"$entry")
+  enabled=$(jq -r '.enabled // false' <<<"$entry")
+  update=$(jq -r 'if (.relation // .state // "") == "behind" or (.state // "") == "available" then "available" else "" end' <<<"$entry")
+  setup=$(jq -r '.setup // ""' <<<"$entry")
+  if [[ $installed == true && $enabled == true && -n $setup && $setup != ok && $setup != "" ]]; then
+    point "$pid" action "$name needs setup" "It is installed, but its own setup hasn't been finished ($setup)." '[]' '[]' null \
+      "$(jq -nc --arg label "Open setup" --argjson argv "$setup_argv" '{label: $label, argv: $argv}')"
+  elif [[ $installed != true ]]; then
+    point "$pid" action "$name isn't installed" "Install it from the notch's Plugins page." '[]' '[]' null \
+      '{"label": "Open Plugins", "view": "plugins"}'
+  elif [[ $enabled != true ]]; then
+    point "$pid" action "$name is switched off" "It is installed but not enabled." '[]' '[]' null \
+      '{"label": "Open Plugins", "view": "plugins"}'
+  elif [[ $update == available ]]; then
+    point "$pid" action "$name has an update" "A newer version is on its origin." '[]' '[]' null \
+      '{"label": "Open Plugins", "view": "plugins"}'
+  elif [[ -d $PLUGINS/$plugin ]] && ! jq -e '.entryPoints.notch // .notch // empty' "$PLUGINS/$plugin/manifest.json" >/dev/null 2>&1; then
+    point "$pid" info "$name isn't integrated with the notch" \
+      "It works on its own. A version that declares the notch entry point opens its panel inside the notch instead." '[]' '[]' null \
+      "$(jq -nc --arg label "Open setup" --argjson argv "$setup_argv" '{label: $label, argv: $argv}')"
+  else
+    point "$pid" ok "$name is set up" "Installed, enabled and integrated with the notch."
+  fi
+}
+
+detect_profiles_binds_path() {
+  local file="$HYPR/bindings.lua" target
+  [[ -f $file ]] || { point profiles-binds-path ok "No Profiles keybinds" "bindings.lua doesn't mention Profiles."; return; }
+  target=$(grep -oP '[^" ]*plugins/kalinewb\.profiles/bin/omarchy-profile' "$file" 2>/dev/null | head -1)
+  # The config builds the path from $HOME, so what's in the file is the tail.
+  [[ -n $target && ! -e $target ]] && target="${HOME_DIR}${target/#\~/}"
+  if [[ -z $target ]]; then
+    point profiles-binds-path ok "No Profiles keybinds" "bindings.lua doesn't call Profiles by path."
+  elif [[ -x $target ]]; then
+    point profiles-binds-path ok "Profiles keybinds work" "The script they call is there."
+  else
+    local keys; keys=$(grep -oP '^\s*o\.bind\("\K[^"]+(?=".*omarchy-profile)' "$file" 2>/dev/null | paste -sd', ')
+    point profiles-binds-path warn "Profiles keybinds point at a missing script" \
+      "${keys:-Some keys} call $target, which isn't there." \
+      "$(strings "These are your own binds, so the notch leaves them alone. Reinstall Profiles, or edit ~/.config/hypr/bindings.lua.")"
+  fi
+}
+
+detect_stray_instances() {
+  local instances=""
+  runnable QS && instances=$(timeout 10 "${QS[@]}" list --all 2>/dev/null)
+  if [[ -z $instances ]]; then
+    point stray-instances ok "No stray shells" "Only Omarchy's own shell is running."
+    return
+  fi
+  local items='[]' pid path
+  while read -r pid path; do
+    [[ -z $pid ]] && continue
+    [[ $path == "$OMARCHY_DIR"/shell/* ]] && continue
+    [[ $path == /tmp/* || $path == "${TMPDIR:-/tmp}"/* ]] || continue
+    grep -qz 'NOTCH_HARNESS=1' "$PROC/$pid/environ" 2>/dev/null || continue
+    items=$(jq -c --arg pid "$pid" --arg path "$path" '. + [{arg: $pid, summary: "pid \($pid): \($path)"}]' <<<"$items")
+  done < <(sed -nE 's/^.*[[:space:]]([0-9]+)[[:space:]]+(\/[^[:space:]]+).*$/\1 \2/p' <<<"$instances")
+  local count; count=$(jq 'length' <<<"$items")
+  if (( count == 0 )); then
+    point stray-instances ok "No stray shells" "Nothing left over from a test run."
+  elif pgrep -f "$NOTCH_DIR/dev/.*\.sh" >/dev/null 2>&1; then
+    point stray-instances info "Test shells are running" "$count test notch(es) are up, and a test run is in progress. Nothing to do while that is true."
+  else
+    point stray-instances fix "A test notch is still running" \
+      "$count leftover test shell(s) from a check run." \
+      "$(strings "Fix kills only shells started from a temporary directory with NOTCH_HARNESS=1.")" \
+      "$items" "$(fixspec runtime "Fix" '[]' '[]' low false)"
+  fi
+}
+
+stray_backup_files() {
+  find "$HYPR" -maxdepth 1 -type f -regextype posix-extended -regex '.*\.bak\.[0-9]+' 2>/dev/null
+  find "$CONFIG/omarchy" -maxdepth 1 -type f -regextype posix-extended -regex '.*shell\.json\.bak\.[0-9]+' 2>/dev/null
+}
+
+detect_stray_backups() {
+  local files; files=$(stray_backup_files)
+  local count; count=$(grep -c . <<<"$files")
+  [[ -z $files ]] && count=0
+  if (( count == 0 )); then
+    point stray-backups ok "No leftover backups" "No .bak files in your config."
+  else
+    local items='[]' file
+    while read -r file; do
+      [[ -z $file ]] && continue
+      items=$(jq -c --arg f "$file" '. + [{arg: $f, summary: $f}]' <<<"$items")
+    done <<<"$files"
+    point stray-backups fix "Old backup files in your config" \
+      "$count file(s) like bindings.lua.bak.1789067221 are sitting next to your config." \
+      "$(strings "Some may be Omarchy's own: \`omarchy-refresh-config\` makes the same kind of file." "Fix moves them into a snapshot, so nothing is deleted and Restore puts them back.")" \
+      "$items" "$(fixspec archive "Fix" "$(printf '%s\n' "$files" | jq -R . | jq -sc .)" '[]' low false)"
+  fi
+}
+
+detect_upstream_drift() {
+  local record="$NOTCH_DIR/dev/upstream/upstream.json"
+  [[ -f $record ]] || { point upstream-drift unknown "No upstream record" "Couldn't check: dev/upstream/upstream.json is missing."; return; }
+  local recorded; recorded=$(jq -r '.omarchyVersion // ""' "$record")
+  local live; live=$(omarchy_version)
+  local items='[]' path want got
+  while read -r path want; do
+    [[ -z $path ]] && continue
+    got=$(sha "$OMARCHY_DIR/shell/$path")
+    [[ $got == "$want" ]] && continue
+    items=$(jq -c --arg p "$path" --arg s "${got:-missing}" '. + [{arg: $p, summary: "\($p) changed"}]' <<<"$items")
+  done < <(jq -r '.files // {} | to_entries[] | "\(.key) \(.value)"' "$record")
+  local count; count=$(jq 'length' <<<"$items")
+  local detail='[]'
+  if [[ -n $live && -n $recorded && $live != "$recorded" ]]; then
+    detail=$(strings "Recorded against Omarchy $recorded; this machine runs $live.")
+  fi
+  if (( count == 0 )) && [[ $detail == '[]' ]]; then
+    point upstream-drift ok "Upstream is unchanged" "Every Omarchy file the notch copies from is the one it was ported against."
+  else
+    detail=$(jq -c --argjson d "$detail" --argjson items "$items" --arg o "$OMARCHY_DIR" '
+      $d + [ $items[] | "diff -u \($o)/shell/\(.arg) <this repo>/dev/upstream/\(.arg)" ]' <<<'null')
+    point upstream-drift info "Omarchy changed upstream" \
+      "$count file(s) the notch was ported from have changed. Only a developer needs to act on this." \
+      "$detail" "$items"
+  fi
+}
+
+detect_layer_rules() {
+  local scan; scan=$(scan_binds) || { point layer-rules unknown "Couldn't read your Hyprland config" "Couldn't check."; return; }
+  local rules; rules=$(jq -sc '[.[] | select(.layerRule) | .layerRule]' <<<"$scan")
+  local noanim; noanim=$(jq '[.[] | select(.namespace == "omarchy-bar" and (.rule | test("no_anim")))] | length' <<<"$rules")
+  # A rule that asks for an animation, rather than Omarchy's own
+  # "no_anim=true animation=none", which asks for the opposite.
+  local items; items=$(jq -c '[ .[] | select(.namespace == "omarchy-bar" or .namespace == "omarchy-notch-glow")
+      | select((.rule | test("animation=(?!none)"; "x")) and (.rule | test("no_anim=true") | not))
+      | {arg: .rule, summary: "\(.rule) on \(.namespace) (\(.source))"} ]' <<<"$rules")
+  local extra; extra=$(jq -c '[ .[] | select(.namespace == "omarchy-bar" or .namespace == "omarchy-notch-glow")
+      | {arg: .rule, summary: "\(.rule) on \(.namespace)"} ]' <<<"$rules")
+  if (( noanim == 0 )); then
+    point layer-rules info "The bar layer can animate" \
+      "Omarchy's \`no_anim\` rule for omarchy-bar isn't in effect, so Hyprland may animate the notch's own layer on top of its animation." '[]' "$extra"
+  elif [[ $(jq 'length' <<<"$items") != 0 ]]; then
+    point layer-rules info "A layer rule animates the notch" \
+      "A rule in your config animates the notch's layer, which fights the notch's own movement." '[]' "$items"
+  else
+    point layer-rules ok "Layer rules are fine" "The notch's layers are left to animate themselves." '[]' "$extra"
+  fi
+}
+
+detect_notch_not_git() {
+  local script="$NOTCH_DIR/bin/notch-update" state=""
+  [[ -x $script ]] && state=$(NOTCH_UPDATE_DIR="$NOTCH_DIR" timeout 5 "$script" check 2>/dev/null | jq -r '.state // ""')
+  if [[ $state == not-git ]]; then
+    point notch-not-git info "The notch can't update itself" \
+      "This copy isn't a git checkout, so it can't tell when a new version is out." \
+      "$(strings "Run \`./install.sh --swap-to-git\` once from the dev checkout.")"
+  elif [[ -z $state ]]; then
+    point notch-not-git unknown "Couldn't check for updates" "Couldn't check: bin/notch-update didn't answer."
+  else
+    point notch-not-git ok "The notch can update itself" "It is a git checkout ($state)."
+  fi
+}
+
+POINT_ORDER=(bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion menu-keys-bypass
+  notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids
+  plugin-face plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift
+  layer-rules windows-to-top notch-not-git)
+
+LOCAL_ONLY=0
+detect_point() {
+  case $1 in
+    bar-off) detect_bar_off ;;
+    notch-not-bar) detect_notch_not_bar ;;
+    notch-failed) detect_notch_failed ;;
+    hypr-config-errors) detect_hypr_config_errors ;;
+    menu-replace-companion) detect_menu_replace_companion ;;
+    menu-keys-bypass) detect_menu_keys_bypass ;;
+    notch-key-collision) detect_notch_key_collision ;;
+    stale-notch-binds) detect_stale_notch_binds ;;
+    layout-missing-plugin) detect_layout_missing_plugin ;;
+    layout-empty-widget) detect_layout_empty_widget ;;
+    settings-stale-ids) detect_settings_stale_ids ;;
+    plugin-face)
+      if (( LOCAL_ONLY )); then point plugin-face unknown "Face ID not checked yet" "Checked when the full check runs."
+      else detect_plugin plugin-face graveklar.face "Face ID" '["omarchy-shell","graveklar.face","open","setup",""]'; fi ;;
+    plugin-profiles)
+      if (( LOCAL_ONLY )); then point plugin-profiles unknown "Profiles not checked yet" "Checked when the full check runs."
+      else detect_plugin plugin-profiles kalinewb.profiles "Profiles" '["omarchy-shell","kalinewb.profiles","open"]'; fi ;;
+    profiles-binds-path) detect_profiles_binds_path ;;
+    stray-instances) detect_stray_instances ;;
+    stray-backups) detect_stray_backups ;;
+    upstream-drift) detect_upstream_drift ;;
+    layer-rules) detect_layer_rules ;;
+    windows-to-top) detect_windows_to_top ;;
+    notch-not-git) detect_notch_not_git ;;
+    *) return 1 ;;
+  esac
+}
+
+detect() {
+  local only="" json=0
+  while (( $# )); do
+    case $1 in
+      --json) json=1 ;;
+      --local) LOCAL_ONLY=1 ;;
+      --only) only=${2:-}; shift ;;
+      *) echo "notch-setup: unknown option $1" >&2; return 2 ;;
+    esac
+    shift
+  done
+  local points=("${POINT_ORDER[@]}")
+  [[ -n $only ]] && points=("$only")
+  local lines=""
+  local id
+  for id in "${points[@]}"; do
+    local out; out=$(detect_point "$id") || { echo "notch-setup: no such point: $id" >&2; return 2; }
+    lines+="$out"$'\n'
+  done
+  local report
+  report=$(jq -sc --argjson schema "$SCHEMA" --argjson checkedAt "$(now_ms)" --argjson local "$LOCAL_ONLY" \
+    --arg omarchyVersion "$(omarchy_version)" --arg notchVersion "$(notch_version)" \
+    --arg barId "$(setting .bar.id)" --arg replaceMenu "$(setting .bar.notch.replaceMenu)" \
+    --argjson barHidden "$([[ -f $TOGGLES/bar-off ]] && echo true || echo false)" \
+    --argjson hyprErrors "$(jq '[.[] | select(. != null and . != "")] | length' <<<"$(hypr_config_errors)")" '
+    { schema: $schema, checkedAt: $checkedAt, local: ($local == 1),
+      omarchyVersion: $omarchyVersion, notchVersion: $notchVersion,
+      context: { barId: $barId, barHidden: $barHidden, replaceMenu: ($replaceMenu == "true"), hyprErrors: $hyprErrors },
+      counts: ( reduce .[] as $p ({fix: 0, action: 0, warn: 0, info: 0, ok: 0, unknown: 0};
+                 .[$p.severity] = (.[$p.severity] // 0) + 1) ),
+      points: . }' <<<"$lines")
+  if (( json )); then printf '%s\n' "$report"; else print_table "$report"; fi
+}
+
+print_table() {
+  local report=$1
+  jq -r '
+    def mark: {fix: "!", action: ">", warn: "!", info: "i", ok: " ", unknown: "?"}[.] // " ";
+    "Setup — \(.counts.fix + .counts.action + .counts.warn) need attention, \(.counts.ok) fine, \(.counts.unknown) not checked",
+    "",
+    ( .points[] | select(.severity != "ok")
+      | " \(.severity | mark) \(.title)\n     \(.summary)"
+        + (if .fix != null and (.fix.disabledReason // "") == "" then "\n     fix: notch-setup fix \(.id)" else "" end)
+        + (if (.fix.disabledReason // "") != "" then "\n     (no fix: \(.fix.disabledReason))" else "" end) ),
+    "",
+    "All good: \([.points[] | select(.severity == "ok") | .id] | join(", "))"' <<<"$report"
+}
+
+# --- the status file ----------------------------------------------------------------
+
+write_status() { # write_status <file> [jq options...] <filter>
+  local file=$1; shift
+  [[ -n $file ]] || return 0
+  local filter=${*: -1}
+  local options=("${@:1:$#-1}")
+  local current tmp
+  mkdir -p "$(dirname "$file")" 2>/dev/null
+  current=$(cat "$file" 2>/dev/null) || current='{}'
+  jq -e . >/dev/null 2>&1 <<<"$current" || current='{}'
+  tmp=$(mktemp "$file.XXXXXX") || return 1
+  if jq -c "${options[@]}" --argjson now "$(now_ms)" "$filter" <<<"$current" >"$tmp"; then
+    mv -f "$tmp" "$file"
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+
+STATUS_FILE=""
+JOB=""
+REOPEN=false
+DESTROYED=false
+phase() { # phase <name> [message]
+  write_status "$STATUS_FILE" --arg phase "$1" --arg message "${2:-}" '.phase = $phase | .message = $message'
+}
+finish() { # finish <phase> <code> [message]
+  local reopen=false
+  [[ $REOPEN == true && $DESTROYED == true ]] && reopen=true
+  write_status "$STATUS_FILE" --arg phase "$1" --argjson code "$2" --arg message "${3:-}" --argjson reopen "$reopen" \
+    '.phase = $phase | .code = $code | .message = $message | .reopen = $reopen | .finishedAt = $now'
+  return "$2"
+}
+
+# --- lock and self-copy -------------------------------------------------------------
+
+LOCK=""
+take_lock() {
+  mkdir -p "$STATE" 2>/dev/null
+  LOCK="$STATE/lock"
+  if ! mkdir "$LOCK" 2>/dev/null; then
+    local held; held=$(cat "$LOCK/pid" 2>/dev/null)
+    # Our own pid means we are the re-exec'd copy of the job that took it
+    # (`exec` keeps the pid), so the lock is already ours.
+    if [[ $held == $$ ]]; then trap '[[ -n ${LOCK:-} ]] && rm -rf "$LOCK"' EXIT; return 0; fi
+    if [[ -n $held ]] && kill -0 "$held" 2>/dev/null; then
+      LOCK=""; return 1
+    fi
+    rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null || { LOCK=""; return 1; }
+  fi
+  echo $$ >"$LOCK/pid"
+  trap '[[ -n ${LOCK:-} ]] && rm -rf "$LOCK"' EXIT
+  return 0
+}
+
+# Run from a copy, so a notch update during the job can't rewrite the script
+# that is running. The pid survives `exec`, so the lock stays ours.
+relocate() {
+  [[ ${_NOTCH_SETUP_RELOCATED:-} == 1 ]] && return 0
+  local run="$STATE/run"
+  mkdir -p "$run" 2>/dev/null || return 0
+  cp -f "${BASH_SOURCE[0]}" "$run/notch-setup" 2>/dev/null || return 0
+  [[ -f $NOTCH_DIR/bin/notch-setup-binds.lua ]] && cp -f "$NOTCH_DIR/bin/notch-setup-binds.lua" "$run/notch-setup-binds.lua" 2>/dev/null
+  chmod 700 "$run/notch-setup" 2>/dev/null
+  export _NOTCH_SETUP_RELOCATED=1 _NOTCH_SETUP_REAL_DIR="$NOTCH_DIR" _NOTCH_SETUP_LOCK_PID=$$ _NOTCH_SETUP_STUB="$run/notch-setup-binds.lua"
+  exec bash "$run/notch-setup" "${ORIGINAL_ARGV[@]}"
+}
+
+# --- snapshots ----------------------------------------------------------------------
+
+snapshot_dir() { echo "$STATE/snapshots"; }
+
+new_snapshot() { # new_snapshot <point> <arg> <kind> <title> -> prints the name
+  local point=$1 arg=$2 kind=$3 title=$4
+  local base; base="$(stamp)-$point"
+  local name=$base n=2
+  while [[ -e $(snapshot_dir)/$name || -e $(snapshot_dir)/.$name.partial ]]; do name="$base-$n"; n=$((n + 1)); done
+  local dir; dir="$(snapshot_dir)/.$name.partial"
+  mkdir -p "$dir/files" || return 1
+  chmod 700 "$dir"
+  jq -nc --argjson schema "$SCHEMA" --arg name "$name" --arg point "$point" --arg arg "$arg" --arg kind "$kind" \
+    --arg title "$title" --argjson createdAt "$(now_ms)" --arg omarchyVersion "$(omarchy_version)" \
+    --arg notchVersion "$(notch_version)" '
+    { schema: $schema, name: $name, point: $point, arg: $arg, kind: $kind, title: $title,
+      createdAt: $createdAt, omarchyVersion: $omarchyVersion, notchVersion: $notchVersion,
+      state: "taken", history: [{state: "taken", at: $createdAt}], reload: [], undo: [],
+      block: null, context: {}, files: [] }' >"$dir/meta.json"
+  printf '%s' "$name"
+}
+
+snapshot_path() { # <name> -> the directory, partial or final
+  local dir; dir="$(snapshot_dir)/$1"
+  [[ -d $dir ]] && { printf '%s' "$dir"; return 0; }
+  dir="$(snapshot_dir)/.$1.partial"
+  [[ -d $dir ]] && { printf '%s' "$dir"; return 0; }
+  return 1
+}
+
+meta_set() { # meta_set <name> [jq options...] <filter>
+  local name=$1; shift
+  local dir; dir=$(snapshot_path "$name") || return 1
+  local filter=${*: -1}
+  local options=("${@:1:$#-1}")
+  local tmp; tmp=$(mktemp "$dir/meta.XXXXXX") || return 1
+  if jq -c "${options[@]}" --argjson now "$(now_ms)" "$filter" "$dir/meta.json" >"$tmp"; then
+    mv -f "$tmp" "$dir/meta.json"
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+
+meta_state() { meta_set "$1" --arg state "$2" '.state = $state | .history += [{state: $state, at: $now}]'; }
+
+snapshot_file() { # snapshot_file <name> <path>   -- copy one file in, recording it
+  local name=$1 path=$2
+  local dir; dir=$(snapshot_path "$name") || return 1
+  local index; index=$(jq '.files | length' "$dir/meta.json")
+  local existed=false mode="" size=0 hash="" canon=null copy=""
+  if [[ -e $path ]]; then
+    existed=true
+    mode=$(stat -c %a "$path")
+    size=$(stat -c %s "$path")
+    hash=$(sha "$path")
+    [[ $path == *.json ]] && canon="\"$(canonical_sha "$path")\""
+    copy="files/$index"
+    cp -p "$path" "$dir/$copy" || return 1
+    cmp -s "$path" "$dir/$copy" || return 1
+  fi
+  meta_set "$name" --arg path "$path" --arg realpath "$(realpath -m "$path" 2>/dev/null)" \
+    --argjson existed "$existed" --arg mode "$mode" --argjson size "$size" --arg hash "$hash" \
+    --argjson canonical "$canon" --arg copy "$copy" '
+    .files += [{path: $path, realpath: $realpath, existed: $existed, mode: $mode, size: $size,
+                sha256: $hash, canonical: $canonical, copy: $copy, after: null}]'
+}
+
+record_after() { # record_after <name>
+  local name=$1
+  local dir; dir=$(snapshot_path "$name") || return 1
+  local count; count=$(jq '.files | length' "$dir/meta.json")
+  local i
+  for (( i = 0; i < count; i++ )); do
+    local path; path=$(jq -r ".files[$i].path" "$dir/meta.json")
+    local existed=false hash="" canon=null
+    if [[ -e $path ]]; then
+      existed=true; hash=$(sha "$path")
+      [[ $path == *.json ]] && canon="\"$(canonical_sha "$path")\""
+    fi
+    meta_set "$name" --argjson i "$i" --argjson existed "$existed" --arg hash "$hash" --argjson canonical "$canon" \
+      '.files[$i].after = {existed: $existed, sha256: $hash, canonical: $canonical}'
+  done
+}
+
+finalise_snapshot() { # move .partial into place
+  local name=$1
+  local partial; partial="$(snapshot_dir)/.$name.partial"
+  [[ -d $partial ]] || return 0
+  mv -T "$partial" "$(snapshot_dir)/$name"
+}
+
+snapshots_json() {
+  local dir; dir=$(snapshot_dir)
+  [[ -d $dir ]] || { echo '[]'; return; }
+  local name metas=""
+  for name in "$dir"/*/; do
+    [[ -d $name ]] || continue
+    [[ $(basename "$name") == .* ]] && continue
+    [[ -f $name/meta.json ]] || continue
+    metas+=$(cat "$name/meta.json")$'\n'
+  done
+  [[ -z $metas ]] && { echo '[]'; return; }
+  jq -sc 'sort_by(.createdAt) | reverse' <<<"$metas"
+}
+
+# --- fixes --------------------------------------------------------------------------
+
+files_for() { # the files a fix would change
+  case $1 in
+    menu-keys-bypass) echo "$HYPR/bindings.lua" ;;
+    bar-off) echo "$TOGGLES/bar-off" ;;
+    menu-replace-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo "$SHELL_JSON" ;;
+    stray-backups) stray_backup_files ;;
+    *) : ;;
+  esac
+}
+
+kind_for() {
+  case $1 in
+    menu-keys-bypass) echo block ;;
+    bar-off) echo flag ;;
+    menu-replace-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo ipc ;;
+    stray-backups) echo archive ;;
+    stale-notch-binds|stray-instances|layout-empty-widget) echo runtime ;;
+    *) echo "" ;;
+  esac
+}
+
+BLOCK_BEGIN=""
+BLOCK_END=""
+
+# Build the bindings.lua block that puts the bypassed keys back on Omarchy's
+# defaults, and write the whole candidate file to $1.
+build_block() {
+  local out=$1
+  local items; items=$(bypass_binds) || return 1
+  local utilities="$OMARCHY_DIR/default/hypr/bindings/utilities.lua"
+  local when; when=$(stamp)
+  BLOCK_BEGIN="-- >>> $ID setup: menu-keys-bypass ($when) -- delete this block to undo"
+  BLOCK_END="-- <<< $ID setup: menu-keys-bypass"
+  { [[ -f $HYPR/bindings.lua ]] && cat "$HYPR/bindings.lua"; echo; echo "$BLOCK_BEGIN"; } >"$out" || return 1
+  local combo
+  while read -r combo; do
+    [[ -z $combo ]] && continue
+    # The default bind, copied exactly as Omarchy wrote it.
+    local line; line=$(grep -F "o.bind(\"$combo\"" "$utilities" | head -1)
+    [[ -z $line ]] && continue
+    printf 'hl.unbind("%s")\n%s\n' "$combo" "$line" >>"$out"
+  done < <(jq -r '.[].arg' <<<"$items")
+  echo "$BLOCK_END" >>"$out"
+}
+
+# Does this file compile? `lua -e '<code>' <file>` would also RUN the file, so
+# the path goes through the environment and nothing is executed.
+lua_parses() {
+  runnable LUA || return 0
+  F="$1" "${LUA[@]}" -e 'assert(loadfile(os.getenv("F")))' >/dev/null 2>&1
+}
+lua_parse_error() {
+  runnable LUA || return 0
+  F="$1" "${LUA[@]}" -e 'assert(loadfile(os.getenv("F")))' 2>&1 | head -1
+}
+
+# Write <candidate> over <target> atomically, keeping the target's mode.
+install_file() {
+  local candidate=$1 target=$2
+  [[ -e $target ]] && chmod --reference="$target" "$candidate" 2>/dev/null
+  sync "$candidate" 2>/dev/null
+  mv -f "$candidate" "$target"
+}
+
+# Say where a fix gave up, when asked (NOTCH_SETUP_DEBUG=1).
+step() { [[ ${NOTCH_SETUP_DEBUG:-} == 1 ]] && echo "notch-setup: $*" >&2; return 0; }
+
+apply_fix() { # apply_fix <point> <arg> <snapshot name>
+  local point=$1 arg=$2 name=$3
+  case $point in
+    menu-keys-bypass)
+      local tmp; tmp=$(mktemp "$HYPR/.notch-setup.XXXXXX") || { step "no temp file in $HYPR"; return 1; }
+      build_block "$tmp" || { step "couldn't build the block"; rm -f "$tmp"; return 1; }
+      [[ ${NOTCH_SETUP_FAIL_AT:-} == write ]] && { rm -f "$tmp"; return 1; }
+      if ! lua_parses "$tmp"; then
+        step "the candidate doesn't parse: $(lua_parse_error "$tmp")"
+        rm -f "$tmp"; return 1
+      fi
+      if runnable LUA; then
+        local left; left=$(NOTCH_SETUP_BINDINGS_OVERRIDE="$tmp" NOTCH_SETUP_HOME="$HOME_DIR" \
+          NOTCH_SETUP_OMARCHY_PATH="$OMARCHY_DIR" OMARCHY_PATH="$OMARCHY_DIR" \
+          HOME="$HOME_DIR" XDG_CONFIG_HOME="$CONFIG" XDG_STATE_HOME="$HOME_DIR/.local/state" \
+          timeout 20 "${LUA[@]}" "${_NOTCH_SETUP_STUB:-$NOTCH_DIR/bin/notch-setup-binds.lua}" 2>/dev/null \
+          | jq -s '[.[] | select(.bind) | .bind | select(.command | test("notch[- ]menu|notch menu"; "i"))] | length')
+        [[ ${left:-1} == 0 ]] || { step "the candidate still has $left bypass bind(s)"; rm -f "$tmp"; return 1; }
+      fi
+      meta_set "$name" --arg begin "${BLOCK_BEGIN%% (*}" --arg end "$BLOCK_END" '.block = {begin: $begin, end: $end}'
+      install_file "$tmp" "$HYPR/bindings.lua"
+      ;;
+    bar-off)
+      runnable TOGGLE_BAR || return 1
+      "${TOGGLE_BAR[@]}" off >/dev/null 2>&1
+      meta_set "$name" '.undo = [["omarchy-toggle-bar", "on"]]'
+      [[ -f $TOGGLES/bar-off ]] && return 1
+      ;;
+    menu-replace-companion)
+      "${OMARCHY[@]}" plugin enable "$COMPANION" >/dev/null 2>&1
+      meta_set "$name" --arg id "$COMPANION" '.undo = [["omarchy", "plugin", "disable", $id]]'
+      ;;
+    notch-not-bar)
+      local previous; previous=$(setting .bar.id)
+      "${OMARCHY[@]}" plugin enable "$ID" >/dev/null 2>&1
+      meta_set "$name" --arg prev "$previous" '.undo = [["omarchy", "plugin", "enable", $prev]]'
+      ;;
+    notch-key-collision)
+      local key=$arg
+      [[ -n $key ]] || key=$(detect_point notch-key-collision | jq -r '.items[0].arg // ""')
+      [[ -n $key ]] || return 1
+      local old; old=$(setting ".bar.notch.$key")
+      "${OMARCHY_SHELL[@]}" notch set "$key" '""' >/dev/null 2>&1
+      meta_set "$name" --arg key "$key" --arg old "$old" '.undo = [["omarchy-shell", "notch", "set", $key, ("\"" + $old + "\"")]] | .context.key = $key | .context.previous = $old'
+      ;;
+    layout-missing-plugin)
+      local id=$arg
+      [[ -n $id ]] || id=$(detect_point layout-missing-plugin | jq -r '.items[0].arg // ""')
+      [[ -n $id ]] || return 1
+      local placement; placement=$(jq -c --arg id "$id" '
+        def ids($a): ($a // []) | map(if type == "object" then (.id // "") else . end);
+        [ {section: "left", ids: ids(.bar.layout.left)}, {section: "center", ids: ids(.bar.layout.center)},
+          {section: "right", ids: ids(.bar.layout.right)} ]
+        | map(select(.ids | index($id)) | {id: $id, section: .section, index: (.ids | index($id))}) | .[0] // null' "$SHELL_JSON")
+      "${OMARCHY[@]}" plugin disable "$id" >/dev/null 2>&1
+      meta_set "$name" --arg id "$id" --argjson placement "${placement:-null}" '
+        .context.layoutPlacement = $placement
+        | .undo = (if $placement == null then [] else
+            [["omarchy-shell", "shell", "putBarWidget", $id,
+              ("{\"section\":\"" + $placement.section + "\",\"index\":" + ($placement.index | tostring) + "}")]] end)'
+      ;;
+    settings-stale-ids)
+      local items; items=$(detect_point settings-stale-ids | jq -c '.items')
+      local key
+      for key in $(jq -r '[.[].arg] | unique | .[]' <<<"$items"); do
+        local old; old=$(jq -c ".bar.notch.$key // null" "$SHELL_JSON")
+        local stale; stale=$(jq -c --arg key "$key" '[.[] | select(.arg == $key) | .id]' <<<"$items")
+        local new
+        if [[ $(jq -r 'type' <<<"$old") == array ]]; then
+          new=$(jq -c --argjson stale "$stale" 'map(select(. as $i | $stale | index($i) | not))' <<<"$old")
+        else
+          new='""'
+        fi
+        "${OMARCHY_SHELL[@]}" notch set "$key" "$new" >/dev/null 2>&1
+        meta_set "$name" --arg key "$key" --argjson old "${old:-null}" \
+          '.undo += [["omarchy-shell", "notch", "set", $key, ($old | tojson)]]'
+      done
+      ;;
+    stale-notch-binds)
+      runnable HYPRCTL && "${HYPRCTL[@]}" reload >/dev/null 2>&1
+      ;;
+    stray-instances)
+      local pid
+      for pid in $(detect_point stray-instances | jq -r '.items[].arg'); do
+        "${KILL_CMD[@]}" "$pid" >/dev/null 2>&1
+      done
+      ;;
+    stray-backups)
+      local dir; dir=$(snapshot_path "$name") || return 1
+      local count; count=$(jq '.files | length' "$dir/meta.json")
+      local i
+      for (( i = 0; i < count; i++ )); do
+        local path; path=$(jq -r ".files[$i].path" "$dir/meta.json")
+        [[ -e $path ]] && rm -f "$path"
+      done
+      ;;
+    layout-empty-widget)
+      session_locked && return 1
+      DESTROYED=true
+      bash -c "${RESTART_SHELL[*]}" >/dev/null 2>&1
+      local i
+      for i in $(seq 1 20); do
+        [[ $("${OMARCHY_SHELL[@]}" shell reloadConfig 2>/dev/null) == *ok* ]] && return 0
+        sleep 0.5
+      done
+      return 1
+      ;;
+    *) return 1 ;;
+  esac
+  return 0
+}
+
+reload_for() { # reload_for <point>
+  case $(kind_for "$1") in
+    block)
+      runnable HYPRCTL || return 0
+      "${HYPRCTL[@]}" reload >/dev/null 2>&1
+      ;;
+    *) : ;;
+  esac
+}
+
+verify_fix() { # verify_fix <point> <arg>
+  local point=$1
+  [[ ${NOTCH_SETUP_FAIL_AT:-} == verify ]] && return 1
+  if [[ $(kind_for "$point") == block ]]; then
+    local errors; errors=$(hypr_config_errors)
+    [[ $(jq '[.[] | select(. != null and . != "")] | length' <<<"$errors") == 0 ]] || return 1
+  fi
+  [[ $point == layout-empty-widget ]] && return 0
+  # A shell.json change lands asynchronously (the shell writes the file), so an
+  # `ipc` fix gets a few tries; everything else is already on disk.
+  local tries=1
+  [[ $(kind_for "$point") == ipc ]] && tries=5
+  local i
+  for (( i = 0; i < tries; i++ )); do
+    PLUGIN_LIST_CACHE=""; HYPR_BINDS_CACHE=""; SCAN_CACHE=""
+    local severity; severity=$(detect_point "$point" | jq -r .severity)
+    [[ $severity == ok || $severity == info ]] && return 0
+    (( i + 1 < tries )) && sleep 0.25
+  done
+  return 1
+}
+
+rollback() { # rollback <snapshot name>
+  local name=$1
+  local dir; dir=$(snapshot_path "$name") || return 1
+  local count; count=$(jq '.files | length' "$dir/meta.json")
+  local i
+  for (( i = 0; i < count; i++ )); do
+    local path existed copy
+    path=$(jq -r ".files[$i].path" "$dir/meta.json")
+    existed=$(jq -r ".files[$i].existed" "$dir/meta.json")
+    copy=$(jq -r ".files[$i].copy // \"\"" "$dir/meta.json")
+    if [[ $existed == true && -n $copy ]]; then
+      cp -p "$dir/$copy" "$path" 2>/dev/null
+    elif [[ $existed == false ]]; then
+      rm -f "$path" 2>/dev/null
+    fi
+  done
+  reload_for "$(jq -r .point "$dir/meta.json")"
+  meta_state "$name" rolled-back
+}
+
+ORIGINAL_ARGV=()
+do_fix() {
+  local point="" arg="" dry=0
+  STATUS_FILE="$STATUS_DEFAULT"
+  while (( $# )); do
+    case $1 in
+      --arg) arg=${2:-}; shift ;;
+      --dry-run) dry=1 ;;
+      --status) STATUS_FILE=${2:-}; shift ;;
+      --reopen) REOPEN=true ;;
+      -*) echo "notch-setup: unknown option $1" >&2; return 2 ;;
+      *) point=$1 ;;
+    esac
+    shift
+  done
+  [[ -n $point ]] || { echo "notch-setup: fix needs a point" >&2; return 2; }
+  check_guard run || return 2
+
+  local kind; kind=$(kind_for "$point")
+  [[ -n $kind ]] || { echo "notch-setup: $point has no fix" >&2; return 2; }
+
+  if session_locked; then
+    JOB="$(now_ms)-$$"
+    write_status "$STATUS_FILE" --arg job "$JOB" --arg point "$point" --arg arg "$arg" --argjson pid $$ --argjson reopen "$REOPEN" \
+      '{job: $job, action: "fix", point: $point, arg: $arg, snapshot: "", phase: "locked-out", code: 2,
+        message: "The session is locked.", conflicts: [], reopen: false, startedAt: $now, finishedAt: $now, pid: $pid, seen: false}'
+    return 2
+  fi
+
+  take_lock || { echo "notch-setup: another setup job is running" >&2; return 5; }
+  relocate
+
+  JOB="$(now_ms)-$$"
+  write_status "$STATUS_FILE" --arg job "$JOB" --arg point "$point" --arg arg "$arg" --argjson pid $$ --argjson reopen "$REOPEN" \
+    '{job: $job, action: "fix", point: $point, arg: $arg, snapshot: "", phase: "snapshotting", code: 0,
+      message: "", conflicts: [], reopen: $reopen, startedAt: $now, finishedAt: 0, pid: $pid, seen: false}'
+
+  # Detected? `layout-empty-widget` is the page's own finding, so the script trusts it.
+  local detected; detected=$(detect_point "$point")
+  local severity; severity=$(jq -r .severity <<<"$detected")
+  local title; title=$(jq -r .title <<<"$detected")
+  if [[ $point != layout-empty-widget ]]; then
+    if [[ $severity != fix ]]; then
+      finish failed 4 "There is nothing to fix: this isn't happening here."
+      return 4
+    fi
+    local disabled; disabled=$(jq -r '.fix.disabledReason // ""' <<<"$detected")
+    if [[ -n $disabled ]]; then
+      finish failed 2 "$disabled"
+      return 2
+    fi
+  fi
+  if [[ $kind == block ]]; then
+    local errors; errors=$(hypr_config_errors)
+    if [[ $(jq '[.[] | select(. != null and . != "")] | length' <<<"$errors") != 0 ]]; then
+      finish failed 2 "Hyprland already reports config errors, so a fix couldn't be verified."
+      return 2
+    fi
+  fi
+
+  if (( dry )); then
+    finish done 0 "Dry run: nothing was changed."
+    return 0
+  fi
+
+  local name=""
+  if [[ $kind != runtime ]]; then
+    name=$(new_snapshot "$point" "$arg" "$kind" "$title") || { finish failed 1 "Couldn't take a snapshot."; return 1; }
+    [[ ${NOTCH_SETUP_FAIL_AT:-} == snapshot ]] && { rm -rf "$(snapshot_dir)/.$name.partial"; finish failed 1 "Couldn't take a snapshot."; return 1; }
+    local file
+    while read -r file; do
+      [[ -z $file ]] && continue
+      snapshot_file "$name" "$file" || { rm -rf "$(snapshot_dir)/.$name.partial"; finish failed 1 "Couldn't copy $file."; return 1; }
+    done < <(files_for "$point")
+    finalise_snapshot "$name"
+    write_status "$STATUS_FILE" --arg snapshot "$name" '.snapshot = $snapshot'
+  fi
+
+  phase applying
+  if ! apply_fix "$point" "$arg" "$name"; then
+    [[ -n $name ]] && rollback "$name"
+    finish rolled-back 1 "Couldn't apply the fix. Nothing was changed."
+    return 1
+  fi
+  [[ -n $name ]] && { record_after "$name"; meta_state "$name" applied; }
+
+  phase reloading
+  reload_for "$point"
+
+  phase verifying
+  if ! verify_fix "$point" "$arg"; then
+    [[ -n $name ]] && rollback "$name"
+    finish rolled-back 1 "The fix didn't take. Everything was put back."
+    return 1
+  fi
+  [[ -n $name ]] && meta_state "$name" verified
+
+  prune
+  finish done 0 ""
+  return 0
+}
+
+# --- restore ------------------------------------------------------------------------
+
+file_clean() { # file_clean <meta> <index>
+  local meta=$1 i=$2
+  local path existed after_existed after_hash after_canon
+  path=$(jq -r ".files[$i].path" "$meta")
+  after_existed=$(jq -r ".files[$i].after.existed // empty" "$meta")
+  after_hash=$(jq -r ".files[$i].after.sha256 // empty" "$meta")
+  after_canon=$(jq -r ".files[$i].after.canonical // empty" "$meta")
+  [[ -z $after_existed ]] && return 0   # never applied: nothing to compare
+  existed=false; [[ -e $path ]] && existed=true
+  [[ $existed == "$after_existed" ]] || return 1
+  [[ $existed == false ]] && return 0
+  if [[ -n $after_canon ]]; then
+    [[ $(canonical_sha "$path") == "$after_canon" ]] || return 1
+  else
+    [[ $(sha "$path") == "$after_hash" ]] || return 1
+  fi
+  return 0
+}
+
+restore_files() { # restore_files <snapshot dir>
+  local dir=$1
+  local count; count=$(jq '.files | length' "$dir/meta.json")
+  local i
+  for (( i = 0; i < count; i++ )); do
+    local path existed copy mode
+    path=$(jq -r ".files[$i].path" "$dir/meta.json")
+    existed=$(jq -r ".files[$i].existed" "$dir/meta.json")
+    copy=$(jq -r ".files[$i].copy // \"\"" "$dir/meta.json")
+    mode=$(jq -r ".files[$i].mode // \"\"" "$dir/meta.json")
+    if [[ $existed == true && -n $copy ]]; then
+      mkdir -p "$(dirname "$path")" 2>/dev/null
+      local tmp; tmp=$(mktemp "$(dirname "$path")/.notch-setup.XXXXXX") || return 1
+      cp "$dir/$copy" "$tmp" || { rm -f "$tmp"; return 1; }
+      [[ -n $mode ]] && chmod "$mode" "$tmp"
+      sync "$tmp" 2>/dev/null
+      mv -f "$tmp" "$path" || return 1
+    elif [[ $existed == false && -e $path ]]; then
+      mkdir -p "$dir/removed"
+      mv -f "$path" "$dir/removed/$i"
+    fi
+  done
+  return 0
+}
+
+remove_block() { # remove_block <snapshot dir>
+  local dir=$1
+  local path begin end
+  path=$(jq -r '.files[0].path' "$dir/meta.json")
+  begin=$(jq -r '.block.begin // ""' "$dir/meta.json")
+  end=$(jq -r '.block.end // ""' "$dir/meta.json")
+  [[ -n $begin && -n $end && -f $path ]] || return 1
+  local starts ends
+  # -- starts the markers, so every pattern goes after --.
+  starts=$(grep -cF -e "$begin" "$path"); ends=$(grep -cF -e "$end" "$path")
+  [[ $starts == 1 && $ends == 1 ]] || return 1
+  local tmp; tmp=$(mktemp "$(dirname "$path")/.notch-setup.XXXXXX") || return 1
+  awk -v b="$begin" -v e="$end" '
+    index($0, b) == 1 { skip = 1 }
+    !skip { print }
+    index($0, e) == 1 { skip = 0 }' "$path" >"$tmp" || { rm -f "$tmp"; return 1; }
+  if ! lua_parses "$tmp"; then rm -f "$tmp"; return 1; fi
+  install_file "$tmp" "$path"
+}
+
+do_restore() {
+  local name="" mode=""
+  STATUS_FILE="$STATUS_DEFAULT"
+  while (( $# )); do
+    case $1 in
+      --force) mode=force ;;
+      --block-only) mode=block-only ;;
+      --status) STATUS_FILE=${2:-}; shift ;;
+      --reopen) REOPEN=true ;;
+      -*) echo "notch-setup: unknown option $1" >&2; return 2 ;;
+      *) name=$1 ;;
+    esac
+    shift
+  done
+  [[ -n $name ]] || { echo "notch-setup: restore needs a snapshot" >&2; return 2; }
+  check_guard run || return 2
+  local dir; dir=$(snapshot_path "$name") || { echo "notch-setup: no such snapshot: $name" >&2; return 2; }
+
+  session_locked && { echo "notch-setup: the session is locked" >&2; return 2; }
+  take_lock || { echo "notch-setup: another setup job is running" >&2; return 5; }
+  relocate
+
+  local point kind; point=$(jq -r .point "$dir/meta.json"); kind=$(jq -r .kind "$dir/meta.json")
+  JOB="$(now_ms)-$$"
+  write_status "$STATUS_FILE" --arg job "$JOB" --arg point "$point" --arg snapshot "$name" --argjson pid $$ --argjson reopen "$REOPEN" \
+    '{job: $job, action: "restore", point: $point, arg: "", snapshot: $snapshot, phase: "applying", code: 0,
+      message: "", conflicts: [], reopen: $reopen, startedAt: $now, finishedAt: 0, pid: $pid, seen: false}'
+
+  # Changed since the fix?
+  local count; count=$(jq '.files | length' "$dir/meta.json")
+  local conflicts='[]' i
+  for (( i = 0; i < count; i++ )); do
+    file_clean "$dir/meta.json" "$i" && continue
+    conflicts=$(jq -c --arg p "$(jq -r ".files[$i].path" "$dir/meta.json")" '. + [$p]' <<<"$conflicts")
+  done
+  if [[ $conflicts != '[]' && $mode != force && $mode != block-only ]]; then
+    write_status "$STATUS_FILE" --argjson conflicts "$conflicts" '.conflicts = $conflicts'
+    finish conflict 3 "$(jq -r 'map(split("/") | last) | join(", ")' <<<"$conflicts") changed after the fix."
+    return 3
+  fi
+
+  if [[ $mode == force ]]; then
+    # Undoing the undo has to be possible too.
+    local safety; safety=$(new_snapshot restore "$name" "$kind" "Before restoring $name")
+    local file
+    for (( i = 0; i < count; i++ )); do
+      file=$(jq -r ".files[$i].path" "$dir/meta.json")
+      snapshot_file "$safety" "$file"
+    done
+    record_after "$safety"
+    finalise_snapshot "$safety"
+  fi
+
+  if [[ $mode == block-only ]]; then
+    if ! remove_block "$dir"; then
+      finish failed 1 "Couldn't find the notch's block in the file."
+      return 1
+    fi
+  elif [[ $kind == ipc ]] && [[ $(jq '.undo | length' "$dir/meta.json") != 0 ]]; then
+    # The shell's own IPC first: it avoids rewriting shell.json underneath the
+    # running shell, and it doesn't reload every plugin.
+    local ok=1 cmd
+    while read -r cmd; do
+      local argv; mapfile -t argv < <(jq -r '.[]' <<<"$cmd")
+      local program="${argv[0]}"
+      case $program in
+        omarchy-shell) argv=("${OMARCHY_SHELL[@]}" "${argv[@]:1}") ;;
+        omarchy) argv=("${OMARCHY[@]}" "${argv[@]:1}") ;;
+        omarchy-toggle-bar) argv=("${TOGGLE_BAR[@]}" "${argv[@]:1}") ;;
+      esac
+      "${argv[@]}" >/dev/null 2>&1 || ok=0
+    done < <(jq -c '.undo[]' "$dir/meta.json")
+    meta_set "$name" --argjson ok "$ok" '.history += [{state: "undo-ipc", at: $now, ok: ($ok == 1)}]'
+    # Did it land? If the canonical hash matches what was there before the fix,
+    # there is nothing left to write.
+    local want; want=$(jq -r '.files[0].canonical // .files[0].sha256 // ""' "$dir/meta.json")
+    local path; path=$(jq -r '.files[0].path' "$dir/meta.json")
+    local got; got=$(canonical_sha "$path")
+    if [[ -n $want && $got == "$want" ]]; then
+      meta_state "$name" restored
+      prune
+      finish done 0 ""
+      return 0
+    fi
+    # Otherwise the raw bytes, which means a rescan, which destroys the notch.
+    restore_files "$dir" || { finish failed 1 "Couldn't put the files back."; return 1; }
+    DESTROYED=true
+    "${OMARCHY_SHELL[@]}" shell reloadConfig >/dev/null 2>&1
+    "${OMARCHY_SHELL[@]}" shell rescanPlugins >/dev/null 2>&1
+  else
+    restore_files "$dir" || { finish failed 1 "Couldn't put the files back."; return 1; }
+    case $point in
+      bar-off) runnable TOGGLE_BAR && "${TOGGLE_BAR[@]}" on >/dev/null 2>&1
+               [[ -f $TOGGLES/bar-off ]] || : >"$TOGGLES/bar-off" ;;
+      *) : ;;
+    esac
+  fi
+
+  phase reloading
+  case $kind in
+    block) reload_for "$point" ;;
+    archive) : ;;
+  esac
+
+  phase verifying
+  local bad=0
+  for (( i = 0; i < count; i++ )); do
+    local path existed want_hash want_canon
+    path=$(jq -r ".files[$i].path" "$dir/meta.json")
+    existed=$(jq -r ".files[$i].existed" "$dir/meta.json")
+    want_hash=$(jq -r ".files[$i].sha256 // \"\"" "$dir/meta.json")
+    want_canon=$(jq -r ".files[$i].canonical // \"\"" "$dir/meta.json")
+    if [[ $existed == true ]]; then
+      if [[ $mode == block-only ]]; then continue; fi
+      if [[ -n $want_canon ]]; then
+        sleep 2
+        [[ $(canonical_sha "$path") == "$want_canon" ]] || bad=1
+      else
+        [[ $(sha "$path") == "$want_hash" ]] || bad=1
+      fi
+    else
+      [[ -e $path ]] && bad=1
+    fi
+  done
+  if (( bad )); then
+    finish failed 1 "The files didn't come back as they were; run Restore again."
+    return 1
+  fi
+  meta_state "$name" restored
+  prune
+  finish done 0 ""
+  return 0
+}
+
+# --- retention ----------------------------------------------------------------------
+
+prune() {
+  local dir; dir=$(snapshot_dir)
+  [[ -d $dir ]] || return 0
+  local now; now=$(now_ms)
+  local cutoff=$(( now - RETENTION_DAYS * 86400000 ))
+
+  # Partial directories from a job that died.
+  local partial
+  for partial in "$dir"/.*.partial; do
+    [[ -d $partial ]] || continue
+    local created; created=$(jq -r '.createdAt // 0' "$partial/meta.json" 2>/dev/null || echo 0)
+    (( created > 0 && now - created < 3600000 )) && continue
+    rm -rf "$partial"
+  done
+
+  local all; all=$(snapshots_json)
+  # Prunable: a finished snapshot that isn't the newest of its point, and isn't
+  # the only way back from a fix that is still in place.
+  local newest; newest=$(jq -c '[group_by(.point)[] | max_by(.createdAt) | .name]' <<<"$all")
+  local prunable=()
+  local name state
+  while read -r name state; do
+    [[ -z $name ]] && continue
+    jq -e --arg n "$name" 'index($n)' >/dev/null <<<"$newest" && continue
+    case $state in
+      applied|verified) snapshot_still_needed "$name" && continue ;;
+    esac
+    prunable+=("$name")
+  done < <(jq -r '.[] | "\(.name) \(.state)"' <<<"$all")
+
+  # Old ones first.
+  local kept=$(jq 'length' <<<"$all")
+  local candidate
+  for candidate in "${prunable[@]}"; do
+    local created; created=$(jq -r --arg n "$candidate" '.[] | select(.name == $n) | .createdAt' <<<"$all")
+    if (( created < cutoff )); then
+      rm -rf "${dir:?}/$candidate"; kept=$((kept - 1))
+    fi
+  done
+  for (( i = ${#prunable[@]} - 1; i >= 0 && kept > RETENTION_CAP; i-- )); do
+    [[ -d $dir/${prunable[i]} ]] || continue
+    rm -rf "${dir:?}/${prunable[i]}"; kept=$((kept - 1))
+  done
+}
+
+snapshot_still_needed() { # the fix is still in place, so this is the only way back
+  local dir; dir=$(snapshot_path "$1") || return 1
+  local count; count=$(jq '.files | length' "$dir/meta.json")
+  local i
+  for (( i = 0; i < count; i++ )); do
+    file_clean "$dir/meta.json" "$i" || return 1
+  done
+  return 0
+}
+
+# --- the rest of the verbs ----------------------------------------------------------
+
+show_snapshot() {
+  local name=${1:-} diff=0
+  [[ ${2:-} == --diff ]] && diff=1
+  local dir; dir=$(snapshot_path "$name") || { echo "notch-setup: no such snapshot: $name" >&2; return 2; }
+  if (( diff )); then
+    local count; count=$(jq '.files | length' "$dir/meta.json")
+    local i
+    for (( i = 0; i < count; i++ )); do
+      local path copy; path=$(jq -r ".files[$i].path" "$dir/meta.json"); copy=$(jq -r ".files[$i].copy // \"\"" "$dir/meta.json")
+      [[ -n $copy && -f $path ]] && diff -u "$dir/$copy" "$path"
+    done
+    return 0
+  fi
+  cat "$dir/meta.json"
+}
+
+do_forget() {
+  local name=${1:-}
+  [[ -n $name ]] || { echo "notch-setup: forget needs a snapshot" >&2; return 2; }
+  check_guard write || return 2
+  local dir; dir=$(snapshot_path "$name") || return 0
+  rm -rf "$dir"
+}
+
+do_ack() {
+  local file=${1:-$STATUS_DEFAULT}
+  check_guard write || return 2
+  [[ -f $file ]] || return 0
+  write_status "$file" '.seen = true'
+}
+
+usage() {
+  sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
+}
+
+ORIGINAL_ARGV=("$@")
+umask 077
+case "${1:-}" in
+  detect) shift; detect "$@" ;;
+  fix) shift; do_fix "$@" ;;
+  restore) shift; do_restore "$@" ;;
+  snapshots) shift; if [[ ${1:-} == --json ]]; then snapshots_json; else
+      jq -r '.[] | "\(.name)  \(.state)  \(.title)"' <<<"$(snapshots_json)"; fi ;;
+  show) shift; show_snapshot "$@" ;;
+  forget) shift; do_forget "$@" ;;
+  prune) check_guard write || exit 2; prune ;;
+  ack) shift; do_ack "$@" ;;
+  ""|-h|--help|help) usage ;;
+  *) echo "notch-setup: unknown command: $1" >&2; usage >&2; exit 2 ;;
+esac

@@ -24,6 +24,7 @@ Item {
   // resting notch's own content sits.
   property real headerHeight: 32
   signal closeRequested()
+  signal setupRequested()
 
   readonly property real padding: Style.space(16)
   implicitWidth: Style.space(400)
@@ -140,6 +141,21 @@ Item {
     set(key, next)
   }
 
+  // Plugins that declare an integration, whatever the notch made of it.
+  readonly property var integrations: bar ? bar.platform.list : []
+
+  // Show this plugin inside the notch, or give it its own UI back. The list of
+  // ids that are off is the setting; everything else follows from it.
+  function toggleIntegration(id, off) {
+    if (!bar) return
+    var next = (bar.notchDisabledIntegrations || []).slice()
+    var at = next.indexOf(id)
+    if (off && at === -1) next.push(id)
+    else if (!off && at !== -1) next.splice(at, 1)
+    else return
+    set("disabledIntegrations", next)
+  }
+
   function resetAll() {
     if (!bar || !bar.shell || typeof bar.shell.mutateShellConfig !== "function") return
     bar.batterySimulatedState = ""
@@ -166,7 +182,27 @@ Item {
       font.bold: true
     }
 
+    // Setup, with the number of things that need attention.
     Button {
+      id: setupButton
+      foreground: root.foreground
+      accent: root.accent
+      radius: root.radiusFor(Math.min(width, height))
+      anchors.right: closeButton.left
+      anchors.rightMargin: Style.space(6)
+      anchors.verticalCenter: parent.verticalCenter
+      visible: !!root.bar && root.bar.setup.enabled
+      text: {
+        var n = root.bar ? root.bar.setup.issueCount : 0
+        return n > 0 ? "Setup · " + n : "Setup"
+      }
+      fontFamily: root.fontFamily
+      horizontalPadding: Style.space(10)
+      onClicked: root.setupRequested()
+    }
+
+    Button {
+      id: closeButton
       foreground: root.foreground
       accent: root.accent
       radius: root.radiusFor(Math.min(width, height))
@@ -489,6 +525,47 @@ Item {
             : root.glowReach < 4 ? "Glow size " + root.bar.notchGlowScale.toFixed(2) + "× reaches only " + root.glowReach.toFixed(1) + " px, too small to see. Raise Glow size to see the preview."
             : root.bar.batterySimulated ? "Previewing: while the settings are open the glow sits under the panel's bottom edge. It stops when the settings close."
             : ""
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          bottomPadding: Style.space(4)
+        }
+      }
+
+      // Plugins that draw inside the notch. Hidden until one says it can.
+      Section {
+        id: integrationsSection
+        title: "Integrations"
+        visible: root.integrations.length > 0
+
+        Repeater {
+          model: root.integrations
+
+          SettingRow {
+            label: modelData.name || modelData.id
+            Row {
+              spacing: Style.space(8)
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: modelData.reasonText
+                color: modelData.accepted ? root.dim : root.accent
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+
+              Switch {
+                checked: !modelData.userOff
+                onToggled: root.toggleIntegration(modelData.id, !checked)
+              }
+            }
+          }
+        }
+
+        Text {
+          width: parent.width
+          wrapMode: Text.WordWrap
+          text: "A plugin that integrates opens its own panel inside the notch, on the notch's colour and motion. Switching one off gives that plugin its own window back at once."
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

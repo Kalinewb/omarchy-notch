@@ -1,0 +1,3 @@
+{ "schemaVersion": 1, "id": "acme.future", "name": "Acme Future", "version": "9.0.0",
+  "description": "Written for a notch that does not exist yet.", "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml", "notch": "NotchIntegration.qml" }, "notch": { "contract": 99 } }

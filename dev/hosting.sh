@@ -148,6 +148,7 @@ ln -s "$REPO" "$notch_root/notch"
 cp "$REPO/dev/harness/hosting-notch-shell.qml" "$notch_root/shell.qml"
 
 notch() { quickshell ipc -p "$notch_root" call notch "$@" 2>/dev/null; }
+harness() { quickshell ipc -p "$notch_root" call harness "$@" 2>/dev/null; }
 
 # Setup reads a sandbox, never this machine's real config.
 mkdir -p "$sb/setup-home/.config/omarchy" "$sb/setup-state" "$sb/setup-run"
@@ -262,9 +263,26 @@ check "38. a widget nobody opted into is not intercepted, and nothing is opted i
 check "39. the settings offer the widget, named, as something the notch can draw" "1 Audio false" \
   "$(notch settingsReport 2>/dev/null | jq -r '.hostable | length') $(notch settingsReport 2>/dev/null | jq -r '.hostable[0].name') $(notch settingsReport 2>/dev/null | jq -r '.hostable[0].hosted')"
 
+# The panel lists a cached copy: the walk it needs touches every widget's
+# children, which QML cannot bind to. So it has to be refreshed when the panel
+# opens, or the user reads whatever was true in the notch's first second --
+# which is how clock, weather and camera-test stayed missing from a list that
+# had already been rebuilt to include them. Blank the cache, reopen, and it
+# has to come back.
+notch settings >/dev/null 2>&1; sleep 0.9
+check "39a. the open panel is listing that same walk" "true" \
+  "$(notch settingsReport 2>/dev/null | jq -r '.panelHostable == (.hostable | length) and .panelHostable >= 1')"
+notch settings >/dev/null 2>&1; sleep 0.5
+harness staleSettings >/dev/null
+check "39b. …a stale cache is what it would show" "0" \
+  "$(notch settingsReport 2>/dev/null | jq -r '.panelHostable')"
+notch settings >/dev/null 2>&1; sleep 0.9
+check "39c. …and opening it refreshes the list" "true" \
+  "$(notch settingsReport 2>/dev/null | jq -r '.panelHostable == (.hostable | length) and .panelHostable >= 1')"
+notch settings >/dev/null 2>&1; sleep 0.5
+
 # A plugin opening its own panel -- its keybind, or `omarchy-shell <id> open` --
 # has to land in the notch too, or the integration only half applies.
-harness() { quickshell ipc -p "$notch_root" call harness "$@" 2>/dev/null; }
 
 check "40. nothing is hosted before the summon" "false" "$(notch geometry | jq -r '.hosted.open')"
 check "41. summoning a widget nobody opted into leaves the notch alone" "ok false" \

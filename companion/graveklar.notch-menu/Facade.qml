@@ -164,6 +164,14 @@ Item {
     root.appsSource = "own"
   }
 
+  // Registering once, at completion, assumed the notch's bridge had already
+  // resolved by then. It is a Loader over a file in ANOTHER plugin's folder, so
+  // that is not something to assume: when it resolved late the notch was still
+  // routed to (the `notch` binding caught up) but never learned who was doing
+  // the routing, and its settings row said the companion was not installed. So
+  // this registers whenever the bridge appears, however late that is.
+  onBridgeChanged: if (root.bridge) root.bridge.facade = root
+
   Component.onCompleted: {
     root.stockFirstSource = String(stock.source)
     if (root.bridge) root.bridge.facade = root

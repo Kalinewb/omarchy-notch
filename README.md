@@ -147,14 +147,26 @@ claim a line in the resting notch, and the rule for switching your own UI off
 safely (a surface that exists to *warn* the user never stands down on an answer
 that came from outside the shell).
 
-Settings → **Integrations** lists every plugin that declares one, with a switch
-per plugin and, when it isn't shown, the reason in words. Switching one off
-gives that plugin its own window back at once, with no reload. The section is
-hidden until some plugin declares an integration.
+**A plugin doesn't have to know about the notch.** Most Omarchy bar widgets keep
+their pop-out panel in a `KeyboardPanel`, and the notch can draw that panel
+inside itself without the plugin changing anything: it takes the panel's content
+while it is open, grows to the size the plugin asked its own card for — on the
+notch's spring, fading on the notch's timings — and gives it back untouched when
+it closes. The plugin's own window never maps. Audio, Bluetooth, Wifi, the
+clock, the weather, the power and monitor panels, Profiles, Face ID, Touchpad
+Comfortable, Power Manager and System Monitor all work this way today, unmodified.
+
+Settings → **Integrations** lists both: plugins that declare an integration, and
+widgets in your bar whose panel the notch can draw. Each has a switch, and when
+something isn't shown the reason is there in words. Switching one off gives that
+plugin its own window back at once, with no reload. Nothing is hosted until you
+ask for it.
 
 ```sh
 omarchy-shell notch integrations           # every candidate, and why
 omarchy-shell notch panel <id> <route>     # open one plugin's panel
+omarchy-shell notch hostPanel <widget>     # draw a bar widget's own panel inside the notch
+omarchy-shell notch hosting                # what it is holding right now
 omarchy-shell notch activities             # the resting-notch queue
 ```
 

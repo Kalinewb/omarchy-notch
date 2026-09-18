@@ -73,8 +73,28 @@ for x in s:
         bad.append({"h": h, "w": w, "bottom": r["bottomLeft"], "want": rb, "fillet": r["fillet"], "wantFillet": rf})
     if h >= 1 and (r["bottomLeft"] <= 0 or r["fillet"] <= 0): sharp += 1
     if r["topLeft"] != 0 or r["topRight"] != 0: top += 1
+# The bottom radius is capped to half the height, so a short notch can only
+# stay round if it narrows too: a 180 px wide, 2 px tall bar has a 1 px corner
+# nobody can see, which is what made a tuck end looking sharp. The drawn width
+# tapers with the height (Bar.qml, tuckWidth) by exactly the amount that holds
+# the corner's share of the silhouette constant, so the test is that share --
+# not the radius, which was always right, but how much of the shape it is.
+# Every sample should match the share the same run has at rest.
+def share(x):
+    w, h = x["bar"]["width"], x["bar"]["height"]
+    return x["radii"]["bottomLeft"] / w if w > 0 else 0
+shares = {}
+for x in s:
+    if x["bar"]["height"] >= 31.5 and x["b"] > 0: shares.setdefault(x["b"], share(x))
+flat = [{"h": round(x["bar"]["height"], 2), "w": round(x["bar"]["width"], 2),
+         "share": round(share(x), 4), "rest": round(shares[x["b"]], 4)}
+        for x in s if x["bar"]["height"] >= 1 and x["b"] > 0 and x["b"] in shares
+        and share(x) < shares[x["b"]] * 0.99]
+worst = min((share(x) / shares[x["b"]] for x in s
+             if x["bar"]["height"] >= 1 and x["b"] > 0 and x["b"] in shares), default=1)
 heights = sorted({round(x["bar"]["height"], 1) for x in partial})
-print(json.dumps({"samples": len(s), "partial": len(partial), "heights": heights[:12], "bad": bad[:5], "badCount": len(bad), "sharp": sharp, "top": top}))
+print(json.dumps({"samples": len(s), "partial": len(partial), "heights": heights[:12], "bad": bad[:5], "badCount": len(bad), "sharp": sharp, "top": top,
+                  "worstShare": round(worst, 3), "flat": flat[:5], "flatCount": len(flat)}))
 PY
 )
 echo "  ${DIM}$(jq -c '{samples, partial, heights}' <<<"$report")${RESET}"
@@ -83,6 +103,9 @@ check "every sample: bottom = min(bottomRadius, w/2, h/2), fillet = min(filletRa
 [[ $(jq -r .badCount <<<"$report") != 0 ]] && jq -c '.bad' <<<"$report"
 check "never sharp: bottom corners and fillets above zero whenever at least 1 px of the notch shows" "0" "$(jq -r .sharp <<<"$report")"
 check "top corners square in every sample" "0" "$(jq -r .top <<<"$report")"
+echo "  ${DIM}$(jq -c '{worstShare}' <<<"$report")${RESET}"
+check "never a rule: the bottom corner keeps its share of the drawn width all the way in" "0" "$(jq -r .flatCount <<<"$report")"
+[[ $(jq -r .flatCount <<<"$report") != 0 ]] && jq -c '.flat' <<<"$report"
 
 echo
 if ((failures == 0)); then echo "${GREEN}All $checks checks pass.${RESET}"

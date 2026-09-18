@@ -51,6 +51,18 @@ ShellRoot {
       return "ok"
     }
 
+    // Blank the settings panel's cached list of hostable widgets, so a check
+    // can see whether opening the panel refills it. The walk it caches cannot
+    // be a binding -- it touches every widget's children -- so "does it
+    // refresh when opened" is the whole of the contract.
+    function staleSettings(): string {
+      for (var i = 0; i < notch.notchWindows.length; i++) {
+        var item = notch.notchWindows[i].settingsItem
+        if (item && "hostable" in item) { item.hostable = []; return "ok" }
+      }
+      return "no settings"
+    }
+
     function summon(): string {
       var item = notch.widgetItemFor(shellRoot.widgetId)
       if (!item) return "no widget"

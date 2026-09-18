@@ -2648,10 +2648,21 @@ Item {
     function hosting(): string { return JSON.stringify(root.hosting.report()) }
 
     // What Settings → Integrations is showing, so a check can read the same
-    // list the user does.
+    // list the user does. `hostable` is the walk done now; `panelHostable` is
+    // what the open panel is actually listing, which is a cached copy -- the
+    // walk cannot be a binding. They agree only if the panel refreshes when it
+    // opens, so a check can hold them against each other.
     function settingsReport(): string {
+      // The panel's item outlives its being shown, so this reads the same
+      // cache whether it is open or not.
+      var panel = null
+      for (var i = 0; i < root.notchWindows.length; i++) {
+        var item = root.notchWindows[i].settingsItem
+        if (item) { panel = item; break }
+      }
       return JSON.stringify({ hostable: root.hostableWidgets(), opted: root.notchHostedPanels,
-                              integrations: root.platform.list.length })
+                              integrations: root.platform.list.length,
+                              panelHostable: panel ? panel.hostable.length : -1 })
     }
 
     function integrations(): string { return JSON.stringify(root.platform.report()) }
@@ -3075,6 +3086,9 @@ Item {
     function closeIntegration(id) {
       if (integrationOpen && integrationId === id) integrationOpen = false
     }
+
+    // The open settings panel itself, for settingsReport.
+    readonly property var settingsItem: expandedHost.item
 
     // The settings, opened at one section ("updates").
     function openSettingsSection(name) {

@@ -44,9 +44,13 @@ menu's background is the notch colour), `dev/colours.sh` (widgets' background is
   not by the theme's red. It stops at the notch's edge: the same panel in its own window sits on
   the theme's background and keeps the theme's colours, so the notch never makes something else
   unreadable.
-- The one theme colour the notch cannot keep out: a theme whose style tokens route fills through
-  its accent (`selected-color = "accent"`). A hosted panel hands Omarchy's Style helpers the
-  notch's white, and that token makes the helper ignore it. Setup reports it (`theme-tokens`).
+- Omarchy's Style helpers (`selectedFillFor` and friends) and `Border.controlSpec` resolve
+  through the theme's style tokens, and a theme may pin those to a colour of its own — Catppuccin
+  Latte pins all four to `#4c4f69`. So nothing the notch draws goes through them for a *colour*:
+  its switch, `NotchButton.qml` and `NotchNumberField.qml` (forks of Omarchy's Button and
+  NumberField, vendored in `dev/upstream/ui`) take only widths and alphas from the theme and paint
+  the text colour at that alpha. The one place a pinned token still shows is inside another
+  plugin's hosted panel, which asks Style itself; Setup notes it (`theme-tokens`, worth knowing).
 - Not on the notch, so not the notch's: the battery glow's three colours are yours, in the
   settings, and are light around the notch rather than anything on it.
 - A `foreground` setting always wins.

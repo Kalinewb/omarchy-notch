@@ -31,6 +31,8 @@ FILES=(
   "plugins/menu/Menu.qml:menu/Menu.qml"
   "plugins/menu/MenuModel.js:menu/MenuModel.js"
   "Ui/ConfirmDialog.qml:ui/ConfirmDialog.qml"
+  "Ui/Button.qml:ui/Button.qml"
+  "Ui/NumberField.qml:ui/NumberField.qml"
   "plugins/bar/Bar.qml:bar/Bar.qml"
   "plugins/bar/BarModel.js:bar/BarModel.js"
   "plugins/notifications/Service.qml:notifications/Service.qml"

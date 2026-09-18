@@ -104,6 +104,25 @@ Item {
 
   function dismiss() { dismissedAt = Date.now(); clock = Date.now() }
 
+  // The switch is the whole of the user's part. Whatever the companion folder
+  // needs to match it -- installing, enabling, bringing up to date -- the notch
+  // does by itself, once per state it finds: a job that failed is not retried
+  // until the switch changes or the notch restarts, and Setup reports it.
+  property string keptInStep: ""
+  function keepInStep() {
+    if (!actionsEnabled || !bar || !bar.notchReplaceMenu) { keptInStep = ""; return }
+    var state = companionState
+    if (state !== "absent" && state !== "disabled" && state !== "outdated") return
+    if (statusKey === "working" || keptInStep === state) return
+    keptInStep = state
+    startJob(state === "outdated" ? "sync" : "install")
+  }
+  onInstalledChanged: keepInStep()
+  Connections {
+    target: companion.bar
+    function onNotchReplaceMenuChanged() { companion.keptInStep = ""; companion.keepInStep() }
+  }
+
   function setUp() { return startJob("install") }
   function update() { return startJob("sync") }
   function remove() { return startJob("remove") }

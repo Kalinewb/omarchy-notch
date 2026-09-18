@@ -372,7 +372,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `expanded` | `["clock","date","media"]` | Glance items added to the widget row. Leaves out time and date when the layout already has `omarchy.clock`. |
 | `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
-| `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. Turning it on installs the notch's menu companion plugin (one confirmation; plugins reload). |
+| `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
 | `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |
 | `openKey`, `settingsKey`, `menuKey`, `autoHideKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. |
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |

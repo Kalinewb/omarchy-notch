@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../"
 import "PluginsModel.js" as PluginsModel
 
 // The plugin-job notice: a small card the resting notch pops down into while a
@@ -163,7 +164,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(6)
 
-      Button {
+      NotchButton {
         id: dismissButton
         visible: root.notice === "failed" || (root.notice === "done" && (root.setupDue || root.canEnable || root.job.restartSuggested === true))
         text: "Dismiss"
@@ -178,7 +179,7 @@ Item {
         onClicked: if (root.bar) root.bar.ackPluginJob()
       }
 
-      Button {
+      NotchButton {
         id: restartButton
         visible: root.notice === "done" && root.job.restartSuggested === true
         text: "Restart shell"
@@ -193,7 +194,7 @@ Item {
         onClicked: if (root.bar) root.bar.restartShellForPlugins()
       }
 
-      Button {
+      NotchButton {
         id: enableButton
         visible: root.notice === "done" && root.canEnable
         text: "Enable"
@@ -210,7 +211,7 @@ Item {
         onClicked: if (root.bar) root.bar.enablePlugin(root.job.id)
       }
 
-      Button {
+      NotchButton {
         id: setupButton
         visible: root.notice === "done" && root.setupDue
         text: "Open setup"

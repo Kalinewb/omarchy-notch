@@ -3614,7 +3614,7 @@ Item {
         palette: [root.notchForeground, root.notchAccent, root.notchSecondaryText, root.barForeground,
                   tooltipLabel.color, tooltipBubble.borderSpec.color]
           .concat(menuHost.item ? [menuHost.item.selectedBackground, menuHost.item.selectedText, menuHost.item.selectedBorder] : [])
-          .concat(settings ? [settings.foreground, settings.accent] : [])
+          .concat(settings ? [settings.foreground, settings.accent].concat(settings.painted || []) : [])
           .map(function (c) { return String(c).toUpperCase() }),
         glance: hex(compactGlance.foreground),
         settings: settings ? { foreground: hex(settings.foreground), accent: hex(settings.accent), surface: hex(settings.surface), glowReach: Number(settings.glowReach.toFixed(3)) } : null,

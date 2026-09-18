@@ -318,9 +318,11 @@ detect_menu_replace_companion() {
         "It is installed and enabled, but the shell couldn't load it." \
         "$(strings "Run \`omarchy plugin validate $PLUGINS/$COMPANION\`, then restart the shell.")" ;;
     *)
+      local job="${XDG_RUNTIME_DIR:-/tmp}/$ID/companion.json" why=""
+      [[ -f $job ]] && why=$(jq -r 'select(.phase == "failed") | .message // ""' "$job" 2>/dev/null)
       point menu-replace-companion action "The menu companion isn't installed" \
-        "\"Replace the Omarchy menu\" is on, but nothing is intercepting the menu yet." \
-        "$(strings "Turn \"Replace the Omarchy menu\" off and on again in Settings → How it opens: the notch installs the companion itself.")" '[]' null \
+        "\"Replace the Omarchy menu\" is on, so the notch installs its companion by itself; it hasn't managed to${why:+: $why}" \
+        "$(strings "Switching \"Replace the Omarchy menu\" off and on again in Settings → How it opens makes the notch try again." "From a terminal: \`$NOTCH_DIR/bin/notch-companion install /dev/stdout\`.")" '[]' null \
         '{"label": "Open Settings", "view": "settings"}' ;;
   esac
 }

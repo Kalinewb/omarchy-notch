@@ -1,10 +1,12 @@
 {
-  "omarchyVersion": "4.0.3-1",
+  "omarchyVersion": "4.0.4-1",
   "recordedAt": "2026-09-18",
   "files": {
     "plugins/menu/Menu.qml": "0154d0ec3855fbb48aa06eaa724a19f3c07c377494d4a3de65daed2d7d9100e3",
     "plugins/menu/MenuModel.js": "ff6b265ca477d0d04297b0d9a5d9715960069db6da44603160d329e087e55fd8",
     "Ui/ConfirmDialog.qml": "969cafe0580acb66d47947b7b6e9fa5103e1911b3a7dee03b84f2b154afc2762",
+    "Ui/Button.qml": "fda48672cc11dba109acea1cc98eb4b29746e5ce09f90a47f487b776ff99e799",
+    "Ui/NumberField.qml": "b3584b513ee720f9f3e0f098d19ca1b129a02270c140528455d88fe04e2f2c8b",
     "plugins/bar/Bar.qml": "9874c0f36271840b43002890ae333c83097df7f4cff0bade81536a41ed83590b",
     "plugins/bar/BarModel.js": "908f30edce60dcba46d2039ba3d501fd0faa35fa1f90b7dbda69439288f8a8d0",
     "plugins/notifications/Service.qml": "11665542e70df80ccd3c785a6143dee2daefd2082e4f75c740adc2c9947cf7c2",

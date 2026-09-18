@@ -3,7 +3,6 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 import "keys.js" as KeyCombo
-import "menu"
 
 // The notch's settings, drawn inside the notch itself: opening them grows the
 // notch -- the same surface, top edge on the screen edge -- into this panel.
@@ -39,35 +38,9 @@ Item {
   readonly property color dim: bar ? bar.notchSecondaryText : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
   // How far the glow reaches now, in px (for the preview's hint).
   property real glowReach: 32
-  // Replacing the menu needs the companion plugin. Turning the switch on
-  // installs it (after a word of warning: plugins reload); Setup is where a
-  // companion that is missing, off or broken is reported and repaired. The
-  // only thing this panel says about it is that the notch is busy, or that
-  // Setup has something for you.
-  readonly property string menuReplaceNote: {
-    var b = bar
-    if (!b || !b.notchReplaceMenu) return ""
-    var companion = b.menuCompanion
-    if (companion.statusKey === "working") return "Setting up the menu companion…"
-    if (companion.companionState !== "active" && companion.actionsEnabled) return "Not set up yet — Setup has the fix."
-    return ""
-  }
-  property bool companionConfirmOpen: false
-  // Whether the switch's job is the companion install (dev/menu-replace.sh).
-  readonly property bool companionNeeded: !!bar && bar.menuCompanion.actionsEnabled && bar.menuCompanion.companionState !== "active"
-
-  function requestReplaceMenu(on) {
-    if (!on || !companionNeeded) { set("replaceMenu", on); return }
-    companionConfirmOpen = true
-  }
-
-  function confirmReplaceMenu() {
-    companionConfirmOpen = false
-    set("replaceMenu", true)
-    var companion = bar.menuCompanion
-    if (companion.companionState === "outdated") companion.update()
-    else companion.setUp()
-  }
+  // What the panel's own controls paint with (dev/colours.sh: no hue).
+  readonly property var painted: [replaceMenuSwitch.trackColor, replaceMenuSwitch.knobColor,
+                                  setupButton.selectedFill, setupButton.hoverFill, glowScaleSlider.trackColor]
 
   // Where the notch's own updates stand, in words.
   readonly property string updateStatus: {
@@ -106,6 +79,11 @@ Item {
   readonly property bool updatesSectionOpen: updatesSection.open
   // Whether the notch update's Update button takes a click (dev/plugins.sh).
   readonly property bool updateButtonEnabled: updateNowButton.enabled
+
+  readonly property QtObject sliderPalette: QtObject {
+    readonly property color foreground: root.foreground
+    readonly property color background: root.surface
+  }
 
   // The notch's radius for a control this tall (DESIGN-PHILOSOPHY.md, 5).
   function radiusFor(height) { return bar ? bar.radiusFor(height) : Math.max(0, Math.min(10, height / 2)) }
@@ -160,8 +138,13 @@ Item {
   // Plugins that declare an integration, whatever the notch made of it.
   readonly property var integrations: bar ? bar.platform.list : []
   // Widgets whose own panel the notch could draw, whether or not they know
-  // anything about the notch.
-  readonly property var hostable: bar ? bar.hostableWidgets() : []
+  // anything about the notch. Read when the panel shows, not bound: the walk
+  // touches every widget's children, and as a binding it re-ran on each
+  // widget's creation (a warning per run, 18 MB of log in one startup).
+  property var hostable: []
+  function refreshHostable() { hostable = bar ? bar.hostableWidgets() : [] }
+  onVisibleChanged: if (visible) refreshHostable()
+  Component.onCompleted: refreshHostable()
 
   // Show this plugin inside the notch, or give it its own UI back. The list of
   // ids that are off is the setting; everything else follows from it.
@@ -178,6 +161,7 @@ Item {
   // Draw this widget's own panel inside the notch, or give it back to its own
   // window. Takes effect on the next click; a panel open right now is released.
   function toggleHostedPanel(id, hosted) {
+    Qt.callLater(refreshHostable)
     if (!bar) return
     var next = (bar.notchHostedPanels || []).slice()
     var at = next.indexOf(id)
@@ -197,13 +181,7 @@ Item {
   }
 
   focus: true
-  Keys.onEscapePressed: {
-    if (root.companionConfirmOpen) { root.companionConfirmOpen = false; return }
-    root.closeRequested()
-  }
-  Keys.onPressed: function(event) {
-    if (root.companionConfirmOpen && companionConfirm.handleKey(event)) event.accepted = true
-  }
+  Keys.onEscapePressed: root.closeRequested()
 
   // Header, on the resting notch's row.
   Item {
@@ -221,7 +199,7 @@ Item {
     }
 
     // Setup, with the number of things that need attention.
-    Button {
+    NotchButton {
       id: setupButton
       foreground: root.foreground
       accent: root.accent
@@ -239,7 +217,7 @@ Item {
       onClicked: root.setupRequested()
     }
 
-    Button {
+    NotchButton {
       id: closeButton
       foreground: root.foreground
       accent: root.accent
@@ -251,28 +229,6 @@ Item {
       horizontalPadding: Style.space(8)
       onClicked: root.closeRequested()
     }
-  }
-
-  // Turning "Replace the Omarchy menu" on installs the companion plugin, and
-  // that reloads every plugin: worth one sentence first.
-  NotchConfirmDialog {
-    id: companionConfirm
-    anchors.fill: parent
-    z: 10
-    opened: root.companionConfirmOpen
-    message: (root.bar && root.bar.menuCompanion.companionState === "outdated"
-      ? "The menu companion plugin is out of date. Updating it reloads Omarchy's plugins, and the notch closes for a moment."
-      : "This installs the notch's menu companion plugin and reloads Omarchy's plugins. The notch closes for a moment.")
-    confirmText: root.bar && root.bar.menuCompanion.companionState === "outdated" ? "Update" : "Set up"
-    background: root.surface
-    foreground: root.foreground
-    scrim: Qt.rgba(root.surface.r, root.surface.g, root.surface.b, 0.7)
-    selectedBackground: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
-    selectedText: root.foreground
-    fontFamily: root.fontFamily
-    cornerRadius: root.bar ? root.bar.notchRadius : 10
-    onCanceled: root.companionConfirmOpen = false
-    onConfirmed: root.confirmReplaceMenu()
   }
 
   Flickable {
@@ -398,25 +354,15 @@ Item {
 
         KeyRow { label: "Keybind for the menu"; key: "menuKey"; current: root.bar ? root.bar.notchMenuKey : "" }
 
+        // Just the switch. The companion plugin it needs is the notch's
+        // business (MenuCompanion.keepInStep); Setup's if that fails.
         SettingRow {
           label: "Replace the Omarchy menu"
           Switch {
             id: replaceMenuSwitch
             checked: root.bar ? root.bar.notchReplaceMenu : false
-            enabled: !root.bar || root.bar.menuCompanion.statusKey !== "working"
-            onToggled: root.requestReplaceMenu(!checked)
+            onToggled: root.set("replaceMenu", !checked)
           }
-        }
-
-        Text {
-          visible: text !== ""
-          width: parent.width
-          wrapMode: Text.WordWrap
-          text: root.menuReplaceNote
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          bottomPadding: Style.space(4)
         }
 
         SettingRow {
@@ -528,7 +474,10 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               width: Style.space(160)
               height: Style.space(24)
-              bar: root.bar
+              // Omarchy's slider takes its colours off `bar`, and its track off
+              // a theme token: hand it the notch's palette instead.
+              bar: sliderPalette
+              trackColor: Util.alpha(root.foreground, Style.selectedFillAlpha)
               minimum: 0
               maximum: 2.5
               step: 0.05
@@ -675,7 +624,7 @@ Item {
           label: root.updateStatus
           Row {
             spacing: Style.space(6)
-            Button {
+            NotchButton {
               id: updateNowButton
               visible: root.bar && root.bar.updateNotice === "" && root.bar.updateCheckResult && root.bar.updateCheckResult.state === "available"
               // Not while a plugin job runs: both reload every plugin.
@@ -692,7 +641,7 @@ Item {
               horizontalPadding: Style.space(7)
               onClicked: root.bar.startUpdate()
             }
-            Button {
+            NotchButton {
               text: root.bar && root.bar.updateCheckRunning ? "Checking…" : "Check now"
               enabled: root.bar && root.bar.updatesEnabled && !root.bar.updateCheckRunning
               bordered: true
@@ -713,7 +662,7 @@ Item {
       Item {
         width: parent.width
         height: resetButton.implicitHeight + Style.space(8)
-        Button {
+        NotchButton {
           id: resetButton
           foreground: root.foreground
           accent: root.accent
@@ -795,7 +744,7 @@ Item {
     spacing: Style.space(4)
     Repeater {
       model: flow.options
-      Button {
+      NotchButton {
         foreground: root.foreground
         accent: root.accent
         radius: root.radiusFor(Math.min(width, height))
@@ -1016,7 +965,7 @@ Item {
         font.pixelSize: Style.font.bodySmall
       }
 
-      Button {
+      NotchButton {
         foreground: root.foreground
         accent: root.accent
         radius: root.radiusFor(Math.min(width, height))
@@ -1033,7 +982,7 @@ Item {
         }
       }
 
-      Button {
+      NotchButton {
         foreground: root.foreground
         accent: root.accent
         radius: root.radiusFor(Math.min(width, height))
@@ -1074,7 +1023,7 @@ Item {
     property int from: 0
     property int to: 100
     property int stepSize: 1
-    NumberField {
+    NotchNumberField {
       id: numberField
       foreground: root.foreground
       accent: root.accent
@@ -1108,7 +1057,7 @@ Item {
     spacing: Style.spacing.md
     Repeater {
       model: choice.options
-      Button {
+      NotchButton {
         required property var modelData
         text: modelData.label
         selected: modelData.value === choice.value
@@ -1136,21 +1085,30 @@ Item {
     implicitWidth: trackWidth
     implicitHeight: trackHeight
 
+    // Fills and outline are the text colour at the theme's alpha, never a
+    // colour the theme pinned in a style token (NotchButton.qml).
+    readonly property string borderState: toggle.checked ? "selected" : (switchMouse.containsMouse ? "hover-cursor" : "normal")
+    readonly property color trackColor: track.color
+    readonly property color knobColor: knob.color
+
     BorderSurface {
       id: track
       anchors.fill: parent
       radius: root.radiusFor(Math.min(width, height))
-      color: toggle.checked ? Style.selectedFillFor(root.foreground, root.accent) : Style.normalFillFor(root.foreground, root.accent)
-      borderSpec: Border.controlSpec(toggle.checked ? "selected" : (switchMouse.containsMouse ? "hover-cursor" : "normal"), root.foreground, root.accent)
+      color: Util.alpha(root.foreground, toggle.checked ? Style.selectedFillAlpha : Style.normalFillAlpha)
+      borderSpec: ({ color: Util.alpha(root.foreground, toggle.checked ? Style.selectedBorderAlpha : (switchMouse.containsMouse ? Style.hoverBorderAlpha : Style.normalBorderAlpha)),
+                     widths: Border.controlSpec(toggle.borderState, root.foreground, root.foreground).widths,
+                     gradient: { colors: [], angle: 0, enabled: false } })
       Behavior on color { ColorAnimation { duration: 120 } }
 
       Rectangle {
+        id: knob
         width: toggle.knobSize
         height: toggle.knobSize
         radius: root.radiusFor(Math.min(width, height))
         x: toggle.checked ? track.width - width - toggle.knobInset : toggle.knobInset
         anchors.verticalCenter: parent.verticalCenter
-        color: toggle.checked ? Style.selectedStateColor(root.foreground, root.accent) : Qt.darker(root.foreground, 1.25)
+        color: toggle.checked ? root.foreground : Qt.darker(root.foreground, 1.25)
         Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: 120 } }
       }
@@ -1173,7 +1131,7 @@ Item {
     Repeater {
       model: [{ value: "clock", label: "Time" }, { value: "date", label: "Date" },
               { value: "media", label: "Media" }, { value: "battery", label: "Battery" }]
-      Button {
+      NotchButton {
         foreground: root.foreground
         accent: root.accent
         radius: root.radiusFor(Math.min(width, height))

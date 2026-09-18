@@ -64,17 +64,30 @@ Item {
   property real dismissedAt: 0
   property real clock: Date.now()
 
-  //   absent    no go-between has registered: the companion isn't installed,
-  //             or isn't enabled
-  //   outdated  it is there, but speaks another API version, carries another
-  //             version, or its files differ from this notch's copy
-  //   active    it is there and matches
+  //   absent    the companion isn't installed
+  //   disabled  installed, but switched off in Omarchy
+  //   outdated  there, but speaks another API version, carries another version,
+  //             or its files differ from this notch's copy
+  //   active    there and matching
+  //
+  // What is on disk is the answer, not whether the go-between happens to be
+  // loaded: Omarchy creates a menu plugin's entry point when the menu is opened
+  // and drops it afterwards, so "has it registered with the bridge" says
+  // "absent" for a perfectly good companion every moment the menu is shut. A
+  // live facade is still worth having -- it is the only thing that can report
+  // the running API and version -- so it is used when it is there.
   readonly property string companionState: {
     var facade = NotchMenuBridge.facade
-    if (!facade) return "absent"
-    var sameApi = Number(facade.apiVersion) === NotchMenuBridge.apiVersion
-    var sameVersion = String(facade.version || "") === version
-    if (!sameApi || !sameVersion || (installed || {}).inSync === false) return "outdated"
+    var info = installed || {}
+    if (facade) {
+      var sameApi = Number(facade.apiVersion) === NotchMenuBridge.apiVersion
+      var sameVersion = String(facade.version || "") === version
+      if (!sameApi || !sameVersion || info.inSync === false) return "outdated"
+      return "active"
+    }
+    if (info.installed !== true) return "absent"
+    if (info.enabled === false) return "disabled"
+    if (info.inSync === false) return "outdated"
     return "active"
   }
 

@@ -49,6 +49,7 @@ Item {
       case "working": return "Setting up…"
       case "failed": return String((companion.job || {}).message || "That didn't work.")
       case "absent": return "Needs the menu companion (one-time)."
+      case "disabled": return "The menu companion is installed but switched off."
       case "outdated": return "The menu companion is out of date."
       case "hidden-bar": return "While the bar is hidden, Omarchy's own menu opens."
       case "active-on": return "SUPER + SPACE, the menu button and pickers open in the notch."

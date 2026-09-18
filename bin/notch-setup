@@ -320,7 +320,7 @@ detect_menu_replace_companion() {
     *)
       point menu-replace-companion action "The menu companion isn't installed" \
         "\"Replace the Omarchy menu\" is on, but nothing is intercepting the menu yet." \
-        "$(strings "Press Set up next to \"Replace the Omarchy menu\" in the notch's settings.")" '[]' null \
+        "$(strings "Turn \"Replace the Omarchy menu\" off and on again in Settings → How it opens: the notch installs the companion itself.")" '[]' null \
         '{"label": "Open Settings", "view": "settings"}' ;;
   esac
 }
@@ -361,7 +361,7 @@ detect_menu_keys_bypass() {
   if [[ $state != active ]]; then
     point menu-keys-bypass info "Menu keys call the notch directly" \
       "$keys open the notch's menu without going through Omarchy. That works today; once the menu companion is set up and \"Replace the Omarchy menu\" is on, these keys will skip the toggle." \
-      "$(strings "Set up the menu replacement first, then come back here to put the keys on Omarchy's defaults.")" "$items"
+      "$(strings "Turn \"Replace the Omarchy menu\" on in Settings → How it opens first, then come back here to put the keys on Omarchy's defaults.")" "$items"
     return
   fi
   local disabled=""
@@ -507,15 +507,6 @@ detect_settings_stale_ids() {
   fi
 }
 
-detect_windows_to_top() {
-  if [[ $(setting .bar.notch.windowsToTop) == true ]]; then
-    point windows-to-top info "Windows reach the top edge" \
-      "Your windows fill the screen to the top and the notch sits over them. That's a choice, not a problem; turn it off in the notch's settings if you want the space reserved."
-  else
-    point windows-to-top ok "The notch reserves its space" "Windows start below the bar."
-  fi
-}
-
 plugins_state() { # the installer's view of Face and Profiles
   local script="$NOTCH_DIR/bin/notch-plugins"
   [[ -n $PLUGINS_STATE ]] && { bash -c "$PLUGINS_STATE" 2>/dev/null; return; }
@@ -548,12 +539,8 @@ detect_plugin() { # detect_plugin <point id> <plugin id> <name> <setup argv>
   elif [[ $update == available ]]; then
     point "$pid" action "$name has an update" "A newer version is on its origin." '[]' '[]' null \
       '{"label": "Open Plugins", "view": "plugins"}'
-  elif [[ -d $PLUGINS/$plugin ]] && ! jq -e '.entryPoints.surface // .notch // empty' "$PLUGINS/$plugin/manifest.json" >/dev/null 2>&1; then
-    point "$pid" info "$name isn't integrated with the notch" \
-      "It works on its own. A version that declares the notch entry point opens its panel inside the notch instead." '[]' '[]' null \
-      "$(jq -nc --arg label "Open setup" --argjson argv "$setup_argv" '{label: $label, argv: $argv}')"
   else
-    point "$pid" ok "$name is set up" "Installed, enabled and integrated with the notch."
+    point "$pid" ok "$name is set up" "Installed and enabled."
   fi
 }
 
@@ -694,7 +681,7 @@ detect_notch_not_git() {
 POINT_ORDER=(bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion menu-keys-bypass
   notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids
   plugin-face plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift
-  layer-rules windows-to-top notch-not-git)
+  layer-rules notch-not-git)
 
 LOCAL_ONLY=0
 detect_point() {
@@ -721,7 +708,6 @@ detect_point() {
     stray-backups) detect_stray_backups ;;
     upstream-drift) detect_upstream_drift ;;
     layer-rules) detect_layer_rules ;;
-    windows-to-top) detect_windows_to_top ;;
     notch-not-git) detect_notch_not_git ;;
     *) return 1 ;;
   esac

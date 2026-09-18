@@ -34,6 +34,7 @@ Item {
   // The entry to open on ("" for the top).
   property string focusId: ""
   signal closeRequested()
+  signal backRequested()
 
   readonly property real padding: Style.space(16)
   implicitWidth: Style.space(400)
@@ -291,6 +292,17 @@ Item {
         fontSize: Style.font.bodySmall
         horizontalPadding: Style.space(8)
         onClicked: root.bar.refreshPlugins()
+      }
+
+      Button {
+        text: "‹ Setup"
+        foreground: root.foreground
+        accent: root.accent
+        radius: root.radiusFor(Math.min(width, height))
+        fontFamily: root.fontFamily
+        fontSize: Style.font.bodySmall
+        horizontalPadding: Style.space(8)
+        onClicked: root.backRequested()
       }
 
       Button {

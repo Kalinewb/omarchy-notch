@@ -26,6 +26,11 @@ menu's background is the notch colour), `dev/colours.sh` (widgets' background is
 - Text on the black notch is **Apple white**, `#FFFFFF`. Secondary text is Apple's secondary
   label, `#EBEBF5` at 60 %. The theme never colours text on the notch, so a light theme's dark
   text can't land on black.
+- **No colour on the notch comes from the theme — not the accent either.** What marks a control
+  as selected, focused or wanting attention is the same white, because the surface is one colour
+  and the text reads on it; a themed accent put a blue switch on a black notch. Selected still
+  reads as selected: those states differ from normal by alpha, not hue. The only thing that
+  changes the notch's palette is the notch's own `foreground` setting, and the accent follows it.
 - On a notch set to a light colour, text is Apple black instead (`#000000`, secondary `#3C3C43`
   at 60 %), whichever of the two reads better.
 - Accents reach 3:1 (the theme's accent if it does, otherwise the text colour), selected text

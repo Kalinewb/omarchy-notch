@@ -1584,7 +1584,15 @@ Item {
     walk(item, typeOf(item))
     return out
   }
-  readonly property color notchAccent: readableOn(notchColor, [Color.accent, notchForeground], 3)
+  // The notch does not take a colour from the theme. Its text is white on the
+  // black surface (`notchText`), and so is everything that marks a control as
+  // selected, focused or needing attention -- the theme's accent used to come
+  // through here, which put a blue switch and a blue highlight on a surface
+  // whose whole point is that it is one colour and its text reads on it.
+  // Selected still reads as selected: those states differ from normal by alpha,
+  // not by hue (Style.selectedFillFor). A custom `foreground` setting carries
+  // the accent with it, so the notch stays one palette either way.
+  readonly property color notchAccent: notchForeground
   readonly property real notchCompactWidth: Math.max(0, notchNumber("compactWidth", 180))
   readonly property real notchCompactHeight: Math.max(barSize, notchNumber("compactHeight", 32))
   readonly property real notchBottomRadius: Math.max(0, notchNumber("bottomRadius", 10))
@@ -3460,6 +3468,7 @@ Item {
     // fillets keep it fused, so it is never a pill.
     readonly property real requestedBottomRadius: root.notchBottomRadius
     readonly property real requestedFilletRadius: root.notchFilletRadius
+
 
     function point(p) { return { x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)) } }
 

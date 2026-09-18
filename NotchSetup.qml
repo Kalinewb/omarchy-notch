@@ -79,6 +79,12 @@ Item {
   }
 
   function act(point) {
+    // Something only the notch itself can do, rather than a job for the script.
+    if (point.handoff && point.handoff.action === "integrate-panels") {
+      root.bar.integrateHostablePanels()
+      root.setup.check(true)
+      return
+    }
     if (point.handoff && point.handoff.view) {
       root.bar.focusedNotchWindow().openView(point.handoff.view, "setup")
       return

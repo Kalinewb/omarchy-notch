@@ -33,16 +33,27 @@ Item {
   property real checkedAt: 0
   property real lastFullCheck: 0
 
+  // The script's list, with the notch's own findings laid over it: a point the
+  // script also knows about is replaced in place, keeping the script's order,
+  // and one only the notch can see is appended. Appending matters -- a point
+  // with no counterpart in the script used to be dropped, which meant it could
+  // never appear at all.
   readonly property var points: {
     var base = (report && report.points) ? report.points : []
     var mine = inProcessPoints()
     if (!mine.length) return base
+    var used = ({})
     var merged = []
     for (var i = 0; i < base.length; i++) {
       var replacement = null
-      for (var j = 0; j < mine.length; j++) if (mine[j].id === base[i].id) replacement = mine[j]
+      for (var j = 0; j < mine.length; j++) {
+        if (mine[j].id !== base[i].id) continue
+        replacement = mine[j]
+        used[mine[j].id] = true
+      }
       merged.push(replacement || base[i])
     }
+    for (var k = 0; k < mine.length; k++) if (!used[mine[k].id]) merged.push(mine[k])
     return merged
   }
 
@@ -66,6 +77,39 @@ Item {
   // A widget in the layout that drew nothing. The notch heals this once by
   // itself; what's left after that is worth telling the user about.
   function inProcessPoints() {
+    var points = emptyWidgetPoint()
+    var panels = hostablePanelsPoint()
+    if (panels) points.push(panels)
+    return points
+  }
+
+  // Widgets already in the bar whose own panel the notch could draw, that the
+  // user has not been asked about yet. Only the notch can see this: it depends
+  // on what is drawn and what each widget turned out to look like inside.
+  function hostablePanelsPoint() {
+    if (!bar || typeof bar.hostableWidgets !== "function") return null
+    var offered = bar.hostableWidgets()
+    if (!offered.length) return null
+    var waiting = offered.filter(function (entry) { return !entry.hosted })
+    if (!waiting.length) {
+      return { id: "hostable-panels", severity: "ok", title: "Your plugins open in the notch",
+               summary: offered.length + " panel(s) open inside the notch rather than in their own window.",
+               detail: [], items: [], fix: null, handoff: null }
+    }
+    var names = waiting.map(function (entry) { return entry.name })
+    return {
+      id: "hostable-panels", severity: "action",
+      title: waiting.length + " plugin(s) could open inside the notch",
+      summary: names.join(", ") + " have panels the notch can draw on its own surface, instead of in a window under it.",
+      detail: ["Nothing is copied and nothing in those plugins is changed: the notch borrows the panel while it is open and gives it back untouched.",
+               "Each one can be switched off again in Settings → Integrations."],
+      items: waiting.map(function (entry) { return { arg: entry.id, summary: entry.name } }),
+      fix: null,
+      handoff: { label: "Integrate them", action: "integrate-panels" }
+    }
+  }
+
+  function emptyWidgetPoint() {
     if (!bar || typeof bar.emptyWidgetIds !== "function") return []
     var ids = bar.emptyWidgetIds()
     if (!ids || !ids.length) {

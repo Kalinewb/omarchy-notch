@@ -93,7 +93,12 @@ for r in ${RADII:-10 8 3 16}; do
   sleep 1.1
   page=$(ipc design | jq -c .plugins)
   ipc pluginsPress install:graveklar.face >/dev/null
-  for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc plugins status | jq -r '.preview.id != null') == true ]] && break; done
+  # Wait for the thing the check below asserts -- `geometry.plugins.card` --
+  # and not for `preview.id`. The preview is set as soon as the press is
+  # accepted, while the card is still opening, so waiting on the preview and
+  # then sleeping a fixed 0.4 s made this race: whichever radius block lost it
+  # reported `carded false` and failed on a card whose radii were fine.
+  for _ in $(seq 1 80); do sleep 0.1; [[ $(ipc geometry | jq -r .plugins.card) == true ]] && break; done
   sleep 0.4
   cardAudit=$(ipc design | jq -c .plugins)
   carded=$(ipc geometry | jq -r .plugins.card)

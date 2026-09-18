@@ -4,7 +4,7 @@
 // what a claim may contain. Pure functions, no QML: NotchPlatform.qml owns the
 // state and the side effects, dev/platform.sh checks these by number.
 //
-// PLUGINS.md is the author-facing version of everything here.
+// SURFACE-HOSTING.md is the author-facing version of everything here.
 
 // The contract version this notch implements, and the oldest it still accepts.
 // Additive changes (a new host member, a new claim field, a new verb) do not

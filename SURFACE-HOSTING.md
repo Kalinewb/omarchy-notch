@@ -1,13 +1,20 @@
-# Integrating with the notch
+# Surface hosting
 
-The notch can host another Omarchy plugin's UI. Declare an integration and your
-panel opens **inside** the notch — on its black surface, in its text colours, at
-its radius, on its motion — instead of in a window of your own. Short status
-lines ("Switching to test…") can appear in the resting notch.
+A **host** can draw another Omarchy plugin's UI on its own surface. Declare an
+integration and your panel opens **inside** the host — on its surface, in its
+text colours, at its radius, on its motion — instead of in a window of your
+own. Short status lines ("Switching to test…") can appear in the host's resting
+view.
+
+Nothing here is specific to one host. The contract is named for what it does,
+not for who implements it: a plugin that implements it works with any host that
+does, and nothing in this document requires reading a host's source. Today
+`graveklar.notch` is the only host, and it is the one this document uses for
+examples — where it says "the notch", read "the host you are running under".
 
 Your plugin keeps working exactly as it does today everywhere else: under
-`omarchy.bar`, under another bar, with the notch removed, or with the user
-switching your integration off. The notch tells you which of those you are in,
+`omarchy.bar`, under another bar, with the host removed, or with the user
+switching your integration off. The host tells you which of those you are in,
 and you decide what to draw.
 
 Contract version **1**. `graveklar.notch` accepts contracts 1 to 1.
@@ -26,13 +33,13 @@ Add two things to your `manifest.json`:
   "version": "1.0.0",
   "description": "…",
   "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "Widget.qml", "notch": "NotchIntegration.qml" },
-  "notch": { "contract": 1 }
+  "entryPoints": { "barWidget": "Widget.qml", "surface": "SurfaceIntegration.qml" },
+  "surface": { "contract": 1 }
 }
 ```
 
-- `notch.contract` — the contract version you wrote against. Required.
-- `entryPoints.notch` — your integration file. Optional: without it you can
+- `surface.contract` — the contract version you wrote against. Required.
+- `entryPoints.surface` — your integration file. Optional: without it you can
   still claim activities, which suits a service or a CLI that only reports
   status.
 
@@ -54,7 +61,7 @@ in without ever being validated. It will decline your integration if:
 | `schema` | `schemaVersion` isn't 1 |
 | `bad-id` | the id isn't a plain id, or is in Omarchy's namespace |
 | `self` | the manifest claims to be the notch |
-| `bad-contract` | `notch.contract` isn't a positive integer |
+| `bad-contract` | `surface.contract` isn't a positive integer |
 | `entry-unsafe` | the entry path is absolute, climbs out, or is a symlink |
 | `entry-missing`, `entry-not-qml` | the entry isn't there, or isn't `.qml` |
 | `own-window` | the entry file mentions `PanelWindow`, `PopupWindow` or `FloatingWindow` |
@@ -92,7 +99,7 @@ import QtQuick
 
 Item {
   // The notch sets this. Until it does, there is no notch.
-  property var notchHost: null
+  property var surfaceHost: null
 
   // Optional: say false to decline for now. The notch shows the reason and you
   // keep your own UI.
@@ -125,7 +132,7 @@ Rules:
 The file is loaded when your plugin is accepted and unloaded when the user
 switches it off. Unrelated settings changes never reload it.
 
-## 3. `notchHost`
+## 3. `surfaceHost`
 
 The only notch object you ever get. It is scoped to your plugin: everything you
 do through it is attributed to your id, and it reaches nothing else.
@@ -152,20 +159,20 @@ do through it is attributed to your id, and it reaches nothing else.
 | `claim(activity)` | string | `shown`, `queued` or `declined:<reason>` |
 | `release(key)` | string | `released` or `unknown` |
 
-Your **bar widget** is handed the same host, plus `notchScreen` — the name of
+Your **bar widget** is handed the same host, plus `surfaceScreen` — the name of
 the screen that copy of the widget is on. Declare both and the notch fills them
 in; under any other bar neither is ever set, so there is no code path to guard.
 
 ```qml
 Item {
-  property var notchHost: null
-  property string notchScreen: ""
+  property var surfaceHost: null
+  property string surfaceScreen: ""
   property bool ownPopupShown: false
 
   function press() {
-    // Pass notchScreen, or a click on your second monitor opens the panel on
+    // Pass surfaceScreen, or a click on your second monitor opens the panel on
     // the first.
-    var result = notchHost ? notchHost.openPanel("main", notchScreen) : "no-host"
+    var result = surfaceHost ? surfaceHost.openPanel("main", surfaceScreen) : "no-host"
     // Per-event: skip your own popup only for the event the notch took.
     if (result !== "opened") ownPopupShown = true
   }
@@ -179,7 +186,7 @@ sets, where you declare them:
 
 | property | how |
 |---|---|
-| `notchHost`, `notchScreen` | once, when it is created |
+| `surfaceHost`, `surfaceScreen` | once, when it is created |
 | `route` | **bound** — a later `openPanel` at another route changes it on the same item |
 | `maxWidth`, `maxHeight` | bound to what the notch can give you |
 | `closeRequested()` | connected: emit it to close |
@@ -194,9 +201,9 @@ moving.
 **What a panel may not do** (DESIGN-PHILOSOPHY.md):
 
 - No background of its own. The notch's black surface is the background.
-- No colour that didn't come from `notchHost`. No theme colours, no gradients,
+- No colour that didn't come from `surfaceHost`. No theme colours, no gradients,
   no translucency, no blur.
-- No radius that isn't `notchHost.radiusFor(...)`.
+- No radius that isn't `surfaceHost.radiusFor(...)`.
 - Escape closes. If you have a list, typing should search it and Return should
   run the picked row.
 
@@ -204,8 +211,8 @@ moving.
 import QtQuick
 
 Item {
-  property var notchHost: null
-  property string notchScreen: ""
+  property var surfaceHost: null
+  property string surfaceScreen: ""
   property string route: "main"
   property real maxWidth: 400
   property real maxHeight: 400
@@ -220,8 +227,8 @@ Item {
   Text {
     anchors.centerIn: parent
     text: "Acme · " + route
-    color: notchHost ? notchHost.foreground : "#ffffff"
-    font.family: notchHost ? notchHost.fontFamily : ""
+    color: surfaceHost ? surfaceHost.foreground : "#ffffff"
+    font.family: surfaceHost ? surfaceHost.fontFamily : ""
   }
 }
 ```
@@ -236,7 +243,7 @@ An activity is a short or ongoing line in the **resting** notch.
 > gone.
 
 ```qml
-notchHost.claim({
+surfaceHost.claim({
   title: "Switching to test…",     // required, cut at 60 characters
   detail: "profile",               // optional, cut at 80
   key: "acme.demo.switch",         // your id, or your id + "." + anything
@@ -272,8 +279,8 @@ Three levels, and you use the one your code can reach:
 
 | level | means | in the shell | outside it |
 |---|---|---|---|
-| **present** | a notch is running and is the bar | `notchHost.present` | heartbeat fresh, or `omarchy-shell notch integration <id>` exits 0 |
-| **accepted** | it accepted *your* integration | `notchHost.accepted` | heartbeat `accepted[<id>]`, or that verb's `accepted` |
+| **present** | a notch is running and is the bar | `surfaceHost.present` | heartbeat fresh, or `omarchy-shell notch integration <id>` exits 0 |
+| **accepted** | it accepted *your* integration | `surfaceHost.accepted` | heartbeat `accepted[<id>]`, or that verb's `accepted` |
 | **shown** | this panel or claim is on screen now | the return of `openPanel` / `claim` | the stdout of the IPC call |
 
 Two rules:
@@ -286,16 +293,16 @@ Two rules:
 2. **A surface that exists to warn the user** — an authentication or sudo
    prompt, an identity check, a camera-in-use cue: anything an attacker on the
    same machine would want hidden — **may stand down only on an in-process
-   `notchHost` answer**, from code the shell itself loaded. When your answer
+   `surfaceHost` answer**, from code the shell itself loaded. When your answer
    arrives from outside the shell (the heartbeat file, an `omarchy-shell` exit
-   code, `NotchLink`), you may **mirror** into the notch but must keep your own
+   code, `SurfaceLink`), you may **mirror** into the notch but must keep your own
    UI regardless of the answer, `shown` included. Any process running as the
    user can write that file or stand in for that answer, so it cannot prove your
    warning is on screen.
 
-### Outside the shell: `NotchLink.qml`
+### Outside the shell: `SurfaceLink.qml`
 
-A service, a CLI or a panel that never gets a `notchHost` reads a small file the
+A service, a CLI or a panel that never gets a `surfaceHost` reads a small file the
 notch keeps fresh at `$XDG_RUNTIME_DIR/graveklar.notch/platform.json`:
 
 ```json
@@ -309,12 +316,12 @@ notch keeps fresh at `$XDG_RUNTIME_DIR/graveklar.notch/platform.json`:
 Treat the notch as absent when the file is missing, `present` is false,
 `beatAt` is older than `staleAfterMs`, or `contract` is below yours.
 
-**Copy `platform/NotchLink.qml` from the notch's repository into your plugin.**
+**Copy `platform/SurfaceLink.qml` from the notch's repository into your plugin.**
 Don't import it from the notch's folder — your plugin would break whenever the
 notch isn't installed.
 
 ```qml
-NotchLink {
+SurfaceLink {
   id: notch
   pluginId: "acme.demo"
   shell: root.shell        // optional: skips everything when another bar is active
@@ -325,17 +332,17 @@ notch.claim({ title: "Switching to test…", priority: "persistent", ttlMs: 3000
 ```
 
 `generation` changes when the notch is rebuilt (any plugin install or update
-does that). `NotchLink` re-claims what you were holding; until the re-claim
+does that). `SurfaceLink` re-claims what you were holding; until the re-claim
 answers, your callback has already been told `absent`, so draw your own.
 
-## 7. When the notch goes away
+## 7. When the host goes away
 
 | what happens | what you get |
 |---|---|
 | the user switches your integration off | `accepted` false at once; your panel closes and your claims are released |
 | an unrelated notch setting changes | nothing: your integration is not reloaded, your panel stays open |
 | a plugin is installed or updated (every plugin reloads) | your integration is destroyed and loaded again; the heartbeat says `present: false` as it goes, then a new `generation` |
-| another bar is made active, or the notch is removed | no `notchHost`; the heartbeat goes stale within 6 s and the IPC target is gone |
+| another bar is made active, or the notch is removed | no `surfaceHost`; the heartbeat goes stale within 6 s and the IPC target is gone |
 | the notch fails to load | same |
 | the bar is hidden (`omarchy toggle bar`) | `accepted` stays true, but `openPanel` and `claim` answer `declined:hidden` |
 
@@ -380,7 +387,7 @@ works with no notch at all.
 
 - Additive changes — a new host member, a new claim field, a new verb — do not
   bump the contract. They appear in `features`, and you feature-detect with
-  `"name" in notchHost` or `features.indexOf("name") !== -1`.
+  `"name" in surfaceHost` or `features.indexOf("name") !== -1`.
 - A rename, a removed member, a changed result word or a changed queue rule
   bumps `contract`. The notch keeps accepting the older version for at least one
   release.

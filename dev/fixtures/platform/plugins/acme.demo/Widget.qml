@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// The plugin's bar widget. Under the notch it is handed `notchHost` and the
+// The plugin's bar widget. Under the notch it is handed `surfaceHost` and the
 // screen it is on; under any other bar it gets neither, and nothing changes.
 Item {
   id: widget
@@ -10,8 +10,8 @@ Item {
   property var bar: null
   property string moduleName: ""
   property var settings: ({})
-  property var notchHost: null
-  property string notchScreen: ""
+  property var surfaceHost: null
+  property string surfaceScreen: ""
 
   // The plugin's own popup, for when the notch isn't there or declines.
   property bool ownPopupShown: false
@@ -20,7 +20,7 @@ Item {
   implicitHeight: 24
 
   function press(route) {
-    var result = notchHost ? notchHost.openPanel(route, notchScreen) : "no-host"
+    var result = surfaceHost ? surfaceHost.openPanel(route, surfaceScreen) : "no-host"
     // Per-event: the popup is skipped only for the event the notch took.
     widget.ownPopupShown = result !== "opened"
     return result
@@ -29,7 +29,7 @@ Item {
   Text {
     anchors.centerIn: parent
     text: "A"
-    color: widget.notchHost ? widget.notchHost.foreground : "#ffffff"
+    color: widget.surfaceHost ? widget.surfaceHost.foreground : "#ffffff"
   }
 
   MouseArea {
@@ -40,7 +40,7 @@ Item {
   // test-only begin
   readonly property int screenIndex: {
     var screens = Quickshell.screens
-    for (var i = 0; i < screens.length; i++) if (screens[i].name === widget.notchScreen) return i
+    for (var i = 0; i < screens.length; i++) if (screens[i].name === widget.surfaceScreen) return i
     return -1
   }
   IpcHandler {
@@ -48,24 +48,24 @@ Item {
     enabled: Quickshell.env("NOTCH_FIXTURE_MARKER_DIR") !== "" && widget.screenIndex >= 0
     function state(): string {
       return JSON.stringify({
-        accepted: widget.notchHost ? widget.notchHost.accepted : false,
-        present: widget.notchHost ? widget.notchHost.present : false,
-        radius: widget.notchHost ? widget.notchHost.radius : -1,
-        contract: widget.notchHost ? widget.notchHost.contract : 0,
-        notchScreen: widget.notchScreen,
-        panelOpen: widget.notchHost ? widget.notchHost.panelOpen : false,
-        panelScreen: widget.notchHost ? widget.notchHost.panelScreen : "",
+        accepted: widget.surfaceHost ? widget.surfaceHost.accepted : false,
+        present: widget.surfaceHost ? widget.surfaceHost.present : false,
+        radius: widget.surfaceHost ? widget.surfaceHost.radius : -1,
+        contract: widget.surfaceHost ? widget.surfaceHost.contract : 0,
+        surfaceScreen: widget.surfaceScreen,
+        panelOpen: widget.surfaceHost ? widget.surfaceHost.panelOpen : false,
+        panelScreen: widget.surfaceHost ? widget.surfaceHost.panelScreen : "",
         ownPopupShown: widget.ownPopupShown
       })
     }
     function open(route: string): string { return widget.press(route) }
     function claim(payload: string): string {
-      if (!widget.notchHost) return "no-host"
+      if (!widget.surfaceHost) return "no-host"
       var activity = {}
       try { activity = JSON.parse(payload) } catch (e) { return "declined:bad-payload" }
-      return widget.notchHost.claim(activity)
+      return widget.surfaceHost.claim(activity)
     }
-    function release(key: string): string { return widget.notchHost ? widget.notchHost.release(key) : "no-host" }
+    function release(key: string): string { return widget.surfaceHost ? widget.surfaceHost.release(key) : "no-host" }
   }
   // test-only end
 }

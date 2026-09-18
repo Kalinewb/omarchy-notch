@@ -1945,7 +1945,7 @@ Item {
 
   // --- the platform -----------------------------------------------------------
   //
-  // Other plugins' panels, drawn inside the notch (NotchPlatform.qml, PLUGINS.md).
+  // Other plugins' panels, drawn inside the notch (NotchPlatform.qml, SURFACE-HOSTING.md).
   NotchPlatform { id: platformService; bar: root }
 
   // Another plugin's pop-out panel, drawn inside the notch instead of in a
@@ -2686,7 +2686,7 @@ Item {
     }
 
     // Ask for a line in the resting notch. An IPC claim can be sent by any
-    // process running as this user, so PLUGINS.md tells a plugin that warns the
+    // process running as this user, so SURFACE-HOSTING.md tells a plugin that warns the
     // user never to hide its own UI on this answer.
     function claim(owner: string, payload: string): string {
       var activity = null
@@ -4294,8 +4294,8 @@ Item {
             onLoaded: {
               var panel = integrationHost.item
               if (!panel) return
-              if ("notchHost" in panel) panel.notchHost = root.platform.hostFor(barWindow.integrationId)
-              if ("notchScreen" in panel) panel.notchScreen = barWindow.screen ? barWindow.screen.name : ""
+              if ("surfaceHost" in panel) panel.surfaceHost = root.platform.hostFor(barWindow.integrationId)
+              if ("surfaceScreen" in panel) panel.surfaceScreen = barWindow.screen ? barWindow.screen.name : ""
               if ("route" in panel) panel.route = Qt.binding(function () { return barWindow.integrationRoute })
               if ("maxWidth" in panel) panel.maxWidth = Qt.binding(function () { return barWindow.maxBarWidth - 2 * root.notchSidePadding })
               if ("maxHeight" in panel) panel.maxHeight = Qt.binding(function () { return barWindow.panelMaxHeight })
@@ -5088,8 +5088,8 @@ Item {
       // A widget of a plugin that integrates gets its own notch host, and the
       // screen this copy of it is on, so a click opens the panel on the right
       // monitor. Under another bar neither property is ever set.
-      if ("notchHost" in target && pluginApiId) target.notchHost = root.platform.hostFor(pluginApiId)
-      if ("notchScreen" in target) target.notchScreen = root.slotScreenName(slot)
+      if ("surfaceHost" in target && pluginApiId) target.surfaceHost = root.platform.hostFor(pluginApiId)
+      if ("surfaceScreen" in target) target.surfaceScreen = root.slotScreenName(slot)
     }
 
     Component {

@@ -1,6 +1,6 @@
 import QtQuick
 import Quickshell
 Item {
-  property var notchHost: null
+  property var surfaceHost: null
   PanelWindow { visible: false }
 }

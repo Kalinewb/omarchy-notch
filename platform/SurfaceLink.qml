@@ -6,7 +6,7 @@ import Quickshell.Io
 // don't import it from the notch's folder, or your plugin breaks whenever the
 // notch isn't installed.
 //
-// A bar widget doesn't need this: it is given a `notchHost` directly. This is
+// A bar widget doesn't need this: it is given a `surfaceHost` directly. This is
 // for the parts of a plugin that run where no host is handed out -- a service,
 // a panel loaded by another kind, a CLI helper.
 //
@@ -22,11 +22,11 @@ import Quickshell.Io
 //   **A surface that exists to warn the user -- an authentication prompt, an
 //   identity check, a camera-in-use cue -- must keep its own UI no matter what
 //   this says.** Use it to mirror into the notch, never to hide the warning.
-//   Standing your own UI down is only safe on an in-process `notchHost` answer.
+//   Standing your own UI down is only safe on an in-process `surfaceHost` answer.
 //
 // Usage:
 //
-//   NotchLink {
+//   SurfaceLink {
 //     id: notch
 //     pluginId: "acme.demo"
 //     shell: root.shell            // optional: a fast "is the notch the bar" test

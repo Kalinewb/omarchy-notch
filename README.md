@@ -136,13 +136,13 @@ privileged, never touches a plugin's own setup, and never writes the plugins fol
 ## Plugin integrations
 
 Any Omarchy plugin can draw its own panel **inside** the notch. It declares one
-line in its manifest (`"notch": { "contract": 1 }`) plus an
-`entryPoints.notch` QML file, and the notch does the rest: the panel opens on
+line in its manifest (`"surface": { "contract": 1 }`) plus an
+`entryPoints.surface` QML file, and the notch does the rest: the panel opens on
 the notch's black surface, in its text colours, at its radius, on its motion,
 and the plugin's own popup stays shut for as long as the notch is showing it.
 
-The written contract is **[PLUGINS.md](PLUGINS.md)** — what to declare, the
-`notchHost` object a plugin is handed, how panels are sized and closed, how to
+The written contract is **[SURFACE-HOSTING.md](SURFACE-HOSTING.md)** — what to declare, the
+`surfaceHost` object a plugin is handed, how panels are sized and closed, how to
 claim a line in the resting notch, and the rule for switching your own UI off
 safely (a surface that exists to *warn* the user never stands down on an answer
 that came from outside the shell).

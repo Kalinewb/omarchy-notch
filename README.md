@@ -373,6 +373,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
 | `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
+| `notifications` | `true` | Omarchy's toasts also show as a line in the notch, which widens sideways to fit. Omarchy's own toast still appears: the notch is a second display of the same thing, not a replacement for the notification daemon. |
 | `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |
 | `openKey`, `settingsKey`, `menuKey`, `autoHideKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. |
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |

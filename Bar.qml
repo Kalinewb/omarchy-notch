@@ -1943,6 +1943,7 @@ Item {
   // Another plugin's pop-out panel, drawn inside the notch instead of in a
   // window of its own (PanelHosting.qml). One at a time, on one screen.
   PanelHosting { id: panelHosting; opted: root.notchHostedPanels }
+  readonly property var notificationsSource: notifications
   readonly property var hosting: panelHosting
 
   // Open `item`'s panel inside the notch, on the screen it was clicked on.
@@ -1966,7 +1967,29 @@ Item {
   readonly property var platform: platformService
   // Activities are claimed and queued, but nothing draws them at rest yet, so a
   // claim that would be shown answers "queued" (plan-activities-notifications).
-  readonly property bool activitiesRendered: false
+  // Activities draw as a line in the resting notch (the transient slot widens
+  // it sideways), so a claim the queue shows is a claim the user sees.
+  readonly property bool activitiesRendered: true
+  readonly property bool notchNotifications: notchSetting("notifications", true) !== false
+
+  NotchNotifications { id: notifications; bar: root }
+
+  // The activity the notch is showing, if any.
+  //
+  // The queue holds two visible at once (activities.js MAX_VISIBLE, the
+  // platform's rule), but the notch draws **one**: placement is sideways only,
+  // so a second line would either stack -- which the placement contract rules
+  // out -- or widen the notch until it stopped being a notch. The newest wins,
+  // because a notification arriving is the thing you are meant to see; the
+  // other keeps its slot and draws when that one goes.
+  readonly property var activityLine: {
+    var visible = platform.activityState.visible
+    var best = null
+    for (var i = 0; i < visible.length; i++) {
+      if (best === null || Number(visible[i].shownAt) >= Number(best.shownAt)) best = visible[i]
+    }
+    return best
+  }
   readonly property var setup: setupService
   readonly property real startedAt: Date.now()
 
@@ -2667,6 +2690,15 @@ Item {
 
     function integrations(): string { return JSON.stringify(root.platform.report()) }
 
+    // What the notifications source is tracking, and what it has claimed.
+    function notifications(): string { return JSON.stringify(root.notificationsSource.report()) }
+
+    // Clear one notification from the notch. Nothing is written and nothing is
+    // sent to Omarchy: its own toast runs its own course.
+    function dismissNotification(key: string): string {
+      return root.notificationsSource.dismiss(String(key)) ? "dismissed" : "no-such-notification"
+    }
+
     // One plugin's view of the notch, for its own service or CLI to read.
     function integration(id: string): string {
       var known = root.platform.reasonFor(id) !== "unknown" || root.platform.accepted(id)
@@ -2905,8 +2937,16 @@ Item {
         if (root.updateNotice === "") barWindow.noticeKind = "plugins"
       }
     }
-    readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking && !noticeShown
-    readonly property string notchState: root.barHidden || autoHidden ? "hidden" : expanded ? "expanded" : noticeShown ? "notice" : peeking ? "peek" : "compact"
+    // An activity is a line the notch is showing at rest: a notification, or a
+    // plugin's own claim. Placement is the binding contract of 18 Sep --
+    // symmetric sideways expansion and nothing else -- so this is the peek's
+    // geometry with the activity's content, on the same spring and silhouette.
+    readonly property var activityLine: root.activityLine
+    readonly property bool activityPresent: !root.barHidden && activityLine !== null
+    // A notification must never be silently missed: one arriving while the
+    // notch is tucked into the edge brings it back out on the existing reveal.
+    readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking && !noticeShown && !activityPresent
+    readonly property string notchState: root.barHidden || autoHidden ? "hidden" : expanded ? "expanded" : noticeShown ? "notice" : activityPresent ? "activity" : peeking ? "peek" : "compact"
 
     function collapseNow() {
       expandTimer.stop()
@@ -3356,6 +3396,8 @@ Item {
     readonly property real compactWidth: Math.max(root.notchCompactWidth,
       compactGlance.empty ? 0 : compactGlance.implicitWidth + 2 * root.notchSidePadding)
     readonly property real peekWidth: Math.max(compactWidth, peekGlance.implicitWidth + 2 * root.notchSidePadding)
+    readonly property real activityWidth: Math.max(compactWidth,
+      Math.min(560, activityGlance.implicitWidth + 2 * root.notchSidePadding))
     readonly property real rowWidth: Math.max(compactWidth, widgetRow.implicitWidth + 2 * root.notchSidePadding)
     readonly property real clockWidth: Math.max(compactWidth, clockGlance.implicitWidth + 2 * root.notchSidePadding)
     readonly property real batteryWidth: Math.max(compactWidth, batteryGlance.implicitWidth + 2 * root.notchSidePadding)
@@ -3386,7 +3428,8 @@ Item {
       : view === "clock" ? clockWidth : view === "battery" ? batteryWidth : rowWidth
 
     readonly property real targetWidth: Math.min(maxBarWidth,
-      notchState === "expanded" ? expandedWidth : notchState === "notice" ? noticeWidth : notchState === "peek" ? peekWidth : compactWidth)
+      notchState === "expanded" ? expandedWidth : notchState === "notice" ? noticeWidth
+        : notchState === "activity" ? activityWidth : notchState === "peek" ? peekWidth : compactWidth)
     // Every view but the settings and the menu is one row at the resting
     // height; those grow the notch down, top edge still on the screen edge.
     readonly property real targetHeight: notchState === "hidden" ? 0
@@ -3939,10 +3982,25 @@ Item {
       // resizes around them, and popups anchor to the same place every time.
       Item {
         id: content
-        width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth, barWindow.batteryWidth)
+        width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth,
+                        barWindow.batteryWidth, barWindow.activityWidth)
         height: root.notchCompactHeight
         x: (island.barWidth - width) / 2
         y: 0
+
+        // The activity line. One row at the resting height, centred: the notch
+        // widens around it and nothing else moves (DESIGN-PHILOSOPHY.md, 1).
+        ActivityGlance {
+          id: activityGlance
+          bar: root
+          activity: barWindow.activityLine
+          x: (content.width - width) / 2
+          width: implicitWidth
+          height: root.notchCompactHeight
+          opacity: barWindow.notchState === "activity" ? 1 : 0
+          visible: opacity > 0
+          Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        }
 
         Glance {
           player: root.mediaPlayer

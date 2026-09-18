@@ -510,6 +510,23 @@ Item {
     return outcome.result
   }
 
+  // The notch's own owners -- notifications, and its peeks later -- do not go
+  // through the integration checks: there is no manifest to accept and the
+  // owner is the notch itself. Everything after that is the same queue, so a
+  // notification competes for the same two slots on the same rules.
+  function claimInternal(owner, activity) {
+    if (bar && bar.barHidden) return "declined:hidden"
+    var checked = Platform.validClaim(String(owner), activity, false)
+    if (!checked.ok) return "declined:" + checked.reason
+    var outcome = Activities.claim(activityState, checked.claim, Date.now())
+    activityState = outcome.state
+    activityTick.restart()
+    if (outcome.result === "shown" && !rendered) return "queued"
+    return outcome.result
+  }
+
+  function releaseInternal(owner, key) { return releaseFor(String(owner), key) }
+
   function releaseFor(id, key) {
     var outcome = Activities.release(activityState, id, String(key || id))
     activityState = outcome.state

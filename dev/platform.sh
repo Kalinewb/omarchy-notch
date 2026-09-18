@@ -363,10 +363,15 @@ check "38. an unknown or unaccepted plugin is declined, and says so" "declined:n
   "$(ipc panel acme.nope main) $(ipc panel acme.future main)"
 
 # Claims.
-check "39. a claim from the widget is accepted and reported" "queued 1" \
+check "39. a claim from the widget is accepted and reported" "shown 1" \
   "$(widget claim '{"title":"Switching to test…","priority":"persistent","ttlMs":30000}') $(ipc activities | jq '.visible + .queued | length')"
-check "40. nothing draws activities yet, so a claim never promises a line on screen" "false" \
-  "$(ipc activities | jq -r .rendered)"
+# Until 19 Sep nothing drew activities, so a claim the queue would show answered
+# "queued" rather than promising a line. The notch draws them now, so "shown"
+# means shown. That the line is really on the resting notch is dev/
+# notifications.sh's checks 5 and 6; here the notch is open, where the activity
+# state does not apply.
+check "40. a claim the queue shows is drawn, not merely accepted" "true shown" \
+  "$(ipc activities | jq -r .rendered) $(ipc activities | jq -r '.visible[0] | if . then "shown" else "none" end')"
 check "41. a claim under another plugin's key is refused" "declined:bad-key" \
   "$(widget claim '{"title":"x","key":"kalinewb.profiles"}')"
 check "42. an IPC claim from an unknown owner is refused" "declined:not-accepted" \

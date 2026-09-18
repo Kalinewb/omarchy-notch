@@ -306,6 +306,16 @@ Item {
           locked: root.bar ? root.bar.notchPlugins.list.filter(function(p) { return p.hideable === false }).map(function(p) { return p.id }) : []
         }
 
+        // Omarchy's own toast still appears as well: the notch is a second
+        // display of the same thing, not a replacement for the daemon.
+        SettingRow {
+          label: "Omarchy's notifications"
+          Switch {
+            checked: root.bar ? root.bar.notchNotifications : true
+            onToggled: root.set("notifications", !checked)
+          }
+        }
+
         SettingRow {
           label: "Also in the widget row"
           ItemChips {

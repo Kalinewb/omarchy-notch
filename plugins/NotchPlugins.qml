@@ -230,7 +230,10 @@ Item {
         if (bar.pluginsHandoff && bar.pluginsHandoff.id === id && bar.pluginsHandoff.ok === false) bar.clearPluginHandoff()
         else bar.ackPluginJob()
         break
-      case "updates": if (window) window.openSettingsSection("updates"); break
+      // The notch's own update, done here rather than by sending the user to
+      // another page to press a different button for the same thing.
+      case "updateSelf": bar.startUpdate(); break
+      case "checkSelf": bar.checkForUpdates(); break
     }
   }
 

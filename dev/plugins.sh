@@ -656,10 +656,12 @@ check "the settings over the page close the page" "false true settings" "$(ipc g
 ipc settings >/dev/null; ipc menu root >/dev/null; sleep 0.5
 ipc plugins open >/dev/null; sleep 0.5
 check "the page over the menu closes the menu" "false true plugins" "$(ipc geometry | jq -r '"\(.menu.open) \(.plugins.open) \(.view)"')"
-ipc pluginsPress updates:graveklar.notch >/dev/null; sleep 0.6
-check "the notch's own row opens the settings at Updates, unfolded" "false true true" \
-  "$(ipc geometry | jq -r '"\(.plugins.open) \(.settingsOpen) \(.plugins.settingsUpdatesOpen)"')"
-ipc settings >/dev/null; sleep 0.8
+# The notch's own row used to carry a button that sent you to Settings ->
+# Updates to press a different button for the same thing. The row does it here
+# now: installing and updating is one place, choosing is the other.
+ipc pluginsPress checkSelf:graveklar.notch >/dev/null; sleep 0.6
+check "the notch's own row checks for its update in place, without leaving the page" "true false" \
+  "$(ipc geometry | jq -r '"\(.plugins.open) \(.settingsOpen)"')"
 ipc plugins open:kalinewb.profiles >/dev/null; sleep 0.9
 check "plugins open:<id> opens the page at that entry, scrolled into view" "kalinewb.profiles 1 true" \
   "$(ipc geometry | jq -r '"\(.plugins.focusId) \(.plugins.selected) \(.plugins.scroll.selectedShown)"')"
@@ -709,8 +711,10 @@ sleep 0.5; refresh_during=$(ipc geometry | jq -r .plugins.refreshEnabled)
 ipc plugins close >/dev/null; sleep 0.8
 # Each button read while its panel is on show (a hidden panel's buttons are
 # disabled anyway).
-buttons() { local n s; n=$(ipc geometry | jq -r .plugins.updateButtons.notice); ipc settings >/dev/null; sleep 0.6
-  s=$(ipc geometry | jq -r .plugins.updateButtons.settings); ipc settings >/dev/null; sleep 0.8; echo "$s $n"; }
+# The notch's own Update button is on the Plugins page now, on its own row --
+# not in Settings -- so it is read from the model rather than by opening a panel.
+buttons() { local n s; n=$(ipc geometry | jq -r .plugins.updateButtons.notice)
+  s=$(ipc geometry | jq -r .plugins.updateButtons.page); echo "$s $n"; }
 u=$(ipc update now)
 check "while a plugin job runs: the notch update doesn't start, both Update buttons and Refresh are disabled" "true available false false false false" \
   "$(status | jq -r .jobRunning) $(field .notice "$u") $(exists "$ui/update.json") $(buttons) $refresh_during"

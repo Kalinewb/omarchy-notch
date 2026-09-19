@@ -178,11 +178,24 @@ function entryView(entry, job, now, options) {
 }
 
 // The notch's own row: never acted on here.
-function selfView(self) {
+// The notch is listed with the plugins because it is updated the way they are.
+// It used to carry a button that sent you to Settings -> Updates instead, which
+// made "what is managed where" two answers to one question: everything you
+// install or update lives here, everything you choose lives in Settings.
+function selfView(self, update) {
   var s = self || {}
+  var u = update || {}
+  var id = String(s.id || "graveklar.notch")
+  var available = u.state === "available"
+  var actions = []
+  if (available && u.canUpdate !== false) {
+    actions.push({ name: "updateSelf:" + id, label: "Update", primary: true, enabled: u.busy !== true })
+  }
+  actions.push({ name: "checkSelf:" + id, label: u.checking === true ? "Checking…" : "Check now",
+                 primary: false, enabled: u.canCheck !== false && u.checking !== true })
   return {
-    id: String(s.id || "graveklar.notch"), name: String(s.name || "Notch"), version: String(s.version || ""),
-    state: "self", words: "This notch. Updates are in Settings → Updates.",
-    actions: [{ name: "updates:" + String(s.id || "graveklar.notch"), label: "Updates", primary: true, enabled: true }]
+    id: id, name: String(s.name || "Notch"), version: String(s.version || ""),
+    state: "self", words: String(u.words || "This notch."),
+    actions: actions
   }
 }

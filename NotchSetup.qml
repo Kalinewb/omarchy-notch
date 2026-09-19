@@ -46,8 +46,13 @@ Item {
   property bool showSnapshots: false
   property bool showHealthy: false
 
-  readonly property var attention: filterBySeverity(["fix", "action"])
-  readonly property var worthKnowing: filterBySeverity(["warn", "info", "unknown"])
+  // A warning is a real fault that happens to have no one-click fix -- keys
+  // that call a script which isn't there, for instance. It was filed under
+  // "worth knowing" while the header badge counted it, so the panel said
+  // "Nothing needs attention" with a warning on screen and a count beside it.
+  // The badge is right: it needs attention, it just has no button.
+  readonly property var attention: filterBySeverity(["fix", "action", "warn"])
+  readonly property var worthKnowing: filterBySeverity(["info", "unknown"])
   readonly property var healthy: filterBySeverity(["ok"])
 
   function filterBySeverity(kinds) {

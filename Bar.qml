@@ -1869,7 +1869,19 @@ Item {
     // Not a version the last job just installed (the check result can be
     // older than the job).
     if (c.state === "available" && c.remote && c.remote !== updateSnoozed && !(job.phase === "done" && job.to === c.remote)) return "available"
+    // Once the pop-down is up it stays up until it is answered. A later check
+    // that comes back offline, or a check that has not run again yet, must not
+    // take the question away before Update or Later has been pressed: a notice
+    // that removes itself is one the user never gets to act on.
+    if (updateNoticeHeld !== "" && updateNoticeHeld !== updateSnoozed
+        && !(job.phase === "done" && job.to === updateNoticeHeld)) return "available"
     return ""
+  }
+
+  // The version the pop-down is asking about, held until answered.
+  property string updateNoticeHeld: ""
+  onUpdateNoticeChanged: {
+    if (updateNotice === "available") updateNoticeHeld = String((updateCheckResult || {}).remote || "")
   }
 
   readonly property bool updateCheckRunning: updateCheckProcess.running
@@ -1884,6 +1896,7 @@ Item {
   function startUpdate() {
     // Not while a plugin job runs: both reload every plugin.
     if (!updatesEnabled || updateNotice === "updating" || pluginJobRunning) return false
+    updateNoticeHeld = ""
     var run = [updateScript, "run", updateStatusPath]
     var argv
     if ((Quickshell.env("NOTCH_UPDATE_DETACH") || "systemd-run") === "systemd-run") {
@@ -1912,6 +1925,7 @@ Item {
     var sha = String((updateCheckResult || {}).remote || "")
     if (!/^[0-9a-f]{7,64}$/.test(sha)) return false
     updateSnoozed = sha
+    updateNoticeHeld = ""
     Quickshell.execDetached([updateScript, "snooze", updateSnoozePath, sha])
     return true
   }
@@ -1924,6 +1938,8 @@ Item {
     var job = JSON.parse(JSON.stringify(updateJob))
     job.seen = true
     updateJob = job
+    // The question the pop-down was holding has been answered by the job.
+    if (job.to && job.to === updateNoticeHeld) updateNoticeHeld = ""
     Quickshell.execDetached([updateScript, "ack", updateStatusPath])
     if (job.phase === "failed") snoozeUpdate()
     return true
@@ -2127,7 +2143,33 @@ Item {
                                                              checking: pluginsStateProcess.running })
     })
   }
-  readonly property var pluginsSelfView: PluginsModel.selfView(Object.assign({}, (pluginsCatalogue || {}).self || {}, (pluginsState || {}).self || {}))
+  // Where the notch's own updates stand, in words. The settings panel used to
+  // own this sentence; it belongs with the thing it describes, on the Plugins
+  // page, where the notch is listed beside the plugins it is updated like.
+  readonly property string updateWords: {
+  if (!updatesEnabled) return "This notch doesn't update itself."
+  if (updateNotice === "updating") return "Updating…"
+  var c = updateCheckResult || {}
+  var version = c.localVersion ? " (" + c.localVersion + ")" : ""
+  switch (c.state) {
+    case "unchecked": return "Not checked yet" + version + "."
+    case "current": return "Up to date" + version + "."
+    case "available": return (c.remoteVersion && c.remoteVersion !== c.localVersion
+      ? c.remoteVersion : (c.behind === 1 ? "1 change" : c.behind + " changes")) + " available."
+    case "ahead": return "Ahead of GitHub (a development install)."
+    case "diverged": return "Differs from GitHub: update by hand."
+    case "dirty": return "The plugin folder has local edits: update by hand."
+    case "not-git": return "Not a git install, so it can't update itself."
+    case "offline": return "Couldn't reach GitHub."
+    default: return "Couldn't check for updates."
+  }
+  }
+
+  readonly property var pluginsSelfView: PluginsModel.selfView(
+    Object.assign({}, (pluginsCatalogue || {}).self || {}, (pluginsState || {}).self || {}),
+    { state: (updateCheckResult || {}).state || "unchecked", words: updateWords,
+      checking: updateCheckRunning, canCheck: updatesEnabled,
+      canUpdate: updateNotice === "" && !pluginJobRunning, busy: pluginJobRunning })
   readonly property var pluginsJobEntry: {
     var probed = (pluginsState && pluginsState.entries) || []
     for (var i = 0; i < probed.length; i++) if (probed[i].id === (pluginsJob || {}).id) return probed[i]
@@ -3770,8 +3812,16 @@ Item {
           card: pluginsHost.item ? pluginsHost.item.carding : false, selected: pluginsHost.item ? pluginsHost.item.selectedIndex : -1,
           foreground: pluginsHost.item ? String(pluginsHost.item.foreground).toUpperCase() : "",
           surface: pluginsHost.item ? String(pluginsHost.item.surface).toUpperCase() : "",
+          // `page` is the Update button on the notch's own row on the Plugins
+          // page. It used to be `settings`, when the same button was also in
+          // Settings -> Updates; there is one of it now.
           updateButtons: {
-            settings: expandedHost.item ? expandedHost.item.updateButtonEnabled : null,
+            // Whether the notch's own update would take a click. A button is
+            // only drawn when there is something to install, so this is the
+            // condition rather than a button's enabled flag: what the check is
+            // really about is that a plugin job blocks the notch's own update
+            // (both reload every plugin).
+            page: root.updatesEnabled && !root.pluginJobRunning,
             notice: noticeHost.item && barWindow.noticeKind === "update" ? noticeHost.item.updateButtonEnabled : null
           }
         },
@@ -4396,6 +4446,7 @@ Item {
         glowReach: glow.reach
         onCloseRequested: barWindow.settingsOpen = false
         onSetupRequested: barWindow.openSetup()
+        onPluginsRequested: barWindow.openPlugins("")
       }
     }
     Component {

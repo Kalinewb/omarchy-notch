@@ -25,6 +25,7 @@ Item {
   property real headerHeight: 32
   signal closeRequested()
   signal setupRequested()
+  signal pluginsRequested()
 
   readonly property real padding: Style.space(16)
   implicitWidth: Style.space(400)
@@ -42,26 +43,6 @@ Item {
   readonly property var painted: [replaceMenuSwitch.trackColor, replaceMenuSwitch.knobColor,
                                   setupButton.selectedFill, setupButton.hoverFill, glowScaleSlider.trackColor]
 
-  // Where the notch's own updates stand, in words.
-  readonly property string updateStatus: {
-    var b = bar
-    if (!b) return ""
-    if (!b.updatesEnabled) return "This notch doesn't update itself."
-    if (b.updateNotice === "updating") return "Updating…"
-    var c = b.updateCheckResult || {}
-    var version = c.localVersion ? " (" + c.localVersion + ")" : ""
-    switch (c.state) {
-      case "unchecked": return "Not checked yet" + version + "."
-      case "current": return "Up to date" + version + "."
-      case "available": return (c.remoteVersion && c.remoteVersion !== c.localVersion ? c.remoteVersion : (c.behind === 1 ? "1 change" : c.behind + " changes")) + " available."
-      case "ahead": return "Ahead of GitHub (a development install)."
-      case "diverged": return "Differs from GitHub: update by hand."
-      case "dirty": return "The plugin folder has local edits: update by hand."
-      case "not-git": return "Not a git install, so it can't update itself."
-      case "offline": return "Couldn't reach GitHub."
-      default: return "Couldn't check for updates."
-    }
-  }
 
   // Unfold a section and scroll to it: "updates" (the Plugins page's notch row).
   function revealSection(name) {
@@ -77,8 +58,6 @@ Item {
 
   // Whether Updates is unfolded (dev/plugins.sh).
   readonly property bool updatesSectionOpen: updatesSection.open
-  // Whether the notch update's Update button takes a click (dev/plugins.sh).
-  readonly property bool updateButtonEnabled: updateNowButton.enabled
 
   readonly property QtObject sliderPalette: QtObject {
     readonly property color foreground: root.foreground
@@ -622,9 +601,14 @@ Item {
         }
       }
 
+      // A preference, and only that. Whether the notch has an update, and the
+      // button that installs it, live on the Plugins page with the notch's own
+      // row -- the same place a plugin's update lives, so there is one answer
+      // to "what is managed where" instead of two.
       Section {
         id: updatesSection
         title: "Updates"
+        summary: root.bar ? root.bar.updateWords : ""
 
         SettingRow {
           label: "Check for updates"
@@ -635,38 +619,17 @@ Item {
         }
 
         SettingRow {
-          label: root.updateStatus
-          Row {
-            spacing: Style.space(6)
-            NotchButton {
-              id: updateNowButton
-              visible: root.bar && root.bar.updateNotice === "" && root.bar.updateCheckResult && root.bar.updateCheckResult.state === "available"
-              // Not while a plugin job runs: both reload every plugin.
-              enabled: !!root.bar && !root.bar.pluginJobRunning
-              opacity: enabled ? 1 : 0.35
-              text: "Update"
-              bordered: true
-              selected: true
-              foreground: root.foreground
-              accent: root.accent
-              radius: root.radiusFor(Math.min(width, height))
-              fontFamily: root.fontFamily
-              fontSize: Style.font.bodySmall
-              horizontalPadding: Style.space(7)
-              onClicked: root.bar.startUpdate()
-            }
-            NotchButton {
-              text: root.bar && root.bar.updateCheckRunning ? "Checking…" : "Check now"
-              enabled: root.bar && root.bar.updatesEnabled && !root.bar.updateCheckRunning
-              bordered: true
-              foreground: root.foreground
-              accent: root.accent
-              radius: root.radiusFor(Math.min(width, height))
-              fontFamily: root.fontFamily
-              fontSize: Style.font.bodySmall
-              horizontalPadding: Style.space(7)
-              onClicked: root.bar.checkForUpdates()
-            }
+          label: "Where updates are done"
+          NotchButton {
+            text: "Plugins…"
+            bordered: true
+            foreground: root.foreground
+            accent: root.accent
+            radius: root.radiusFor(Math.min(width, height))
+            fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            horizontalPadding: Style.space(7)
+            onClicked: root.pluginsRequested()
           }
         }
       }

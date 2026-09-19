@@ -2732,6 +2732,13 @@ Item {
 
     function integrations(): string { return JSON.stringify(root.platform.report()) }
 
+    // Every colour the notch paints with (dev/colours.sh). Not in `geometry`:
+    // that one is sampled on a tight cadence by dev/glow.sh.
+    function palette(): string {
+      var w = root.focusedNotchWindow()
+      return w ? JSON.stringify(w.paletteReport()) : "{}"
+    }
+
     // What the notifications source is tracking, and what it has claimed.
     function notifications(): string { return JSON.stringify(root.notificationsSource.report()) }
 
@@ -3707,14 +3714,6 @@ Item {
         widgets: { foreground: hex(root.foreground), barForeground: hex(root.barForeground), background: hex(root.background) },
         urgent: hex(root.urgent), hosting: root.hosting.active,
         themeText: hex(Color.bar.text), themeBarBackground: hex(Color.bar.background),
-        tooltip: { background: hex(tooltipBubble.color), text: hex(tooltipLabel.color), border: String(tooltipBubble.borderSpec.color).toUpperCase() },
-        // Every colour the notch may paint with, apart from its surface and the
-        // battery glow. dev/colours.sh asserts none of them has a hue.
-        palette: [root.notchForeground, root.notchAccent, root.notchSecondaryText, root.barForeground,
-                  tooltipLabel.color, tooltipBubble.borderSpec.color]
-          .concat(menuHost.item ? [menuHost.item.selectedBackground, menuHost.item.selectedText, menuHost.item.selectedBorder] : [])
-          .concat(settings ? [settings.foreground, settings.accent].concat(settings.painted || []) : [])
-          .map(function (c) { return String(c).toUpperCase() }),
         glance: hex(compactGlance.foreground),
         settings: settings ? { foreground: hex(settings.foreground), accent: hex(settings.accent), surface: hex(settings.surface), glowReach: Number(settings.glowReach.toFixed(3)) } : null,
         // What another plugin's panel is actually painting with: it may only use
@@ -3729,6 +3728,29 @@ Item {
           readableFallbackOnBlack: hex(root.readableOn("#000000", ["#111111"], 7)),
           readableFallbackOnWhite: hex(root.readableOn("#ffffff", ["#eeeeee"], 7))
         }
+      }
+    }
+
+    // Every colour the notch may paint with, apart from its surface and the
+    // battery glow, and the tooltip's own three. dev/colours.sh asserts none of
+    // them has a hue.
+    //
+    // Its own call rather than part of coloursReport: geometryReport carries
+    // that one, dev/glow.sh samples geometry on a 50 ms cadence and dates each
+    // sample by the midpoint of the call, so anything heavy in there shows up
+    // as the fade curve being wrong -- which is exactly what happened when this
+    // was added to it.
+    function paletteReport() {
+      function hex(value) { var c = Qt.tint(value, "transparent"); return String(Qt.rgba(c.r, c.g, c.b, 1)).toUpperCase() }
+      var settings = expandedHost.item
+      return {
+        tooltip: { background: hex(tooltipBubble.color), text: hex(tooltipLabel.color),
+                   border: String(tooltipBubble.borderSpec.color).toUpperCase() },
+        palette: [root.notchForeground, root.notchAccent, root.notchSecondaryText, root.barForeground,
+                  tooltipLabel.color, tooltipBubble.borderSpec.color]
+          .concat(menuHost.item ? [menuHost.item.selectedBackground, menuHost.item.selectedText, menuHost.item.selectedBorder] : [])
+          .concat(settings ? [settings.foreground, settings.accent].concat(settings.painted || []) : [])
+          .map(function (c) { return String(c).toUpperCase() })
       }
     }
 

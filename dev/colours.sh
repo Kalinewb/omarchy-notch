@@ -99,14 +99,15 @@ for notch in "#000000" "#FDF6E3" "#268BD2" "#1A1B26"; do
     "$(jq -r '.colours.selfTest.bestOnNotch as $best | .menu.colours | "\(.textContrast >= ([7, $best] | min)) \(.selectedTextContrast >= ([4.5, $best] | min)) \(.selectionContrast >= 1.1)"' <<<"$r")"
   check "menu: the cursor row is the text colour at an alpha, not a theme colour" "true" \
     "$(jq -r '.colours.text as $t | .menu.colours | (.selectedText | ascii_upcase) == $t and (.selectedBackground | ascii_upcase | .[-6:]) == ($t | .[-6:]) and (.selectedBorder | ascii_upcase | .[-6:]) == ($t | .[-6:])' <<<"$r")"
+  pal=$(ipc palette)
   check "tooltips are the notch's bubble: its surface, its text" "true" \
-    "$(jq -r '.tooltip.background == .notch and .tooltip.text == .text' <<<"$c")"
+    "$(jq -r --argjson c "$c" '.tooltip.background == $c.notch and .tooltip.text == $c.text' <<<"$pal")"
   # The rule itself: nothing the notch paints with has a hue. Every entry is
   # #AARRGGBB; grey means the three channels agree. The one exception is
   # Apple's secondary label, #EBEBF5 / #3C3C43, which carries a whisper of blue
   # by Apple's design -- the notch's own value, not the theme's.
-  check "nothing the notch paints with has a hue ($(jq -r '.palette | length' <<<"$c") colours checked; Apple's secondary label excepted)" "true" \
-    "$(jq -r '[.palette[] | .[-6:] | ((.[0:2] == .[2:4] and .[2:4] == .[4:6]) or . == "EBEBF5" or . == "3C3C43")] | all' <<<"$c")"
+  check "nothing the notch paints with has a hue ($(jq -r '.palette | length' <<<"$pal") colours checked; Apple's secondary label excepted)" "true" \
+    "$(jq -r '[.palette[] | .[-6:] | ((.[0:2] == .[2:4] and .[2:4] == .[4:6]) or . == "EBEBF5" or . == "3C3C43")] | all' <<<"$pal")"
   stop
 done
 

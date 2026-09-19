@@ -564,8 +564,8 @@ detect_profiles_binds_path() {
   else
     local keys; keys=$(grep -oP '^\s*o\.bind\("\K[^"]+(?=".*omarchy-profile)' "$file" 2>/dev/null | paste -sd', ')
     point profiles-binds-path warn "Profiles keybinds point at a missing script" \
-      "${keys:-Some keys} call $target, which isn't there." \
-      "$(strings "These are your own binds, so the notch leaves them alone. Reinstall Profiles, or edit ~/.config/hypr/bindings.lua.")"
+      "${keys:-Some keys} do nothing: they call $target, which isn't there. No Fix button, because you wrote these binds -- the notch only edits blocks it put there itself. Reinstall Profiles, or delete the lines from ~/.config/hypr/bindings.lua." \
+      "$(strings "The notch appends and removes its own marked blocks in bindings.lua, and snapshots the file first. It will not rewrite lines you wrote, because it cannot know what you meant by them." "Reinstalling Profiles puts the script back and the keys work again.")"
   fi
 }
 
@@ -704,12 +704,13 @@ detect_point() {
     layout-missing-plugin) detect_layout_missing_plugin ;;
     layout-empty-widget) detect_layout_empty_widget ;;
     settings-stale-ids) detect_settings_stale_ids ;;
+    # The quick pass can't reach these -- they ask each plugin about itself --
+    # so it says nothing rather than listing a point whose whole content is
+    # "not checked yet". The full check fills them in a moment later.
     plugin-face)
-      if (( LOCAL_ONLY )); then point plugin-face unknown "Face ID not checked yet" "Checked when the full check runs."
-      else detect_plugin plugin-face graveklar.face "Face ID" '["omarchy-shell","graveklar.face","open","setup",""]'; fi ;;
+      (( LOCAL_ONLY )) || detect_plugin plugin-face graveklar.face "Face ID" '["omarchy-shell","graveklar.face","open","setup",""]' ;;
     plugin-profiles)
-      if (( LOCAL_ONLY )); then point plugin-profiles unknown "Profiles not checked yet" "Checked when the full check runs."
-      else detect_plugin plugin-profiles kalinewb.profiles "Profiles" '["omarchy-shell","kalinewb.profiles","open"]'; fi ;;
+      (( LOCAL_ONLY )) || detect_plugin plugin-profiles kalinewb.profiles "Profiles" '["omarchy-shell","kalinewb.profiles","open"]' ;;
     profiles-binds-path) detect_profiles_binds_path ;;
     stray-instances) detect_stray_instances ;;
     stray-backups) detect_stray_backups ;;

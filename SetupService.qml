@@ -122,10 +122,10 @@ Item {
     }
     return {
       id: "theme-tokens", severity: "info",
-      title: "Your theme puts its own colour inside the notch",
-      summary: off.length + " style token(s) pin a fill or border to a theme colour, so a plugin's panel drawn in the notch shows that colour on its hover, selection and outlines. The notch's own controls don't.",
-      detail: ["The notch paints in white only, but a plugin's own panel asks Omarchy's Style helpers for its fills, and these tokens tell the helper to use the theme's colour instead of the white it was handed.",
-               "Set them to \"foreground\" in the theme's shell.toml [style] section, or pick a theme that leaves them at the default. Text is unaffected either way."],
+      title: "Your theme tints panels drawn inside the notch",
+      summary: "When a plugin's panel opens inside the notch, its hover highlights, selection and outlines come out in your theme's colour instead of white. The notch's own switches and buttons are unaffected. Nothing to press: it is decided by " + off.length + " colour(s) your theme pins, which the notch cannot override for itself alone.",
+      detail: ["The notch paints in white only, but a plugin's own panel asks Omarchy's Style helpers for its fills, and these tokens tell the helper to use the theme's colour instead of the white it was handed. Those helpers are shared with the whole desktop, so the notch cannot change them just for itself.",
+               "If it bothers you: set them to \"foreground\" in the theme's shell.toml [style] section, or pick a theme that leaves them at the default. That changes them everywhere, not only in the notch. Text is unaffected either way."],
       items: off, fix: null, handoff: null
     }
   }

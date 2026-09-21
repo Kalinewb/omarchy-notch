@@ -37,6 +37,7 @@ set -uo pipefail
 SCHEMA=1
 ID="kalinewb.notch"
 COMPANION="kalinewb.notch-menu"
+OSD_COMPANION="kalinewb.notch-osd"
 
 # --- where things are ---------------------------------------------------------------
 
@@ -239,9 +240,10 @@ menu_family() {
   grep -oP '^o\.bind\("\K[^"]+(?=".*"omarchy-menu toggle)' "$file"
 }
 
-companion_state() { # absent | disabled | inactive | active
+companion_state() { # [id] -> absent | disabled | inactive | active
+  local id=${1:-$COMPANION}
   local list; list=$(plugin_list)
-  local entry; entry=$(jq -c --arg id "$COMPANION" 'map(select(.id == $id)) | .[0] // null' <<<"$list")
+  local entry; entry=$(jq -c --arg id "$id" 'map(select(.id == $id)) | .[0] // null' <<<"$list")
   [[ $entry == null ]] && { echo absent; return; }
   [[ $(jq -r '.enabled // false' <<<"$entry") == true ]] || { echo disabled; return; }
   [[ $(jq -r '.active // false' <<<"$entry") == true ]] || { echo inactive; return; }
@@ -297,6 +299,32 @@ detect_hypr_config_errors() {
   else
     point hypr-config-errors ok "Hyprland's config is clean" "\`hyprctl configerrors\` is empty."
   fi
+}
+
+detect_osd_companion() {
+  local want; want=$(setting .bar.notch.replaceOsd)
+  local state; state=$(companion_state "$OSD_COMPANION")
+  if [[ $want != true ]]; then
+    point osd-companion ok "Omarchy's own OSD is in use" "\"Show the OSD in the notch\" is off."
+    return
+  fi
+  case $state in
+    # A panel plugin's entry point is created when it is first called, so
+    # "inactive" out here means "nothing has pressed a volume key yet", not
+    # "broken". Installed and enabled is the whole of what Setup can tell.
+    active|inactive) point osd-companion ok "The OSD shows in the notch" \
+      "The OSD companion is installed and enabled." ;;
+    disabled)
+      point osd-companion fix "The OSD companion is switched off" \
+        "\"Show the OSD in the notch\" is on, but $OSD_COMPANION is disabled, so volume and brightness still show Omarchy's own card." \
+        "$(strings "Fix runs \`omarchy plugin enable $OSD_COMPANION\`." "Undo runs \`omarchy plugin disable $OSD_COMPANION\`, which puts omarchy.osd back exactly.")" \
+        '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
+    *)
+      point osd-companion fix "The OSD companion isn't installed" \
+        "\"Show the OSD in the notch\" is on, but $OSD_COMPANION isn't in the plugins folder, so the notch never sees an OSD call." \
+        "$(strings "The notch installs it by itself; this says that has not happened." "Switching the setting off and on again asks for another try.")" \
+        '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
+  esac
 }
 
 detect_menu_replace_companion() {
@@ -685,7 +713,7 @@ detect_notch_not_git() {
   fi
 }
 
-POINT_ORDER=(bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion menu-keys-bypass
+POINT_ORDER=(bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion osd-companion menu-keys-bypass
   notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids
   plugin-face plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift
   layer-rules notch-not-git)
@@ -698,6 +726,7 @@ detect_point() {
     notch-failed) detect_notch_failed ;;
     hypr-config-errors) detect_hypr_config_errors ;;
     menu-replace-companion) detect_menu_replace_companion ;;
+    osd-companion) detect_osd_companion ;;
     menu-keys-bypass) detect_menu_keys_bypass ;;
     notch-key-collision) detect_notch_key_collision ;;
     stale-notch-binds) detect_stale_notch_binds ;;
@@ -948,7 +977,7 @@ files_for() { # the files a fix would change
   case $1 in
     menu-keys-bypass) echo "$HYPR/bindings.lua" ;;
     bar-off) echo "$TOGGLES/bar-off" ;;
-    menu-replace-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo "$SHELL_JSON" ;;
+    menu-replace-companion|osd-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo "$SHELL_JSON" ;;
     stray-backups) stray_backup_files ;;
     *) : ;;
   esac
@@ -958,7 +987,7 @@ kind_for() {
   case $1 in
     menu-keys-bypass) echo block ;;
     bar-off) echo flag ;;
-    menu-replace-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo ipc ;;
+    menu-replace-companion|osd-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo ipc ;;
     stray-backups) echo archive ;;
     stale-notch-binds|stray-instances|layout-empty-widget) echo runtime ;;
     *) echo "" ;;

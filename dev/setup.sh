@@ -148,8 +148,8 @@ echo "${BOLD}bin/notch-setup${RESET}  ${DIM}sandbox $sb${RESET}"
 reset_calls
 report=$(run_setup detect --json)
 ids=$(jq -r '[.points[].id] | join(" ")' <<<"$report")
-expected_ids="bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion menu-keys-bypass notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids plugin-face plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift layer-rules notch-not-git"
-check "1. detect reports the 20 points in order, schema 1" "1 $expected_ids" "$(jq -r .schema <<<"$report") $ids"
+expected_ids="bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion osd-companion menu-keys-bypass notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids plugin-face plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift layer-rules notch-not-git"
+check "1. detect reports the 21 points in order, schema 1" "1 $expected_ids" "$(jq -r .schema <<<"$report") $ids"
 check "1b. a healthy fixture needs no attention" "0" "$(jq '.counts.fix + .counts.action + .counts.warn' <<<"$report")"
 
 before=$(tree_hash "$HOME_SB"); before_count=$(find "$HOME_SB" -type f | wc -l)

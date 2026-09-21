@@ -1848,6 +1848,10 @@ Item {
   // menu instead, through the companion plugin (MenuCompanion.qml). Off means
   // Omarchy's own menu window, exactly as before.
   readonly property bool notchReplaceMenu: notchSetting("replaceMenu", false) === true
+  // Omarchy's volume, brightness and media overlays, shown in the notch instead
+  // of its card at the bottom of the screen. Off until asked, like the menu:
+  // it installs a companion plugin, and that is the user's decision to make.
+  readonly property bool notchReplaceOsd: notchSetting("replaceOsd", false) === true
   readonly property bool updatesEnabled: (!!root.shell && !root.harnessed) || Quickshell.env("NOTCH_FORCE_UPDATES") === "1"
   readonly property string updateScript: String(Qt.resolvedUrl("bin/notch-update")).replace(/^file:\/\//, "")
   readonly property string updateStateDir: Quickshell.env("NOTCH_UPDATE_STATE_DIR") || ""
@@ -1995,6 +1999,19 @@ Item {
     var window = focusedNotchWindow() || notchWindows[0]
     if (!window) return "declined:no-notch"
     return window.showOsd(state)
+  }
+
+  // Take down whatever OSD the notch is showing. The companion calls this
+  // before handing an event to Omarchy's own card, so one key press never
+  // lights up two displays.
+  function hideOsd() {
+    var windows = notchWindows
+    for (var i = 0; i < windows.length; i++) windows[i].hideOsd()
+  }
+  readonly property bool osdShown: {
+    var windows = notchWindows
+    for (var i = 0; i < windows.length; i++) if (windows[i].osdShown) return true
+    return false
   }
 
   function releaseHostedPanel() {
@@ -2528,6 +2545,8 @@ Item {
   // jobs that install or update it.
   MenuCompanion { id: menuCompanionHelper; bar: root }
   readonly property var menuCompanion: menuCompanionHelper
+  OsdCompanion { id: osdCompanionHelper; bar: root }
+  readonly property var osdCompanion: osdCompanionHelper
 
   function setNotchSetting(key, value) {
     if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false

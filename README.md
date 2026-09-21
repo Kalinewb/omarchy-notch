@@ -133,6 +133,34 @@ recording stand-in for Hyprland's own `hl` table (the same trick Omarchy's keybi
 which is the only way to see a `code:` key or a bind written in Lua. Setup never runs anything
 privileged, never touches a plugin's own setup, and never writes the plugins folder.
 
+### The on-screen display
+
+Omarchy answers a volume key, a brightness key or a media button with a card at
+the bottom of the screen. **Show the OSD in the notch** (`replaceOsd`, Settings →
+How it opens) puts it in the notch instead: one row — the glyph, a bar and the
+readout, or the word — with the notch widening around it and shrinking back. The
+glyph and the readout are Omarchy's own (`osd-model.js` is its model, vendored),
+so "volume-muted" is the glyph Omarchy picks; the drawing is the notch's, so
+there is no card, no theme colour and no accent on the bar.
+
+- **It needs the same kind of one-time set-up as the menu**, and does it itself:
+  a small companion plugin (`kalinewb.notch-osd`, the folder in `companion/`).
+  Omarchy routes an OSD call to whichever plugin says `clonedFrom: omarchy.osd`;
+  the companion's go-between asks the notch first and falls back to Omarchy's own
+  card, loaded from `$OMARCHY_PATH`, so nothing is a copy.
+- **A key press never does nothing.** The notch answers `shown` or
+  `declined:<reason>`, and anything but `shown` shows Omarchy's own card: with a
+  panel open (it would cover what you opened), with the bar hidden, or with no
+  notch running. Neither display is ever left up under the other.
+- **It outranks a peek and yields to a panel.** An OSD answers a key you just
+  pressed; a peek is the notch volunteering something.
+- **To undo:** turn the switch off, or `omarchy plugin disable kalinewb.notch-osd`
+  from a terminal, which puts `omarchy.osd` back exactly.
+- Over IPC: `notch osd '<payload>'` takes Omarchy's own payload
+  (`{icon, message, value, max, progressText, duration}`) and answers `shown` or
+  why not; `notch osdClose` takes it down. `dev/osd.sh` tests the lot, with the
+  notch and the companion laid out the way the plugins folder is.
+
 ## Plugin integrations
 
 Any Omarchy plugin can draw its own panel **inside** the notch. It declares one
@@ -412,6 +440,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `expanded` | `["clock","date","media"]` | Glance items added to the widget row. Leaves out time and date when the layout already has `omarchy.clock`. |
 | `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
+| `replaceOsd` | `false` | Omarchy's volume, brightness and media overlays show in the notch instead of its card at the bottom of the screen. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
 | `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
 | `notifications` | `true` | Omarchy's toasts also show in the notch: the glyph and summary on the resting row, the body wrapped underneath it (up to two rows, elided after that), with the notch widening and growing down to fit. Omarchy's own toast still appears — it is one `keepLoaded` service with no switch for its popups, so the notch is a second display of the same thing, not a replacement for the notification daemon. |
 | `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |

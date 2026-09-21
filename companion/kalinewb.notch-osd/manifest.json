@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "kalinewb.notch-osd",
+  "name": "On-screen display (notch)",
+  "version": "1.0.0",
+  "author": "kalinewb",
+  "license": "MIT",
+  "description": "Shows Omarchy's volume, brightness and media overlays in the notch while the notch's \"Show the OSD in the notch\" setting is on; otherwise Omarchy's own overlay, unchanged.",
+  "kinds": [
+    "panel",
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Facade.qml",
+    "service": "Service.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.osd"
+  }
+}

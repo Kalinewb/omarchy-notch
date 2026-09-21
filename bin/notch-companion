@@ -1,5 +1,8 @@
 #!/bin/bash
-# The menu companion: the small plugin that lets the notch be the Omarchy menu.
+# A companion: the small plugin that lets the notch be one of Omarchy's own
+# surfaces -- the menu (kalinewb.notch-menu) or the on-screen display
+# (kalinewb.notch-osd). Which one is NOTCH_COMPANION_ID's business; everything
+# here is the same work either way.
 #
 #   notch-companion status                    one line of JSON about the installed copy
 #   notch-companion install <status file>     copy it in and enable it
@@ -36,8 +39,19 @@
 
 set -uo pipefail
 
-ID="kalinewb.notch-menu"
-SOURCE_ID="omarchy.menu"
+# Which companion this is. The notch has two -- the menu's and the OSD's -- and
+# everything below is the same work for either: copy the folder, validate it,
+# enable it, keep it in step, take it away. Only these two names differ.
+ID="${NOTCH_COMPANION_ID:-kalinewb.notch-menu}"
+SOURCE_ID="${NOTCH_COMPANION_SOURCE_ID:-omarchy.menu}"
+# The word for it in a sentence the user reads: "The menu companion is set up."
+LABEL="${NOTCH_COMPANION_LABEL:-}"
+if [[ -z $LABEL ]]; then
+  case "$SOURCE_ID" in
+    omarchy.osd) LABEL="OSD" ;;
+    *) LABEL="menu" ;;
+  esac
+fi
 REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 SOURCE="${NOTCH_COMPANION_SOURCE:-$REPO/companion/$ID}"
 # The fixed path the shell scans; never XDG_CONFIG_HOME (PluginRegistry.qml).
@@ -143,11 +157,11 @@ sync_files() { # sync_files <force 0|1> <status file>
   local force=$1 status=${2:-}
   [[ -d $SOURCE ]] || { fail "$status" "the notch has no companion folder at $SOURCE"; return 1; }
   if [[ ! -d $DEST && $force -ne 1 ]]; then
-    done_ok "$status" "The companion isn't installed."
+    done_ok "$status" "The $LABEL companion isn't installed."
     return 2
   fi
   if [[ -d $DEST ]] && diff -rq "$SOURCE" "$DEST" >/dev/null 2>&1; then
-    done_ok "$status" "The companion is already up to date."
+    done_ok "$status" "The $LABEL companion is already up to date."
     return 2
   fi
   mkdir -p "$PLUGINS_DIR" || { fail "$status" "no plugins folder at $PLUGINS_DIR"; return 1; }
@@ -195,7 +209,7 @@ install_companion() { # install_companion <status file>
     done_ok "$status" "Installed, but turning it on failed. Try: omarchy plugin enable $ID"
     return 0
   fi
-  done_ok "$status" "The menu companion is set up."
+  done_ok "$status" "The $LABEL companion is set up."
 }
 
 sync_companion() { # sync_companion <force> <status file>
@@ -204,7 +218,7 @@ sync_companion() { # sync_companion <force> <status file>
   sync_files "$force" "$status"; rc=$?
   (( rc == 1 )) && return 1
   (( rc == 2 )) && return 0
-  done_ok "$status" "The menu companion is up to date."
+  done_ok "$status" "The $LABEL companion is up to date."
 }
 
 remove_companion() { # remove_companion <status file>
@@ -216,7 +230,7 @@ remove_companion() { # remove_companion <status file>
     fail "$status" "$(tail -n 1 <<<"$output" | cut -c1-200)"
     return 1
   fi
-  done_ok "$status" "The menu companion is gone; Omarchy's own menu is back."
+  done_ok "$status" "The $LABEL companion is gone; Omarchy's own $LABEL is back."
 }
 
 check_hooks || { echo '{"error":"sandbox"}'; exit 2; }

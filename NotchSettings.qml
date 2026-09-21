@@ -357,6 +357,18 @@ Item {
           }
         }
 
+        // The same shape as the menu's switch, and the same deal: the notch
+        // installs the companion plugin the routing needs, and Setup reports it
+        // if that fails.
+        SettingRow {
+          label: "Show the OSD in the notch"
+          Switch {
+            id: replaceOsdSwitch
+            checked: root.bar ? root.bar.notchReplaceOsd : false
+            onToggled: root.set("replaceOsd", !checked)
+          }
+        }
+
         SettingRow {
           label: "Keep the notch open"
           Switch {

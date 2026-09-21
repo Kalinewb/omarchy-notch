@@ -3604,6 +3604,11 @@ Item {
     readonly property real peekWidth: Math.max(compactWidth, peekGlance.implicitWidth + 2 * root.notchSidePadding)
     readonly property real activityWidth: Math.max(compactWidth,
       Math.min(560, activityGlance.implicitWidth + 2 * root.notchSidePadding))
+    // A notification grows the notch DOWN for its body, the way a panel does:
+    // one elided row was a notification you could watch arrive and could not
+    // read (ActivityGlance.qml). Capped like every other panel.
+    readonly property real activityHeight: Math.max(root.notchCompactHeight,
+      Math.min(panelMaxHeight, activityGlance.implicitHeight))
     readonly property real rowWidth: Math.max(compactWidth, widgetRow.implicitWidth + 2 * root.notchSidePadding)
     readonly property real clockWidth: Math.max(compactWidth, clockGlance.implicitWidth + 2 * root.notchSidePadding)
     readonly property real batteryWidth: Math.max(compactWidth, batteryGlance.implicitWidth + 2 * root.notchSidePadding)
@@ -3645,7 +3650,8 @@ Item {
       : notchState === "expanded" && view === "setup" ? setupHeight
       : notchState === "expanded" && view === "integration" ? integrationHeight
       : notchState === "expanded" && view === "hosted" ? hostedHeight
-      : notchState === "notice" ? noticeHeight : root.notchCompactHeight
+      : notchState === "notice" ? noticeHeight
+      : notchState === "activity" ? activityHeight : root.notchCompactHeight
 
     property real shownWidth: 0
     property real shownHeight: 0
@@ -4214,24 +4220,10 @@ Item {
       Item {
         id: content
         width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth,
-                        barWindow.batteryWidth, barWindow.activityWidth)
+                        barWindow.batteryWidth)
         height: root.notchCompactHeight
         x: (island.barWidth - width) / 2
         y: 0
-
-        // The activity line. One row at the resting height, centred: the notch
-        // widens around it and nothing else moves (DESIGN-PHILOSOPHY.md, 1).
-        ActivityGlance {
-          id: activityGlance
-          bar: root
-          activity: barWindow.activityLine
-          x: (content.width - width) / 2
-          width: implicitWidth
-          height: root.notchCompactHeight
-          opacity: barWindow.notchState === "activity" ? 1 : 0
-          visible: opacity > 0
-          Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-        }
 
         Glance {
           player: root.mediaPlayer
@@ -4539,9 +4531,11 @@ Item {
         Item {
           id: panelContent
           width: Math.max(barWindow.settingsWidth, barWindow.menuWidth, barWindow.pluginsWidth, barWindow.setupWidth,
-                          barWindow.integrationWidth, barWindow.hostedWidth, barWindow.noticeWidth)
+                          barWindow.integrationWidth, barWindow.hostedWidth, barWindow.noticeWidth,
+                          barWindow.activityWidth)
           height: Math.max(root.notchCompactHeight, barWindow.settingsHeight, barWindow.menuHeight, barWindow.pluginsHeight,
-                           barWindow.setupHeight, barWindow.integrationHeight, barWindow.hostedHeight, barWindow.noticeHeight)
+                           barWindow.setupHeight, barWindow.integrationHeight, barWindow.hostedHeight, barWindow.noticeHeight,
+                           barWindow.activityHeight)
           x: (panelIsland.barWidth - width) / 2
           y: 0
 
@@ -4557,6 +4551,28 @@ Item {
             shown: barWindow.settingsOpen
             x: (panelContent.width - width) / 2
           }
+          // The activity line -- a notification, or a plugin's claim. It lives
+          // in the PANEL window, not the bar window, for the same reason the
+          // update notice does: it grows the notch down for its body, and the
+          // bar window is only as tall as the resting notch, so its own
+          // clipping cut the body off mid-line. Everything taller than the
+          // resting row is drawn here and the shape hands over to match
+          // (`tallShape`).
+          ActivityGlance {
+            id: activityGlance
+            bar: root
+            activity: barWindow.activityLine
+            // What the notch can give it: its own cap, less the side padding.
+            maxWidth: Math.min(560, barWindow.maxBarWidth) - 2 * root.notchSidePadding
+            x: (panelContent.width - width) / 2
+            y: 0
+            width: implicitWidth
+            height: implicitHeight
+            opacity: barWindow.notchState === "activity" ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+          }
+
           // The update notice, revealed as the notch pops down around it.
           Loader {
             id: noticeHost

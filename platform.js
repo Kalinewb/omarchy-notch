@@ -79,7 +79,12 @@ function gate(candidate) {
 
 var PRIORITIES = ["transient", "persistent", "persistent-low"]
 var TITLE_MAX = 60
-var DETAIL_MAX = 80
+// The body gets two wrapped rows in the notch now, so 80 characters is no
+// longer a bound on what can be shown -- it was a bound on what could be read,
+// and `clip` cuts mid-word with nothing to say it did. This is a safety bound
+// (a claim cannot be a novel); the display elides, visibly, at whatever it can
+// actually fit.
+var DETAIL_MAX = 240
 var GLYPH_MAX = 4
 var TTL_MIN = 500
 var TTL_MAX = 15000

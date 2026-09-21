@@ -101,8 +101,21 @@ wait_for '.claimed' 1
 g=$(n geometry)
 check "4. the file claims an activity, shown" "shown" "$(state_of "$stamp-1.json")"
 check "5. the notch is showing it" "activity" "$(jq -r .state <<<"$g")"
-check "6. …and grew sideways only: one resting row tall, wider than at rest" "true true" \
-  "$(jq -r --argjson h "$(jq -r '.bar.height' <<<"$g")" '.bar.height == 32' <<<"$g") $(jq -r '.bar.width > 180' <<<"$g")"
+# It grows sideways for the title and DOWN for the body -- one elided row was a
+# notification you could watch arrive and could not read. Sampled once it has
+# settled, because the growth is the notch's usual spring and reading mid-flight
+# measures the animation instead of the result.
+for _ in $(seq 1 60); do
+  g=$(n geometry)
+  [[ $(jq -r '.bar.height > 32 and .bar.width > 180' <<<"$g") == true ]] && break
+  sleep 0.1
+done
+check "6. …and grew sideways for the title and down for the body" "true true" \
+  "$(jq -r '.bar.height > 32' <<<"$g") $(jq -r '.bar.width > 180' <<<"$g")"
+check "6a. …still one surface on the screen edge: square top corners, top edge at zero" "0 0 0" \
+  "$(jq -r '.bar.y' <<<"$g") $(jq -r '.radii.topLeft' <<<"$g") $(jq -r '.radii.topRight' <<<"$g")"
+check "6b. …and it is a notch, not a panel: no taller than a third of the screen" "true" \
+  "$(jq -r '.bar.height < 300' <<<"$g")"
 check "7. the summary is the title and the body the detail" "Time to recharge! Battery is down to 10%" \
   "$(n activities | jq -r '.visible[0] | "\(.title) \(.detail)"')"
 check "8. it is the notch's own owner, at transient priority" "notch.notifications transient" \
@@ -147,7 +160,10 @@ expire "$stamp-3"; wait_for '.claimed' 0
 # stamp decides, not the mtime: otherwise every shell restart replays old toasts.
 old=$(( $(now_ms) - 600000 ))
 write "$old" 4 "From before this notch started"
-sleep 0.8
+# Wait for the watcher to have seen it and decided, rather than for a guessed
+# second: an entry that has not been looked at yet reads as no entry at all,
+# which is indistinguishable here from one that was read and ignored.
+for _ in $(seq 1 40); do [[ -n $(state_of "$old-4.json") ]] && break; sleep 0.1; done
 check "16. a file stamped before the notch started is ignored, never read" "ignored-old 0" \
   "$(state_of "$old-4.json") $(notifs | jq -r .claimed)"
 rm -f "$dir/$old-4.json"

@@ -273,7 +273,7 @@ An activity is a short or ongoing line in the **resting** notch.
 ```qml
 surfaceHost.claim({
   title: "Switching to test…",     // required, cut at 60 characters
-  detail: "profile",               // optional, cut at 80
+  detail: "profile",               // optional, cut at 240
   key: "acme.demo.switch",         // your id, or your id + "." + anything
   priority: "persistent",          // transient | persistent | persistent-low
   ttlMs: 30000,

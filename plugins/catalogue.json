@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "self": { "id": "graveklar.notch", "name": "Notch" },
+  "self": { "id": "kalinewb.notch", "name": "Notch" },
   "deny": ["graveklar.liquid-notifications", "graveklar.face-lock"],
   "plugins": [
     { "id": "graveklar.face", "name": "Face ID",

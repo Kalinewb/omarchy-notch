@@ -176,7 +176,7 @@ Item {
       retryTimer.restart()
     } else {
       if (!entries[name].warned) {
-        console.warn("graveklar.notch: skipped unreadable notification " + name + " after " + attempts + " reads")
+        console.warn("kalinewb.notch: skipped unreadable notification " + name + " after " + attempts + " reads")
         setEntry(name, { warned: true })
       }
       setEntry(name, { state: "skipped" })

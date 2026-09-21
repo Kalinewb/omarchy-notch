@@ -249,7 +249,7 @@ opted() { notch hosting | jq -c '.opted'; }
 
 # Setup reads a sandbox, never this machine's real config.
 mkdir -p "$sb/setup-home/.config/omarchy" "$sb/setup-state" "$sb/setup-run"
-echo '{"bar":{"id":"graveklar.notch","layout":{"left":[],"center":[],"right":[]}}}' >"$sb/setup-home/.config/omarchy/shell.json"
+echo '{"bar":{"id":"kalinewb.notch","layout":{"left":[],"center":[],"right":[]}}}' >"$sb/setup-home/.config/omarchy/shell.json"
 
 OMARCHY_SHELL_PATH="$SHELL_PATH/shell" HOSTING_WIDGET="$WIDGET" \
   NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 \

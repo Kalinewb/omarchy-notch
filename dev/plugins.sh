@@ -71,7 +71,7 @@ trap cleanup EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid \
        GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 PD="$sb/home/.config/omarchy/plugins"
-SCRATCH="$sb/run/graveklar.notch"
+SCRATCH="$sb/run/kalinewb.notch"
 mkdir -p "$PD" "$sb/gh" "$sb/work" "$sb/stubs" "$sb/bin" "$sb/xdgstubs"
 mkdir -p -m 700 "$sb/run"
 : >"$sb/calls.log"; : >"$sb/shell.log"; : >"$sb/terminal.log"; : >"$sb/enabled"
@@ -221,7 +221,7 @@ check "it has exactly the two entries" "graveklar.face kalinewb.profiles" "$(jq 
 check "both URLs are the pinned GitHub repos" \
   "https://github.com/Kalinewb/omarchy-face.git https://github.com/Kalinewb/omarchy-profiles.git" "$(jq -r '[.plugins[].url] | join(" ")' "$shipped")"
 check "deny names liquid-notifications and face-lock; no entry is denied or the notch itself" "true true" \
-  "$(jq -r '.deny as $d | "\(($d | index("graveklar.liquid-notifications") != null) and ($d | index("graveklar.face-lock") != null)) \(all(.plugins[]; .id as $i | $i != "graveklar.notch" and ($d | index($i)) == null))"' "$shipped")"
+  "$(jq -r '.deny as $d | "\(($d | index("graveklar.liquid-notifications") != null) and ($d | index("graveklar.face-lock") != null)) \(all(.plugins[]; .id as $i | $i != "kalinewb.notch" and ($d | index($i)) == null))"' "$shipped")"
 check "no entry's kinds include bar" "true" "$(jq -r 'all(.plugins[]; .kinds | index("bar") == null)' "$shipped")"
 bad() { # bad <jq filter>: a broken copy of the test catalogue, then `state` against it
   jq "$1" "$sb/catalogue.json" >"$sb/bad.json"
@@ -659,7 +659,7 @@ check "the page over the menu closes the menu" "false true plugins" "$(ipc geome
 # The notch's own row used to carry a button that sent you to Settings ->
 # Updates to press a different button for the same thing. The row does it here
 # now: installing and updating is one place, choosing is the other.
-ipc pluginsPress checkSelf:graveklar.notch >/dev/null; sleep 0.6
+ipc pluginsPress checkSelf:kalinewb.notch >/dev/null; sleep 0.6
 check "the notch's own row checks for its update in place, without leaving the page" "true false" \
   "$(ipc geometry | jq -r '"\(.plugins.open) \(.settingsOpen)"')"
 ipc plugins open:kalinewb.profiles >/dev/null; sleep 0.9

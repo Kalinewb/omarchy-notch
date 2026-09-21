@@ -4,7 +4,7 @@ import QtQuick
 // How a menu companion finds the notch, inside one shell process.
 //
 // Omarchy gives plugins no way to reach each other, so the companion plugin
-// (graveklar.notch-menu, which Omarchy routes every omarchy.menu call to)
+// (kalinewb.notch-menu, which Omarchy routes every omarchy.menu call to)
 // loads bridge/Connector.qml from the notch's folder by URL. Both files
 // resolve this same qmldir, so both see this one object.
 //

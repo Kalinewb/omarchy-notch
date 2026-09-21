@@ -8,7 +8,7 @@ import "bridge"
 //
 // Omarchy sends every menu call -- SUPER + SPACE, `omarchy menu`, the bar's
 // menu button, every select/input picker -- to whichever enabled plugin says
-// `clonedFrom: omarchy.menu`. That plugin is companion/graveklar.notch-menu,
+// `clonedFrom: omarchy.menu`. That plugin is companion/kalinewb.notch-menu,
 // installed once into ~/.config/omarchy/plugins. Its go-between asks the notch
 // to take the request; when the notch declines (the setting is off, the bar is
 // hidden, no notch is running) it opens Omarchy's own menu instead.
@@ -55,7 +55,7 @@ Item {
 
   readonly property string script: String(Qt.resolvedUrl("bin/notch-companion")).replace(/^file:\/\//, "")
   readonly property string statusPath: (Quickshell.env("NOTCH_COMPANION_STATE_DIR")
-    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/graveklar.notch")) + "/companion.json"
+    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/kalinewb.notch")) + "/companion.json"
 
   // The last `notch-companion status` line: what is installed, and whether it
   // matches the copy in this notch.
@@ -145,7 +145,7 @@ Item {
     var run = [script, verb, statusPath]
     var argv
     if ((Quickshell.env("NOTCH_UPDATE_DETACH") || "systemd-run") === "systemd-run") {
-      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "graveklar-notch-companion-" + Date.now()]
+      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "kalinewb-notch-companion-" + Date.now()]
       var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
                     "XDG_STATE_HOME", "NOTCH_COMPANION_DIR", "NOTCH_COMPANION_SOURCE", "NOTCH_COMPANION_LIST",
                     "NOTCH_COMPANION_ENABLE", "NOTCH_COMPANION_REMOVE", "NOTCH_COMPANION_VALIDATE",

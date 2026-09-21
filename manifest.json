@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "graveklar.notch",
+  "id": "kalinewb.notch",
   "name": "Notch",
   "version": "0.1.0",
-  "author": "graveklar",
+  "author": "kalinewb",
   "license": "MIT",
   "description": "Replaces the bar with a black notch that hangs from the top of the screen and opens to show your widgets, the time and what is playing.",
   "kinds": [

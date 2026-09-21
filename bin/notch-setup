@@ -18,7 +18,7 @@
 #
 # Nothing here is privileged: no sudo, no pkexec, and no plugin's setup verbs.
 # Before a fix changes a file, every file it touches is copied into
-# ~/.local/state/graveklar.notch/setup/snapshots/, and `restore` puts them back
+# ~/.local/state/kalinewb.notch/setup/snapshots/, and `restore` puts them back
 # byte for byte. Success is decided by re-running detection and hashing files,
 # never from a command's exit status.
 #
@@ -35,8 +35,8 @@
 set -uo pipefail
 
 SCHEMA=1
-ID="graveklar.notch"
-COMPANION="graveklar.notch-menu"
+ID="kalinewb.notch"
+COMPANION="kalinewb.notch-menu"
 
 # --- where things are ---------------------------------------------------------------
 
@@ -343,7 +343,7 @@ bypass_binds() {
     (($family | map(norm)) | unique) as $keys
     | [ .[] | select(.bind) | .bind
         | select((.combo | norm) as $c | $keys | index($c))
-        | select(.command | test("notch[- ]menu|notch menu|graveklar\\.notch"; "i"))
+        | select(.command | test("notch[- ]menu|notch menu|(graveklar|kalinewb)\\.notch"; "i"))
         | { arg: .combo, command: .command, source: .source, line: .line, seq: .seq,
             late: (.seq > $marker),
             summary: ("\(.combo) runs `\(.command)`") } ]' <<<"$scan"

@@ -67,7 +67,7 @@ scan() {
     # one the host would refuse too.
     jq -e '.schemaVersion == 1' "$manifest" >/dev/null 2>&1 || add schema
     if [[ -z $id || ! $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ || $id == omarchy.* ]]; then add bad-id; fi
-    [[ $id == graveklar.notch ]] && add self
+    [[ $id == kalinewb.notch ]] && add self
     [[ $contract =~ ^[0-9]+$ && $contract -gt 0 ]] || add bad-contract
 
     if [[ -n $entry ]]; then

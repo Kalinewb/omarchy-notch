@@ -42,7 +42,7 @@ QtObject {
   // there is nothing to ask, and this skips the file and the process entirely.
   property var shell: null
   property string statePath: (Quickshell.env("NOTCH_PLATFORM_STATE_DIR")
-    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/graveklar.notch")) + "/platform.json"
+    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/kalinewb.notch")) + "/platform.json"
   property var shellCommand: ["omarchy-shell"]
   property int ackTimeoutMs: 250
   // The contract version your integration was written for.
@@ -50,7 +50,7 @@ QtObject {
 
   readonly property bool barIsNotch: {
     if (!shell || !shell.barConfig) return true   // can't tell: ask anyway
-    return String(shell.barConfig.id || "") === "graveklar.notch"
+    return String(shell.barConfig.id || "") === "kalinewb.notch"
   }
 
   property var state: ({})

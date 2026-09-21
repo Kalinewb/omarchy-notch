@@ -4,7 +4,7 @@
 #
 #   ./dev/menu-replace.sh
 #
-# The companion plugin (companion/graveklar.notch-menu) is what Omarchy routes
+# The companion plugin (companion/kalinewb.notch-menu) is what Omarchy routes
 # every menu call to. Its go-between hands each request to the notch when the
 # "Replace the Omarchy menu" setting is on, and to Omarchy's own menu
 # otherwise. Here the notch and the companion run in one throwaway Quickshell
@@ -44,12 +44,12 @@ ln -s "$SHELL_PATH/shell/Commons" "$root/Commons"
 ln -s "$SHELL_PATH/shell/Ui" "$root/Ui"
 ln -s "$SHELL_PATH/shell/services" "$root/services"
 # Laid out like the plugins folder: the go-between resolves the notch's bridge
-# through "../graveklar.notch/bridge/Connector.qml", exactly as it does live.
-ln -s "$REPO" "$root/graveklar.notch"
-ln -s "$REPO/companion/graveklar.notch-menu" "$root/graveklar.notch-menu"
+# through "../kalinewb.notch/bridge/Connector.qml", exactly as it does live.
+ln -s "$REPO" "$root/kalinewb.notch"
+ln -s "$REPO/companion/kalinewb.notch-menu" "$root/kalinewb.notch-menu"
 cp "$REPO/dev/harness/menu-replace-shell.qml" "$root/shell.qml"
 cp "$REPO/dev/harness/FakeStockMenu.qml" "$root/FakeStockMenu.qml"
-MANIFEST=$(jq -c . "$REPO/companion/graveklar.notch-menu/manifest.json")
+MANIFEST=$(jq -c . "$REPO/companion/kalinewb.notch-menu/manifest.json")
 
 ipc() { quickshell ipc -p "$root" call menu-replace "$@" 2>/dev/null; }
 notch_ipc() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
@@ -161,13 +161,13 @@ ln -s "$SHELL_PATH/shell/Ui" "$alias_root/Ui"
 ln -s "$REPO" "$alias_root/notch"
 cp "$REPO/dev/harness/contract-shell.qml" "$alias_root/shell.qml"
 alias_ipc() { quickshell ipc -p "$alias_root" call notch "$@" 2>/dev/null; }
-LAYOUT='{"left":[{"id":"graveklar.notch-menu"}],"center":[],"right":[]}'
+LAYOUT='{"left":[{"id":"kalinewb.notch-menu"}],"center":[],"right":[]}'
 NOTCH_HARNESS=1 NOTCH_HARNESS_BAR="{\"layout\":$LAYOUT,\"notch\":{\"hoverPlugins\":[\"omarchy.menu\"],\"batteryPeek\":false}}" \
   quickshell -p "$alias_root" -n >>"$root/qs.log" 2>&1 &
 alias_pid=$!
 for _ in $(seq 1 50); do sleep 0.1; [[ $(alias_ipc geometry) == \{* ]] && break; done
 sleep 0.8
-check "with the companion's button in the layout, a setting naming omarchy.menu follows it" '["graveklar.notch-menu"]' \
+check "with the companion's button in the layout, a setting naming omarchy.menu follows it" '["kalinewb.notch-menu"]' \
   "$(alias_ipc geometry | jq -c .hoverPlugins)"
 kill "$alias_pid" 2>/dev/null; wait "$alias_pid" 2>/dev/null; rm -rf "$alias_root"
 
@@ -182,12 +182,12 @@ check "status before anything is installed" "false null " "$(comp status | jq -r
 comp install "$sb/state/companion.json" >/dev/null 2>&1
 check "install copies the companion in, with the notch's version" "done true true 1.0.0" \
   "$(jq -r .phase "$sb/state/companion.json") $(comp status | jq -r '"\(.installed) \(.inSync) \(.version)"')"
-check "…and validates as an Omarchy plugin" "0" "$(omarchy plugin validate "$sb/plugins/graveklar.notch-menu" >/dev/null 2>&1; echo $?)"
-before=$(stat -c %Y "$sb/plugins/graveklar.notch-menu/manifest.json")
+check "…and validates as an Omarchy plugin" "0" "$(omarchy plugin validate "$sb/plugins/kalinewb.notch-menu" >/dev/null 2>&1; echo $?)"
+before=$(stat -c %Y "$sb/plugins/kalinewb.notch-menu/manifest.json")
 comp sync "$sb/state/companion.json" >/dev/null 2>&1
 check "sync with identical files writes nothing (no plugin reload)" "done $before" \
-  "$(jq -r .phase "$sb/state/companion.json") $(stat -c %Y "$sb/plugins/graveklar.notch-menu/manifest.json")"
-echo "// changed" >>"$sb/plugins/graveklar.notch-menu/BarWidget.qml"
+  "$(jq -r .phase "$sb/state/companion.json") $(stat -c %Y "$sb/plugins/kalinewb.notch-menu/manifest.json")"
+echo "// changed" >>"$sb/plugins/kalinewb.notch-menu/BarWidget.qml"
 check "…and a changed installed copy is out of sync" "false" "$(comp status | jq -r .inSync)"
 comp sync "$sb/state/companion.json" >/dev/null 2>&1
 check "sync copies it again, and keeps the old one as a backup" "done true 1" \
@@ -201,7 +201,7 @@ rm -rf "$sb/plugins/someone.else"; LIST='echo []'
 check "a locked session refuses too" "failed" \
   "$(NOTCH_COMPANION_SESSION_LOCKED=true comp install "$sb/state/companion.json" >/dev/null 2>&1; jq -r .phase "$sb/state/companion.json")"
 comp remove "$sb/state/companion.json" >/dev/null 2>&1
-check "remove hands it to omarchy plugin remove" "done" "$(NOTCH_COMPANION_REMOVE="rm -rf $sb/plugins/graveklar.notch-menu --" comp remove "$sb/state/companion.json" >/dev/null 2>&1; jq -r .phase "$sb/state/companion.json")"
+check "remove hands it to omarchy plugin remove" "done" "$(NOTCH_COMPANION_REMOVE="rm -rf $sb/plugins/kalinewb.notch-menu --" comp remove "$sb/state/companion.json" >/dev/null 2>&1; jq -r .phase "$sb/state/companion.json")"
 check "…and it is gone" "false" "$(comp status | jq -r .installed)"
 
 if grep -qE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log"; then

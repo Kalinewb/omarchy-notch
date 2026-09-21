@@ -14,13 +14,13 @@
 #   ./install.sh --no-enable   the same, but leave the active bar alone
 #   ./install.sh --swap-to-git replace an old copied (rsync) install with a git checkout
 #                              from GitHub; the copy is moved to
-#                              ~/.local/state/graveklar.notch/backups/ first
+#                              ~/.local/state/kalinewb.notch/backups/ first
 #
 # To go back to another bar:  omarchy plugin enable <bar id>   (e.g. omarchy.bar)
 
 set -euo pipefail
 
-ID="graveklar.notch"
+ID="kalinewb.notch"
 URL="https://github.com/Kalinewb/omarchy-notch.git"
 PLUGINS="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
 DEST="$PLUGINS/$ID"
@@ -141,7 +141,7 @@ fi
 # An installed menu companion is a copy of the notch's companion/ folder, so it
 # follows the notch. Run the installed copy's own script, which syncs from the
 # checkout that was just fast-forwarded. Nothing happens when it isn't installed.
-if [[ -d "$PLUGINS/graveklar.notch-menu" && -x "$DEST/bin/notch-companion" ]]; then
+if [[ -d "$PLUGINS/kalinewb.notch-menu" && -x "$DEST/bin/notch-companion" ]]; then
   "$DEST/bin/notch-companion" sync >/dev/null 2>&1 && say "synced the menu companion"
 fi
 

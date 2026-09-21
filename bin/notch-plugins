@@ -41,7 +41,7 @@
 #   NOTCH_PLUGINS_SHELL           instead of `omarchy-shell` (handoffs, panel state, rescans)
 #   NOTCH_PLUGINS_TERMINAL        instead of the floating-terminal helper
 #   NOTCH_PLUGINS_SESSION_LOCKED  instead of `omarchy-hyprland-session-locked`
-#   NOTCH_PLUGINS_SCRATCH         scratch folder (default $XDG_RUNTIME_DIR/graveklar.notch)
+#   NOTCH_PLUGINS_SCRATCH         scratch folder (default $XDG_RUNTIME_DIR/kalinewb.notch)
 # and one timing knob:
 #   NOTCH_PLUGINS_DISCOVER_MS     how long an install waits for the shell to see the plugin (10000)
 
@@ -55,7 +55,7 @@ PLUGINS_DIR="${NOTCH_PLUGINS_DIR:-$HOME/.config/omarchy/plugins}"
 SANDBOXED=0
 [[ -n ${NOTCH_PLUGINS_DIR:-} && -n ${NOTCH_PLUGINS_OMARCHY:-} ]] && SANDBOXED=1
 CATALOGUE_FILE="$REPO/plugins/catalogue.json"
-SCRATCH_ROOT="${NOTCH_PLUGINS_SCRATCH:-${XDG_RUNTIME_DIR:-/tmp}/graveklar.notch}"
+SCRATCH_ROOT="${NOTCH_PLUGINS_SCRATCH:-${XDG_RUNTIME_DIR:-/tmp}/kalinewb.notch}"
 read -ra OMARCHY <<<"${NOTCH_PLUGINS_OMARCHY:-omarchy}"
 read -ra SHELLCMD <<<"${NOTCH_PLUGINS_SHELL:-omarchy-shell}"
 read -ra TERMINAL <<<"${NOTCH_PLUGINS_TERMINAL:-omarchy-launch-floating-terminal-with-presentation}"

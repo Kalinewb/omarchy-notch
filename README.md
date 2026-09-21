@@ -11,10 +11,10 @@ It replaces `omarchy.bar` as a full `bar` plugin, and hosts the same widgets and
 
 ```sh
 omarchy plugin add https://github.com/Kalinewb/omarchy-notch --yes
-omarchy plugin enable graveklar.notch
+omarchy plugin enable kalinewb.notch
 ```
 
-That installs a git checkout, so `omarchy plugin update graveklar.notch` updates it.
+That installs a git checkout, so `omarchy plugin update kalinewb.notch` updates it.
 
 ### Updates
 
@@ -31,8 +31,8 @@ offline) and has Check now. `updateCheck: false` turns checking off.
 
 The update runs as `bin/notch-update run` in its own `systemd-run --user` unit, because the
 update reloads every plugin and destroys the notch that started it. It runs
-`omarchy plugin update graveklar.notch --yes`, decides success from where the checkout ends up
-(not from the exit code), and writes its progress to `$XDG_RUNTIME_DIR/graveklar.notch/update.json`.
+`omarchy plugin update kalinewb.notch --yes`, decides success from where the checkout ends up
+(not from the exit code), and writes its progress to `$XDG_RUNTIME_DIR/kalinewb.notch/update.json`.
 Over IPC: `notch update check|now|later|dismiss|status`. `dev/update.sh` tests the lot against
 a sandbox git remote.
 
@@ -67,7 +67,7 @@ updating a plugin reloads every plugin and destroys the notch, usually more than
 move, upstream's own rescan, the enable), and every rebuilt notch reads the same status. It runs `omarchy plugin add <url>
 --yes` (then `omarchy plugin enable`) or `omarchy plugin update <id> --yes`, decides the outcome from
 the disk rather than the exit code, and writes its progress to
-`$XDG_RUNTIME_DIR/graveklar.notch/plugins-job.json`. The rebuilt notch re-reads the disk and pops
+`$XDG_RUNTIME_DIR/kalinewb.notch/plugins-job.json`. The rebuilt notch re-reads the disk and pops
 down a notice as soon as a local probe (no network) has confirmed the result: "Face ID installed"
 (with Open setup, Enable or Restart shell when there is something to do, otherwise it clears after
 5 seconds), or why it failed until you dismiss it. A stopped job (TERM or INT) stops upstream's
@@ -91,7 +91,7 @@ checkout to your committed HEAD and restarts the shell, without changing where t
 pulls from; push when the change is ready. It refuses while there are uncommitted changes, which
 would otherwise silently not be installed. `./install.sh --no-enable` leaves the active bar alone.
 `./install.sh --swap-to-git` turns an old copied install into a checkout once, and moves the copy
-to `~/.local/state/graveklar.notch/backups/` first.
+to `~/.local/state/kalinewb.notch/backups/` first.
 
 Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clone).
 
@@ -111,7 +111,7 @@ notch can update itself.
 
 **Nothing is done behind your back.** Fix unfolds a confirmation that names the files it will
 change. Before it changes them they are copied into
-`~/.local/state/graveklar.notch/setup/snapshots/`, and **Snapshots** at the bottom of the page
+`~/.local/state/kalinewb.notch/setup/snapshots/`, and **Snapshots** at the bottom of the page
 puts any of them back byte for byte. A restore of a file you have edited since is refused and says
 so; you can then remove just the notch's marked block and keep your own edits, or restore anyway
 (which snapshots the current state first). Whether a fix worked is decided by running the check
@@ -122,10 +122,10 @@ Some of what it finds means there is no notch to press a button in (the bar is h
 isn't the active bar, it failed to load), so all of it works from a terminal too:
 
 ```sh
-~/.config/omarchy/plugins/graveklar.notch/bin/notch-setup detect      # the same list, as a table
-~/.config/omarchy/plugins/graveklar.notch/bin/notch-setup fix <point>
-~/.config/omarchy/plugins/graveklar.notch/bin/notch-setup snapshots
-~/.config/omarchy/plugins/graveklar.notch/bin/notch-setup restore <snapshot>
+~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup detect      # the same list, as a table
+~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup fix <point>
+~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup snapshots
+~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup restore <snapshot>
 ```
 
 `detect` only reads. It works out your effective keybinds by loading your Hyprland config with a
@@ -282,14 +282,14 @@ edge stays on the screen edge. It grows and shrinks with the spring as you move 
   the screen-recording indicator and every picker. Off, they open Omarchy's own window, exactly
   as before. The switch takes effect on the next open, with no restart.
   - It needs a one-time **Set up**, which installs a small companion plugin
-    (`graveklar.notch-menu`, the folder in `companion/`). Omarchy routes menu calls to whichever
+    (`kalinewb.notch-menu`, the folder in `companion/`). Omarchy routes menu calls to whichever
     plugin says `clonedFrom: omarchy.menu`; the companion's go-between then asks the notch first
     and falls back to Omarchy's own menu, loaded from `$OMARCHY_PATH`, so nothing is a copy.
     Enabling it swaps the menu button in your bar layout for its identical one, in place.
   - **When the notch can't show it** (the bar is hidden, the notch isn't running or isn't the
     bar), Omarchy's own menu opens instead. A picker is never left hanging: if no menu can take
     it, its caller is released.
-  - **To undo:** turn the switch off, or `omarchy plugin disable graveklar.notch-menu` from a
+  - **To undo:** turn the switch off, or `omarchy plugin disable kalinewb.notch-menu` from a
     terminal, which puts `omarchy.menu` back exactly.
 - **Menu entries come from the same files** as Omarchy's menu:
   `$OMARCHY_PATH/default/omarchy/omarchy-menu.jsonc` and your
@@ -384,7 +384,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 
 ```json
 "bar": {
-  "id": "graveklar.notch",
+  "id": "kalinewb.notch",
   "notch": {
     "compact": ["clock", "media"],
     "expanded": ["clock", "date", "media"],

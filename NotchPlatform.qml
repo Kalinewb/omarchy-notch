@@ -557,7 +557,7 @@ Item {
   // outside the plugins folder, because a write inside one reloads every plugin.
 
   readonly property string stateDir: Quickshell.env("NOTCH_PLATFORM_STATE_DIR")
-    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/graveklar.notch")
+    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/kalinewb.notch")
   readonly property bool writesBeat: enabled
     && ((!!bar && !!bar.shell && !harnessed) || Quickshell.env("NOTCH_PLATFORM_STATE_DIR") !== "")
   readonly property string generation: String(startedAt) + "-" + String(Math.floor(Math.random() * 10000))

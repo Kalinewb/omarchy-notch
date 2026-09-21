@@ -9,7 +9,7 @@ view.
 Nothing here is specific to one host. The contract is named for what it does,
 not for who implements it: a plugin that implements it works with any host that
 does, and nothing in this document requires reading a host's source. Today
-`graveklar.notch` is the only host, and it is the one this document uses for
+`kalinewb.notch` is the only host, and it is the one this document uses for
 examples — where it says "the notch", read "the host you are running under".
 
 Your plugin keeps working exactly as it does today everywhere else: under
@@ -17,7 +17,7 @@ Your plugin keeps working exactly as it does today everywhere else: under
 switching your integration off. The host tells you which of those you are in,
 and you decide what to draw.
 
-Contract version **1**. `graveklar.notch` accepts contracts 1 to 1.
+Contract version **1**. `kalinewb.notch` accepts contracts 1 to 1.
 
 ---
 
@@ -331,7 +331,7 @@ Two rules:
 ### Outside the shell: `SurfaceLink.qml`
 
 A service, a CLI or a panel that never gets a `surfaceHost` reads a small file the
-notch keeps fresh at `$XDG_RUNTIME_DIR/graveklar.notch/platform.json`:
+notch keeps fresh at `$XDG_RUNTIME_DIR/kalinewb.notch/platform.json`:
 
 ```json
 { "contract": 1, "features": ["panel", "activityViews", "heartbeat"],
@@ -504,7 +504,7 @@ rewritten except the one binding above, which is put back.
 
 The notch has a bridge (`bridge/NotchMenuBridge.qml`, a singleton both sides
 resolve through the same `qmldir`) that lets one specific companion plugin —
-`graveklar.notch-menu`, which Omarchy routes every `omarchy.menu` call to —
+`kalinewb.notch-menu`, which Omarchy routes every `omarchy.menu` call to —
 reach the notch inside one shell process. Omarchy gives plugins no way to reach
 each other, so this looks like the general answer to that, and it is not:
 

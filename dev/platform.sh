@@ -104,7 +104,7 @@ check "12. contract 0 is refused" "bad-contract" \
   "$("$SCAN" scan "$dir" | jq -r '.[0].problems[0]')"
 
 dir=$(variant selfid)
-jq '.id = "graveklar.notch"' "$dir/acme.demo/manifest.json" >"$dir/t" && mv "$dir/t" "$dir/acme.demo/manifest.json"
+jq '.id = "kalinewb.notch"' "$dir/acme.demo/manifest.json" >"$dir/t" && mv "$dir/t" "$dir/acme.demo/manifest.json"
 check "13. a plugin claiming to be the notch is refused" "self" \
   "$("$SCAN" scan "$dir" | jq -r '.[0].problems[0]')"
 

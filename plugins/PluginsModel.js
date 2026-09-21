@@ -185,7 +185,7 @@ function entryView(entry, job, now, options) {
 function selfView(self, update) {
   var s = self || {}
   var u = update || {}
-  var id = String(s.id || "graveklar.notch")
+  var id = String(s.id || "kalinewb.notch")
   var available = u.state === "available"
   var actions = []
   if (available && u.canUpdate !== false) {

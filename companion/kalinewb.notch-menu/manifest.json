@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "graveklar.notch-menu",
+  "id": "kalinewb.notch-menu",
   "name": "Omarchy menu (notch)",
   "version": "1.0.0",
-  "author": "graveklar",
+  "author": "kalinewb",
   "license": "MIT",
   "description": "Opens Omarchy's menu inside the notch while the notch's \"Replace the Omarchy menu\" setting is on; otherwise Omarchy's own menu, unchanged.",
   "kinds": ["menu", "bar-widget"],

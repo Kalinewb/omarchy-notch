@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "graveklar.notch-menu"
+  moduleName: "kalinewb.notch-menu"
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight

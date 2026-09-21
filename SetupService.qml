@@ -24,7 +24,7 @@ Item {
   readonly property bool enabled: (!!bar.shell && !bar.harnessed) || Quickshell.env("NOTCH_FORCE_SETUP") === "1"
   readonly property string script: String(Qt.resolvedUrl("bin/notch-setup")).replace(/^file:\/\//, "")
   readonly property string statusPath: Quickshell.env("NOTCH_SETUP_STATUS")
-    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/graveklar.notch/setup.json")
+    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/kalinewb.notch/setup.json")
 
   // The last `detect --json`, plus the points only the running notch can see.
   property var report: ({})
@@ -198,7 +198,7 @@ Item {
   // is there, so the job outlives the notch that started it.
   function detachedArgv(run) {
     if ((Quickshell.env("NOTCH_SETUP_DETACH") || "systemd-run") !== "systemd-run") return ["setsid", "-f"].concat(run)
-    var argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "graveklar-notch-setup-" + Date.now()]
+    var argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "kalinewb-notch-setup-" + Date.now()]
     var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY",
                   "XDG_RUNTIME_DIR", "XDG_STATE_HOME", "XDG_CONFIG_HOME",
                   "NOTCH_SETUP_SANDBOX", "NOTCH_SETUP_HOME", "NOTCH_SETUP_CONFIG_DIR", "NOTCH_SETUP_TOGGLES_DIR",

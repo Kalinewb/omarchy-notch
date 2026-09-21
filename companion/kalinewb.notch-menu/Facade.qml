@@ -68,7 +68,7 @@ Item {
   Loader {
     id: link
     asynchronous: false
-    source: Quickshell.env("NOTCH_MENU_CONNECTOR_URL") || Qt.resolvedUrl("../graveklar.notch/bridge/Connector.qml")
+    source: Quickshell.env("NOTCH_MENU_CONNECTOR_URL") || Qt.resolvedUrl("../kalinewb.notch/bridge/Connector.qml")
   }
   // Omarchy's own menu, once loaded (the notch's checks read it).
   readonly property var stockItem: stock.item
@@ -105,7 +105,7 @@ Item {
     }
     // Nothing can serve it: let a waiting picker go rather than hang it.
     root.releasePayload(payloadJson)
-    console.warn("graveklar.notch-menu: no menu to open" + (root.stockError ? " (" + root.stockError + ")" : ""))
+    console.warn("kalinewb.notch-menu: no menu to open" + (root.stockError ? " (" + root.stockError + ")" : ""))
   }
 
   function close() {

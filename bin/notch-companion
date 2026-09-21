@@ -7,7 +7,7 @@
 #                                             copy it in again when the files differ
 #   notch-companion remove <status file>      hand it to `omarchy plugin remove --yes`
 #
-# The companion is graveklar.notch-menu: a manifest that says
+# The companion is kalinewb.notch-menu: a manifest that says
 # `clonedFrom: omarchy.menu`, a go-between (Facade.qml) and Omarchy's own menu
 # button under this plugin's id. Omarchy then routes every menu call to the
 # go-between, which asks the notch first and falls back to Omarchy's own menu.
@@ -36,14 +36,14 @@
 
 set -uo pipefail
 
-ID="graveklar.notch-menu"
+ID="kalinewb.notch-menu"
 SOURCE_ID="omarchy.menu"
 REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 SOURCE="${NOTCH_COMPANION_SOURCE:-$REPO/companion/$ID}"
 # The fixed path the shell scans; never XDG_CONFIG_HOME (PluginRegistry.qml).
 PLUGINS_DIR="${NOTCH_COMPANION_DIR:-$HOME/.config/omarchy/plugins}"
 DEST="$PLUGINS_DIR/$ID"
-BACKUPS="${NOTCH_COMPANION_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/graveklar.notch}/backups"
+BACKUPS="${NOTCH_COMPANION_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/kalinewb.notch}/backups"
 SANDBOXED=0
 [[ -n ${NOTCH_COMPANION_DIR:-} ]] && SANDBOXED=1
 

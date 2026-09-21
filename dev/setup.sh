@@ -42,8 +42,8 @@ HOME_SB="$sb/home"
 CONFIG_SB="$HOME_SB/.config"
 HYPR_SB="$CONFIG_SB/hypr"
 TOGGLES_SB="$HOME_SB/.local/state/omarchy/toggles"
-STATE_SB="$HOME_SB/.local/state/graveklar.notch/setup"
-STATUS_SB="$sb/run/graveklar.notch/setup.json"
+STATE_SB="$HOME_SB/.local/state/kalinewb.notch/setup"
+STATUS_SB="$sb/run/kalinewb.notch/setup.json"
 OMARCHY_SB="$sb/omarchy"
 NOTCH_SB="$sb/notch"
 BIN="$sb/bin"
@@ -74,7 +74,7 @@ chmod 644 "$HYPR_SB/bindings.lua"
 cat >"$CONFIG_SB/omarchy/shell.json" <<'JSON'
 {
   "bar": {
-    "id": "graveklar.notch",
+    "id": "kalinewb.notch",
     "layout": { "left": [{ "id": "omarchy.menu" }], "center": [], "right": [{ "id": "omarchy.clock" }] },
     "notch": { "openKey": "SUPER + N", "menuKey": "", "replaceMenu": false,
                "hoverPlugins": [], "hiddenPlugins": [], "windowsToTop": false }
@@ -86,7 +86,7 @@ JSON
 echo '[]' >"$sb/fixtures/configerrors.json"
 echo '[]' >"$sb/fixtures/binds.json"
 cat >"$sb/fixtures/plugins.json" <<'JSON'
-[{"id": "graveklar.notch", "enabled": true, "active": true, "kinds": ["bar"]},
+[{"id": "kalinewb.notch", "enabled": true, "active": true, "kinds": ["bar"]},
  {"id": "omarchy.menu", "enabled": true, "active": true, "kinds": ["bar-widget", "menu"]},
  {"id": "omarchy.clock", "enabled": true, "active": true, "kinds": ["bar-widget"]}]
 JSON
@@ -167,7 +167,7 @@ LUA
 }
 bypass_block
 jq '.bar.notch.replaceMenu = true' "$CONFIG_SB/omarchy/shell.json" >"$sb/t" && mv "$sb/t" "$CONFIG_SB/omarchy/shell.json"
-jq '. + [{"id": "graveklar.notch-menu", "enabled": true, "active": true, "kinds": ["menu"]}]' \
+jq '. + [{"id": "kalinewb.notch-menu", "enabled": true, "active": true, "kinds": ["menu"]}]' \
   "$sb/fixtures/plugins.json" >"$sb/t" && mv "$sb/t" "$sb/fixtures/plugins.json"
 p=$(run_setup detect --json --only menu-keys-bypass | jq -c '.points[0]')
 check "3. a bypass bind is a fix, named by key and source" "fix SUPER + SPACE bindings.lua" \
@@ -189,7 +189,7 @@ check "6. fix succeeds, and the snapshot holds the file as it was" \
   "0 700 true $pre_hash $pre_mode 0" \
   "$rc $(stat -c %a "$snapdir" 2>/dev/null) $(jq -r '.files[0].existed' "$snapdir/meta.json" 2>/dev/null) $(jq -r '.files[0].sha256' "$snapdir/meta.json" 2>/dev/null) $(jq -r '.files[0].mode' "$snapdir/meta.json" 2>/dev/null) $(cmp -s "$snapdir/files/0" "$sb/bindings.pre"; echo $?)"
 check "7. the block is written once, the file still parses, and the point is clear" "1 1 0 ok" \
-  "$(grep -c -- '-- >>> graveklar.notch setup: menu-keys-bypass' "$HYPR_SB/bindings.lua") $(grep -c -- '-- <<< graveklar.notch setup' "$HYPR_SB/bindings.lua") $(F="$HYPR_SB/bindings.lua" lua -e 'assert(loadfile(os.getenv("F")))' >/dev/null 2>&1; echo $?) $(run_setup detect --json --only menu-keys-bypass | jq -r '.points[0].severity')"
+  "$(grep -c -- '-- >>> kalinewb.notch setup: menu-keys-bypass' "$HYPR_SB/bindings.lua") $(grep -c -- '-- <<< kalinewb.notch setup' "$HYPR_SB/bindings.lua") $(F="$HYPR_SB/bindings.lua" lua -e 'assert(loadfile(os.getenv("F")))' >/dev/null 2>&1; echo $?) $(run_setup detect --json --only menu-keys-bypass | jq -r '.points[0].severity')"
 check "8. the restored binds are Omarchy's own, with its description" "1 1" \
   "$(grep -c 'o.bind("SUPER + SPACE", "Omarchy menu", "omarchy-menu toggle")' "$HYPR_SB/bindings.lua") $(grep -c 'o.bind("SUPER + SHIFT + code:201", "Omarchy menu", "omarchy-menu toggle root")' "$HYPR_SB/bindings.lua")"
 check "9. errors are checked before the write, then Hyprland is reloaded and checked again" "configerrors reload configerrors" \
@@ -215,7 +215,7 @@ check "14. a file changed after the fix is a conflict, and nothing is written" "
 
 rc=0; run_setup restore "$snap" --block-only >/dev/null 2>&1 || rc=$?
 check "15. --block-only removes the notch's block and keeps the user's line" "0 0 1" \
-  "$rc $(grep -c -- '-- >>> graveklar.notch setup' "$HYPR_SB/bindings.lua") $(grep -c -- '-- a line the user added' "$HYPR_SB/bindings.lua")"
+  "$rc $(grep -c -- '-- >>> kalinewb.notch setup' "$HYPR_SB/bindings.lua") $(grep -c -- '-- a line the user added' "$HYPR_SB/bindings.lua")"
 
 # --force, over a conflict.
 sed -i '/a line the user added/d' "$HYPR_SB/bindings.lua"
@@ -293,15 +293,15 @@ jq 'del(.bar.layout.right[] | select(.id == "ghost.widget"))' "$CONFIG_SB/omarch
 
 # notch-not-bar
 jq '.bar.id = "omarchy.bar"' "$CONFIG_SB/omarchy/shell.json" >"$sb/t" && mv "$sb/t" "$CONFIG_SB/omarchy/shell.json"
-mkdir -p "$CONFIG_SB/omarchy/plugins/graveklar.notch"
+mkdir -p "$CONFIG_SB/omarchy/plugins/kalinewb.notch"
 p=$(run_setup detect --json --only notch-not-bar | jq -r '.points[0].severity')
 reset_calls
 run_setup fix notch-not-bar >/dev/null 2>&1
 snap_bar_id=$(run_setup snapshots --json | jq -r '[.[] | select(.point == "notch-not-bar")][0].name')
 check "21. another active bar is found; the fix enables the notch and undo names the old bar" \
-  "fix omarchy plugin enable graveklar.notch omarchy.bar" \
+  "fix omarchy plugin enable kalinewb.notch omarchy.bar" \
   "$p $(calls | grep '^omarchy plugin enable' | head -1) $(jq -r '.undo[0][3]' "$STATE_SB/snapshots/$snap_bar_id/meta.json" 2>/dev/null)"
-jq '.bar.id = "graveklar.notch"' "$CONFIG_SB/omarchy/shell.json" >"$sb/t" && mv "$sb/t" "$CONFIG_SB/omarchy/shell.json"
+jq '.bar.id = "kalinewb.notch"' "$CONFIG_SB/omarchy/shell.json" >"$sb/t" && mv "$sb/t" "$CONFIG_SB/omarchy/shell.json"
 
 # stray-instances
 printf '  1234  %s/harness/shell.qml\n  5678  %s/shell/shell.qml\n' "/tmp/fake" "$OMARCHY_SB" >"$sb/fixtures/qs-list.txt"
@@ -404,13 +404,13 @@ env HOME="$fake" XDG_CONFIG_HOME="$fake/.config" XDG_STATE_HOME="$fake/.local/st
 check "37. stubbed commands with real paths: refused, nothing run, nothing touched" "2 0 $fake_hash $fake_count" \
   "$rc $(calls | wc -l) $(tree_hash "$fake") $(find "$fake" -type f | wc -l)"
 
-mkdir -p "$fake/run/graveklar.notch" "$fake/.local/state/graveklar.notch/setup/snapshots/keepme"
-echo '{"seen": false}' >"$fake/run/graveklar.notch/setup.json"
-rc_ack=0; env HOME="$fake" XDG_RUNTIME_DIR="$fake/run" NOTCH_HARNESS=1 "$SCRIPT" ack "$fake/run/graveklar.notch/setup.json" >/dev/null 2>&1 || rc_ack=$?
+mkdir -p "$fake/run/kalinewb.notch" "$fake/.local/state/kalinewb.notch/setup/snapshots/keepme"
+echo '{"seen": false}' >"$fake/run/kalinewb.notch/setup.json"
+rc_ack=0; env HOME="$fake" XDG_RUNTIME_DIR="$fake/run" NOTCH_HARNESS=1 "$SCRIPT" ack "$fake/run/kalinewb.notch/setup.json" >/dev/null 2>&1 || rc_ack=$?
 rc_forget=0; env HOME="$fake" XDG_STATE_HOME="$fake/.local/state" NOTCH_HARNESS=1 "$SCRIPT" forget keepme >/dev/null 2>&1 || rc_forget=$?
 rc_prune=0; env HOME="$fake" XDG_STATE_HOME="$fake/.local/state" NOTCH_HARNESS=1 "$SCRIPT" prune >/dev/null 2>&1 || rc_prune=$?
 check "38. ack, forget and prune refuse the same way" "2 2 2 false true" \
-  "$rc_ack $rc_forget $rc_prune $(jq -r .seen "$fake/run/graveklar.notch/setup.json") $([[ -d $fake/.local/state/graveklar.notch/setup/snapshots/keepme ]] && echo true || echo false)"
+  "$rc_ack $rc_forget $rc_prune $(jq -r .seen "$fake/run/kalinewb.notch/setup.json") $([[ -d $fake/.local/state/kalinewb.notch/setup/snapshots/keepme ]] && echo true || echo false)"
 
 # --reopen: the flag only survives when the job really did destroy the notch.
 reset_calls
@@ -423,23 +423,23 @@ rc=0; SB_LOCKED=0 run_setup fix layout-empty-widget --reopen >/dev/null 2>&1 || 
 check "36c. a locked session refuses, and nothing will reopen" "2 false" "$rc $(jq -r .reopen "$STATUS_SB")"
 
 # The menu points, against the companion's state.
-jq 'map(select(.id != "graveklar.notch-menu"))' "$sb/fixtures/plugins.json" >"$sb/t" && mv "$sb/t" "$sb/fixtures/plugins.json"
+jq 'map(select(.id != "kalinewb.notch-menu"))' "$sb/fixtures/plugins.json" >"$sb/t" && mv "$sb/t" "$sb/fixtures/plugins.json"
 p=$(run_setup detect --json --only menu-replace-companion | jq -r '.points[0].severity')
 q=$(run_setup detect --json --only menu-keys-bypass | jq -c '.points[0]')
 rc=0; run_setup fix menu-keys-bypass >/dev/null 2>&1 || rc=$?
 check "33. with the companion missing, the keys are information, not a fix" "action info null 4" \
   "$p $(jq -r .severity <<<"$q") $(jq -r '.fix' <<<"$q") $rc"
 
-jq '. + [{"id": "graveklar.notch-menu", "enabled": false, "active": false, "kinds": ["menu"]}]' \
+jq '. + [{"id": "kalinewb.notch-menu", "enabled": false, "active": false, "kinds": ["menu"]}]' \
   "$sb/fixtures/plugins.json" >"$sb/t" && mv "$sb/t" "$sb/fixtures/plugins.json"
 reset_calls
 p=$(run_setup detect --json --only menu-replace-companion | jq -r '.points[0].severity')
 run_setup fix menu-replace-companion >/dev/null 2>&1
-check "58. an installed but disabled companion is enabled by the fix" "fix omarchy plugin enable graveklar.notch-menu" \
+check "58. an installed but disabled companion is enabled by the fix" "fix omarchy plugin enable kalinewb.notch-menu" \
   "$p $(calls | grep '^omarchy plugin enable' | head -1)"
 
 # A bypass bind that loads after bindings.lua can't be fixed from bindings.lua.
-jq 'map(select(.id != "graveklar.notch-menu")) + [{"id": "graveklar.notch-menu", "enabled": true, "active": true, "kinds": ["menu"]}]' \
+jq 'map(select(.id != "kalinewb.notch-menu")) + [{"id": "kalinewb.notch-menu", "enabled": true, "active": true, "kinds": ["menu"]}]' \
   "$sb/fixtures/plugins.json" >"$sb/t" && mv "$sb/t" "$sb/fixtures/plugins.json"
 cat "$sb/bindings.pre" >"$HYPR_SB/bindings.lua"
 cat >"$TOGGLES_SB/hypr/zz-menu.lua" <<'LUA'

@@ -809,8 +809,8 @@ Item {
   // when only the other is registered. Nothing is written to the config.
   function menuAliasId(id) {
     var widgets = (barWidgetRegistry && barWidgetRegistry.widgets) || {}
-    if (id === "omarchy.menu" && !widgets["omarchy.menu"] && widgets["graveklar.notch-menu"]) return "graveklar.notch-menu"
-    if (id === "graveklar.notch-menu" && !widgets["graveklar.notch-menu"] && widgets["omarchy.menu"]) return "omarchy.menu"
+    if (id === "omarchy.menu" && !widgets["omarchy.menu"] && widgets["kalinewb.notch-menu"]) return "kalinewb.notch-menu"
+    if (id === "kalinewb.notch-menu" && !widgets["kalinewb.notch-menu"] && widgets["omarchy.menu"]) return "omarchy.menu"
     return id
   }
 
@@ -1714,7 +1714,7 @@ Item {
   // never loop.
   PersistentProperties {
     id: healState
-    reloadableId: "graveklar-notch-widget-heal"
+    reloadableId: "kalinewb-notch-widget-heal"
     property real lastRescan: 0
   }
   Timer {
@@ -1795,7 +1795,7 @@ Item {
     if (stale.length === 0) return
     if (Date.now() - healState.lastRescan < 30000) return
     healState.lastRescan = Date.now()
-    console.warn("graveklar.notch: widgets loaded empty (" + stale.join(", ") + "); rescanning plugins to refresh the widget catalogue")
+    console.warn("kalinewb.notch: widgets loaded empty (" + stale.join(", ") + "); rescanning plugins to refresh the widget catalogue")
     healProcess.running = true
   }
 
@@ -1850,8 +1850,8 @@ Item {
   readonly property bool updatesEnabled: (!!root.shell && !root.harnessed) || Quickshell.env("NOTCH_FORCE_UPDATES") === "1"
   readonly property string updateScript: String(Qt.resolvedUrl("bin/notch-update")).replace(/^file:\/\//, "")
   readonly property string updateStateDir: Quickshell.env("NOTCH_UPDATE_STATE_DIR") || ""
-  readonly property string updateStatusPath: (updateStateDir || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/graveklar.notch")) + "/update.json"
-  readonly property string updateSnoozePath: (updateStateDir || ((Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/graveklar.notch")) + "/update-snoozed"
+  readonly property string updateStatusPath: (updateStateDir || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/kalinewb.notch")) + "/update.json"
+  readonly property string updateSnoozePath: (updateStateDir || ((Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/kalinewb.notch")) + "/update-snoozed"
   property var updateCheckResult: ({ state: "unchecked" })
   property var updateJob: ({})
   property string updateSnoozed: ""
@@ -1904,7 +1904,7 @@ Item {
     var run = [updateScript, "run", updateStatusPath]
     var argv
     if ((Quickshell.env("NOTCH_UPDATE_DETACH") || "systemd-run") === "systemd-run") {
-      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "graveklar-notch-update-" + Date.now()];
+      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "kalinewb-notch-update-" + Date.now()];
       // A transient unit starts from the user manager's environment: hand it
       // what omarchy's commands and the test hooks need.
       var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
@@ -2116,7 +2116,7 @@ Item {
   readonly property string pluginsScript: String(Qt.resolvedUrl("bin/notch-plugins")).replace(/^file:\/\//, "")
   // The status dir hook is honoured only in a sandbox.
   readonly property string pluginsStatusPath: ((pluginsSandboxed && Quickshell.env("NOTCH_PLUGINS_STATE_DIR"))
-    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/graveklar.notch")) + "/plugins-job.json"
+    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/kalinewb.notch")) + "/plugins-job.json"
   // The validated catalogue, the last probe (a local one merged over the last
   // full one), the last full probe, the job's status file, the card
   // ({ action, id, token }) and its preview, and the last handoff's answer.
@@ -2262,7 +2262,7 @@ Item {
     var run = [pluginsScript, "run"].concat(args)
     var argv
     if ((Quickshell.env("NOTCH_PLUGINS_DETACH") || "systemd-run") === "systemd-run") {
-      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "graveklar-notch-plugins-" + Date.now()]
+      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "kalinewb-notch-plugins-" + Date.now()]
       var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
                     "XDG_CONFIG_HOME", "XDG_STATE_HOME", "NOTCH_PLUGINS_DIR", "NOTCH_PLUGINS_OMARCHY", "NOTCH_PLUGINS_CATALOGUE",
                     "NOTCH_PLUGINS_SHELL", "NOTCH_PLUGINS_TERMINAL", "NOTCH_PLUGINS_SESSION_LOCKED", "NOTCH_PLUGINS_SCRATCH",

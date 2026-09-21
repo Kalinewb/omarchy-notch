@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# Move this machine from the old plugin id to this one, once.
+#
+#   ~/.config/omarchy/plugins/<old>/bin/notch-rename          say what it would do
+#   ~/.config/omarchy/plugins/<old>/bin/notch-rename --apply  do it
+#
+# The notch's id changed from graveklar.notch to kalinewb.notch: the author
+# field was the machine's local username, while the GitHub account, the commits
+# and the Profiles plugin all say kalinewb.
+#
+# A renamed plugin is a DIFFERENT plugin to Omarchy -- it is keyed by folder and
+# manifest id -- so nothing about this is automatic. `omarchy plugin update`
+# will not rename anything, and the two can sit in the plugins folder at once:
+# two bars, two menu companions, two of everything the notch installs. What has
+# to move with it:
+#
+#   the checkout      plugins/graveklar.notch      -> plugins/kalinewb.notch
+#   the companion     plugins/graveklar.notch-menu -> removed; the new notch
+#                                                     installs its own
+#   the bar           shell.json bar.id            -> kalinewb.notch
+#   the state         state/graveklar.notch/       -> state/kalinewb.notch/
+#                     (Setup's snapshots and the install backups live here; not
+#                     moving them makes every snapshot unrestorable, which is
+#                     the one thing Setup promises)
+#
+# `bar.id` is the dangerous one. If the id changes and that key does not,
+# Omarchy has no bar to load at all -- not a broken notch, no bar.
+#
+# The runtime folder ($XDG_RUNTIME_DIR/<id>) is not moved: it is rebuilt on
+# demand and gone at reboot. Hyprland keybinds are not touched: notch binds are
+# recognised by description, never by id (bin/notch-keybinds).
+
+set -euo pipefail
+
+OLD_ID="graveklar.notch"
+NEW_ID="kalinewb.notch"
+OLD_COMPANION="graveklar.notch-menu"
+NEW_COMPANION="kalinewb.notch-menu"
+
+PLUGINS="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}"
+SHELL_JSON="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json"
+
+APPLY=0
+[[ ${1:-} == "--apply" ]] && APPLY=1
+[[ ${1:-} =~ ^(-h|--help)$ ]] && { sed -n '3,33p' "$0" | sed 's/^# \?//'; exit 0; }
+
+say() { echo "notch-rename: $*"; }
+die() { echo "notch-rename: $*" >&2; exit 1; }
+would() { if ((APPLY)); then say "$*"; else echo "  would $*"; fi; }
+
+command -v jq >/dev/null || die "jq is needed to rewrite shell.json"
+
+((APPLY)) || say "dry run; nothing is changed. Pass --apply to do it."
+
+# --- what is there ---------------------------------------------------------------
+
+[[ -d $PLUGINS/$OLD_ID ]] || say "no $OLD_ID checkout in $PLUGINS (already renamed?)"
+[[ -d $PLUGINS/$NEW_ID ]] && die "$NEW_ID is already there; move or remove it first"
+
+if [[ -d $PLUGINS/$OLD_ID ]]; then
+  # A checkout with uncommitted work is somebody's working copy, not an install.
+  if git -C "$PLUGINS/$OLD_ID" rev-parse --git-dir >/dev/null 2>&1; then
+    [[ -z $(git -C "$PLUGINS/$OLD_ID" status --porcelain) ]] \
+      || die "$OLD_ID has uncommitted changes; commit or stash them first"
+  fi
+fi
+
+# --- the bar ---------------------------------------------------------------------
+
+current_bar=$(jq -r '.bar.id // ""' "$SHELL_JSON" 2>/dev/null || echo "")
+if [[ $current_bar == "$OLD_ID" ]]; then
+  would "point shell.json bar.id at $NEW_ID"
+  if ((APPLY)); then
+    tmp=$(mktemp)
+    jq --arg id "$NEW_ID" '.bar.id = $id' "$SHELL_JSON" >"$tmp"
+    # Only over the original once it parses as JSON: this file is the whole
+    # shell's configuration, and half of it is worse than none.
+    jq -e . "$tmp" >/dev/null || { rm -f "$tmp"; die "rewrite produced invalid JSON; shell.json untouched"; }
+    cp "$SHELL_JSON" "$SHELL_JSON.before-rename"
+    mv "$tmp" "$SHELL_JSON"
+    say "shell.json rewritten (the original is at $(basename "$SHELL_JSON").before-rename)"
+  fi
+elif [[ $current_bar == "$NEW_ID" ]]; then
+  say "shell.json already says $NEW_ID"
+else
+  say "shell.json bar.id is '$current_bar' -- not this notch, left alone"
+fi
+
+# --- the state -------------------------------------------------------------------
+
+if [[ -d $STATE/$OLD_ID ]]; then
+  if [[ -d $STATE/$NEW_ID ]]; then
+    say "both state folders exist; leaving $OLD_ID alone for you to look at"
+  else
+    would "move $STATE/$OLD_ID -> $STATE/$NEW_ID (Setup's snapshots, install backups)"
+    ((APPLY)) && mv "$STATE/$OLD_ID" "$STATE/$NEW_ID"
+  fi
+fi
+
+# --- the companion ---------------------------------------------------------------
+#
+# Removed rather than moved: the notch installs its own copy on the next start,
+# and two plugins with `clonedFrom: omarchy.menu` means two claiming every menu
+# call.
+if [[ -d $PLUGINS/$OLD_COMPANION ]]; then
+  would "remove the old menu companion $OLD_COMPANION (the notch reinstalls $NEW_COMPANION)"
+  ((APPLY)) && rm -rf "${PLUGINS:?}/$OLD_COMPANION"
+fi
+
+# --- the checkout ----------------------------------------------------------------
+
+if [[ -d $PLUGINS/$OLD_ID ]]; then
+  would "move the checkout $OLD_ID -> $NEW_ID"
+  ((APPLY)) && mv "$PLUGINS/$OLD_ID" "$PLUGINS/$NEW_ID"
+fi
+
+if ((APPLY)); then
+  say "done. Restart the shell (omarchy-shell restart, or install.sh) and check"
+  say "Settings -> Setup: anything left under the old id is reported there."
+else
+  say "nothing was changed."
+fi

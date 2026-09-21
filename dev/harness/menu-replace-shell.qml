@@ -1,12 +1,12 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "graveklar.notch" as Notch
-import "graveklar.notch-menu" as Companion
+import "kalinewb.notch" as Notch
+import "kalinewb.notch-menu" as Companion
 
 // The notch and the menu companion in one throwaway Quickshell instance, laid
 // out the way ~/.config/omarchy/plugins is, so the go-between finds the notch's
-// bridge at the path it uses live ("../graveklar.notch/bridge/Connector.qml")
+// bridge at the path it uses live ("../kalinewb.notch/bridge/Connector.qml")
 // with no override -- the one line that decides whether a live Set up routes
 // to the notch at all.
 //

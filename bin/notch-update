@@ -30,7 +30,7 @@
 
 set -uo pipefail
 
-ID="graveklar.notch"
+ID="kalinewb.notch"
 DIR="${NOTCH_UPDATE_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
 export GIT_TERMINAL_PROMPT=0 GIT_OPTIONAL_LOCKS=0
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"

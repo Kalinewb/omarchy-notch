@@ -236,6 +236,7 @@ harness() { quickshell ipc -p "$notch_root" call harness "$@" 2>/dev/null; }
 
 # The notch's state, as the one line the checks compare.
 shown() { notch geometry | jq -r '"\(.state) \(.view) \(.hosted.open)"'; }
+own_down() { harness ownWindow | jq -r '"\(.visible) \(.open)"'; }
 holding() { notch geometry | jq -r '"\(.hosted.open) \(.hosted.items)"'; }
 # Closed: the notch is back at rest holding nothing. `view` is deliberately NOT
 # part of this -- it keeps saying "hosted" until something else opens, because
@@ -383,8 +384,12 @@ check "59. the plugin's own summon now opens inside the notch" "expanded hosted 
 # all rests on the handler running in the same turn as the plugin's own `open`,
 # which is reasoned rather than measured: an IPC round trip is ~50 ms and a
 # frame is ~8, so this harness cannot see a single-frame flicker either way.
+#
+# `open` is false in that same turn; `visible` follows 140 ms later, because a
+# KeyboardPanel stays mapped while its card fades out (`open || card.opacity >
+# 0`). Reading both at once caught the fade and failed on it.
 check "60. …and the plugin's own window was put straight back down" "false false" \
-  "$(harness ownWindow | jq -r '"\(.visible) \(.open)"')"
+  "$(settle "false false" own_down)"
 
 # The other direction of the same state: a hosted panel's controller is open
 # for as long as the notch draws it, so the plugin closing itself -- its own

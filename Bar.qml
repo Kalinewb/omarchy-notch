@@ -1368,10 +1368,6 @@ Item {
   // window of its own. Empty by default: nothing changes until it is asked for.
   readonly property var notchHostedPanels: notchItems("hostedPanels", []).map(function (id) { return canonicalWidgetId(id) })
   function hostsPanelOf(name) { return notchHostedPanels.indexOf(canonicalWidgetId(name)) !== -1 }
-  // A hosted panel's own colours, taken out while the notch draws it. The
-  // notch's own colours reach everything else it draws; this is the one guest
-  // that reads the theme itself (see hostedSlot).
-  readonly property bool notchHostedMono: notchSetting("hostedMono", true) !== false
   readonly property var notchEffectiveHidden: Contract.effectiveHidden(notchHiddenPlugins, notchPlugins.byId)
 
   // --- the plugin contract (contract.js) --------------------------------------
@@ -1454,6 +1450,8 @@ Item {
   readonly property string notchMenuKey: cleanKey(notchSetting("menuKey", ""))
   readonly property string notchAutoHideKey: cleanKey(notchSetting("autoHideKey", ""))
   readonly property string notchStayOpenKey: cleanKey(notchSetting("stayOpenKey", ""))
+  // The state key: shut the notch where it stands, open it where it stood.
+  readonly property string notchStateKey: cleanKey(notchSetting("stateKey", ""))
 
   // A Hyprland key combination: modifiers and a key joined by "+", letters,
   // digits and underscores only, so it can be quoted into a Lua call safely.
@@ -1472,8 +1470,8 @@ Item {
   // every bind is a notch bind. Config reloads clear runtime binds; the apply
   // after `configreloaded` adds them back. NOTCH_NO_KEYBINDS=1 turns it off
   // (test harnesses).
-  property var appliedKeys: ({ open: "", settings: "", autoHide: "", menu: "", stayOpen: "" })
-  readonly property string keyState: notchOpenKey + "|" + notchSettingsKey + "|" + notchAutoHideKey + "|" + notchMenuKey + "|" + notchStayOpenKey
+  property var appliedKeys: ({ open: "", settings: "", autoHide: "", menu: "", stayOpen: "", state: "" })
+  readonly property string keyState: notchOpenKey + "|" + notchSettingsKey + "|" + notchAutoHideKey + "|" + notchMenuKey + "|" + notchStayOpenKey + "|" + notchStateKey
   // Only the notch Omarchy's shell is hosting touches Hyprland's binds. A notch
   // running anywhere else (a test harness) would otherwise reconcile the live
   // notch's binds away; NOTCH_FORCE_KEYBINDS=1 lets a keybind test opt in.
@@ -1491,7 +1489,8 @@ Item {
     settings: { method: "settings", description: "Notch settings" + keybindTag },
     autoHide: { method: "autoHide toggle", description: "Toggle notch auto-hide" + keybindTag },
     menu: { method: "menu root", description: "Notch menu" + keybindTag },
-    stayOpen: { method: "stayOpen toggle", description: "Keep the notch open" + keybindTag }
+    stayOpen: { method: "stayOpen toggle", description: "Keep the notch open" + keybindTag },
+    state: { method: "state", description: "Notch: close it here, open it here" + keybindTag }
   })
   onKeyStateChanged: Qt.callLater(applyKeybinds)
   // Keybinds are skipped until the host has set `shell` (see keybindsDisabled);
@@ -1503,8 +1502,9 @@ Item {
   property bool keybindRerun: false
   function applyKeybinds() {
     if (keybindsDisabled) return
-    var wanted = { open: notchOpenKey, settings: notchSettingsKey, autoHide: notchAutoHideKey, menu: notchMenuKey, stayOpen: notchStayOpenKey }
-    var names = ["open", "settings", "autoHide", "menu", "stayOpen"]
+    var wanted = { open: notchOpenKey, settings: notchSettingsKey, autoHide: notchAutoHideKey, menu: notchMenuKey,
+                   stayOpen: notchStayOpenKey, state: notchStateKey }
+    var names = ["open", "settings", "autoHide", "menu", "stayOpen", "state"]
     var list = []
     for (var i = 0; i < names.length; i++) {
       var n = names[i]
@@ -2628,6 +2628,22 @@ Item {
       }
       return root.batteryMode
     }
+    // Shut the notch where it stands, open it where it stood: the state key's
+    // verb (`stateKey`), and what a plugin author binds so that testing a
+    // panel does not mean walking in through the menus every time.
+    // Answers "stashed", "closed", "restored" or "nothing to restore".
+    function state(): string {
+      var w = root.focusedNotchWindow() || root.notchWindows[0]
+      return w ? w.toggleState() : "no notch"
+    }
+
+    // One step back, the same as pressing the strip at the top centre.
+    // Answers "back" or "closed".
+    function back(): string {
+      var w = root.focusedNotchWindow() || root.notchWindows[0]
+      return w ? w.goBack() : "no notch"
+    }
+
     // "true", "false" or "toggle"; saved to shell.json. Returns the new value.
     function stayOpen(value: string): string {
       var next = value === "toggle" ? !root.notchStayOpen : value === "true"
@@ -3010,7 +3026,88 @@ Item {
       if (pinned) showPinnedView()
     }
 
+    // --- what the notch is showing, as a value ---------------------------------
+    //
+    // Enough to put it back exactly: which panel, which view, and the one
+    // thing that panel is about. Two features read it. The way back (P2) keeps
+    // a stack of these, one per step in, so the top-middle press can undo one
+    // step instead of closing the lot. The state key (P3) keeps one of them
+    // aside while the notch is shut, so a keybind puts you back where you were
+    // instead of walking you through the menus again.
+    //
+    // The menu is the one thing this cannot fully describe: it navigates
+    // inside itself, and its own position is its business. It comes back at
+    // the route it was opened on.
+    function snapshot() {
+      if (!panelOpen) return null
+      return {
+        view: view, viewPlugin: viewPlugin,
+        settings: settingsOpen, menu: menuOpen, menuRoute: menuRoute,
+        plugins: pluginsOpen, setup: setupOpen,
+        integration: integrationOpen, integrationId: integrationId, integrationRoute: integrationRoute,
+        hosted: hostedOpen, hostedWidget: hostedOpen && root.hosting.widget
+          ? String(root.hosting.widget.moduleName || "") : ""
+      }
+    }
+
+    // Put one back. `restoring` keeps the open functions below from pushing
+    // what they are replacing onto the way-back stack: this IS the way back.
+    property bool restoring: false
+    function restore(shot) {
+      if (!shot) { closePanels(); return false }
+      restoring = true
+      if (shot.settings) openSettings()
+      else if (shot.menu) openMenu(shot.menuRoute)
+      else if (shot.plugins) openPlugins("")
+      else if (shot.setup) openSetup()
+      else if (shot.integration) openIntegration(shot.integrationId, shot.integrationRoute)
+      else if (shot.hosted) {
+        var item = root.widgetItemFor(shot.hostedWidget)
+        if (item) openHosted(item)
+      } else {
+        closePanels()
+        view = shot.view
+        viewPlugin = shot.viewPlugin
+      }
+      restoring = false
+      return true
+    }
+
+    // The way back: one snapshot per step in. Pushed by the open functions,
+    // popped by the top-middle press.
+    property var viewStack: []
+    readonly property bool canGoBack: viewStack.length > 0
+    function pushState() {
+      if (restoring) return
+      var shot = snapshot()
+      if (shot) viewStack = viewStack.concat([shot])
+    }
+    function goBack() {
+      if (viewStack.length === 0) { closePanels(); return "closed" }
+      var shot = viewStack[viewStack.length - 1]
+      viewStack = viewStack.slice(0, -1)
+      restore(shot)
+      return "back"
+    }
+
+    // The state key: shut it where it stands, open it where it stood.
+    property var stashed: null
+    function toggleState() {
+      if (panelOpen || expanded) {
+        stashed = snapshot()
+        closePanels()
+        collapseNow()
+        return stashed ? "stashed" : "closed"
+      }
+      if (!stashed) return "nothing to restore"
+      var shot = stashed
+      stashed = null
+      restore(shot)
+      return "restored"
+    }
+
     function closePanels() {
+      viewStack = []
       settingsOpen = false
       menuOpen = false
       pluginsOpen = false
@@ -3033,6 +3130,7 @@ Item {
     onPinnedChanged: if (pinned) showPinnedView()
 
     function openSettings() {
+      pushState()
       expandTimer.stop()
       peeking = false
       view = "settings"
@@ -3052,7 +3150,17 @@ Item {
 
     // Open the menu for a whole Omarchy menu request: a route, or a select or
     // input picker with the files its caller waits on.
+    // The route the menu was opened on, for a snapshot to put it back on.
+    property string menuRoute: "root"
+
     function openMenuRequest(payloadJson) {
+      pushState()
+      // The route, for a snapshot to put the menu back on. A picker payload
+      // carries files its caller is waiting on, and those are not somewhere to
+      // go back to, so only a plain menu route is remembered.
+      var asked = null
+      try { asked = JSON.parse(payloadJson) } catch (e) { asked = null }
+      menuRoute = asked && asked.menu ? String(asked.menu) : "root"
       expandTimer.stop()
       peeking = false
       settingsOpen = false
@@ -3075,6 +3183,7 @@ Item {
 
     // Open the Plugins page, at the entry `focusId` ("" for the top).
     function openPlugins(focusId) {
+      pushState()
       expandTimer.stop()
       peeking = false
       settingsOpen = false
@@ -3092,6 +3201,7 @@ Item {
     // never goes false in between -- the notch resizes on its spring instead
     // of collapsing through rest first.
     function openSetup() {
+      pushState()
       expandTimer.stop()
       peeking = false
       view = "setup"
@@ -3121,6 +3231,7 @@ Item {
       menuOpen = false
       pluginsOpen = false
       setupOpen = false
+      pushState()
       integrationId = id
       integrationRoute = String(route || "")
       view = "integration"
@@ -3139,6 +3250,7 @@ Item {
       var why = root.hosting.reasonNotHostable(item)
       if (why !== "") return "declined:" + why
       if (hostedOpen && root.hosting.widget === item) { hostedOpen = false; return "closed" }
+      pushState()
       if (root.hosting.active) root.hosting.giveBack()
       var taken = root.hosting.take(item, hostedSlot)
       if (taken !== "") return "declined:" + taken
@@ -3173,7 +3285,17 @@ Item {
     Timer {
       id: hostedReturn
       interval: 260
-      onTriggered: if (!barWindow.hostedOpen && root.hosting.active) root.hosting.giveBack()
+      onTriggered: {
+        if (barWindow.hostedOpen) return
+        if (root.hosting.active) root.hosting.giveBack()
+        // And the view goes back with the panel. It used to stay on "hosted"
+        // until something else opened, so the notch reported a view it was not
+        // showing -- which reads as a bug in every report that quotes it, and
+        // would have `expandedWidth` ask an empty hosted slot for a width if a
+        // keybind reopened on it. Unlike `integrationId`, nothing is bound to
+        // this one once the content has been handed back.
+        if (barWindow.view === "hosted") barWindow.showPinnedView()
+      }
     }
 
     // Closing keeps `integrationId` and `integrationRoute`: the host is bound to
@@ -3802,9 +3924,8 @@ Item {
         hosted: { open: barWindow.hostedOpen, items: hostedSlot.children.length,
                   width: Number(barWindow.hostedWidth.toFixed(3)), height: Number(barWindow.hostedHeight.toFixed(3)),
                   opacity: Number(hostedHost.opacity.toFixed(3)),
-                  // The guest's hue taken out: the setting, and whether the
-                  // layer that does it is actually on the slot.
-                  mono: root.notchHostedMono, monoLayer: hostedSlot.layer.enabled,
+                  // Whether the layer that takes the guest's hue out is on the slot.
+                  monoLayer: hostedSlot.layer.enabled,
                   report: root.hosting.report() },
         integration: { open: barWindow.integrationOpen, id: barWindow.integrationId, route: barWindow.integrationRoute,
                        loaded: integrationHost.item !== null,
@@ -4143,7 +4264,12 @@ Item {
           x: (content.width - width) / 2
           width: implicitWidth
           height: root.notchCompactHeight
-          items: root.notchCompactItems.indexOf(barWindow.peekKind) === -1 ? root.notchCompactItems.concat([barWindow.peekKind]) : root.notchCompactItems
+          // A peek is about ONE thing: the charger going in, the battery
+          // getting low, the track changing. It used to be the resting glance
+          // with that one thing added, so plugging in a laptop whose glance
+          // holds the media widened the notch and showed the track as well --
+          // two answers to an event that asked one question.
+          items: [barWindow.peekKind]
           foreground: root.notchForeground
           batteryPercent: root.batteryPercent
           batteryCharging: root.batteryCharging
@@ -4493,7 +4619,7 @@ Item {
               id: hostedSlot
               anchors.fill: parent
               anchors.margins: root.notchSidePadding
-              layer.enabled: root.notchHostedMono && barWindow.hostedOpen
+              layer.enabled: barWindow.hostedOpen
               layer.effect: ShaderEffect { fragmentShader: "shaders/mono.frag.qsb" }
             }
           }
@@ -4517,6 +4643,53 @@ Item {
               if (panel.closeRequested) panel.closeRequested.connect(function () { barWindow.integrationOpen = false })
               if (typeof panel.open === "function" && barWindow.integrationOpen) panel.open(barWindow.integrationRoute)
             }
+          }
+        }
+
+        // --- the way back ------------------------------------------------------
+        //
+        // The strip the resting notch occupies, at the top centre of whatever
+        // the notch has grown into: press it to go back one step. Every page
+        // the notch draws leaves that strip clear -- the settings, Setup and
+        // the Plugins page put their title at the left of that row and their
+        // buttons at the right -- so this is a press target over a gap, not
+        // over somebody's control. It sits above the panel content, so the
+        // press reaches it wherever the page puts its own handlers.
+        //
+        // It is there only when there is somewhere to go: one step in, a press
+        // here falls through to the notch's own gestures, as before. And it
+        // stays off a panel the notch is merely drawing for someone else -- a
+        // hosted panel and an integration own their surface, their chrome and
+        // their own back button, and a strip of the notch's over their header
+        // would be the notch reaching into another plugin's UI.
+        Item {
+          id: backZone
+          width: root.notchCompactWidth
+          height: root.notchCompactHeight
+          x: (panelIsland.barWidth - width) / 2
+          y: 0
+          readonly property bool offered: barWindow.canGoBack && barWindow.panelOpen
+            && !barWindow.hostedOpen && !barWindow.integrationOpen
+          visible: offered
+          enabled: offered
+
+          HoverHandler { id: backHover }
+          TapHandler {
+            acceptedButtons: Qt.LeftButton
+            onSingleTapped: barWindow.goBack()
+          }
+
+          // A chevron, and only under the pointer: the strip is a gap in the
+          // page the rest of the time, and a mark parked in it would be a
+          // control the page never asked for.
+          Text {
+            anchors.centerIn: parent
+            text: "\u2039"
+            color: root.notchForeground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.title
+            opacity: backHover.hovered ? 0.75 : 0
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
           }
         }
       }

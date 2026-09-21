@@ -170,15 +170,18 @@ something isn't shown the reason is there in words. Switching one off gives that
 plugin its own window back at once, with no reload. Nothing is hosted until you
 ask for it.
 
-**Drawn in the notch's colours** (`hostedMono`, on) is in the same section, and it
-is about the one colour the notch cannot hand a guest. Everything the notch draws
-is given the notch's colours, but a hosted panel asks Omarchy's `Color` and `Style`
-itself, so a theme's accent — or a plugin's own hard-coded blue — used to paint its
-toggle buttons, selected rows and graphs on the notch's black. The hue is taken out
-of what it draws instead, by lightness, so a selected row keeps its presence and
-reads as selected (`shaders/mono.frag`). Switch it off for a panel whose colour is
-the point — a camera preview, artwork. Either way the same panel in its own window
-keeps every colour it always had.
+**A hosted panel is drawn in the notch's colours**, which is the one colour the
+notch cannot hand it. Everything else the notch draws is given the notch's
+colours, but a hosted panel asks Omarchy's `Color` and `Style` itself, so a
+theme's accent — or a plugin's own hard-coded blue — painted its toggle buttons,
+selected rows and graphs on the notch's black. So the hue is taken out of what it
+draws (`shaders/mono.frag`) and comes back as lightness: the more colour a thing
+had, the lighter its grey, because in the notch emphasis is carried by lightness
+and never by hue. A button filled with its accent reads as filled; anything
+already grey — the panel's own surfaces, rules and dim text — does not move at
+all. There is no switch for it, the same way there is none for the notch's own
+controls not taking the theme's accent. The same panel in its own window keeps
+every colour it always had.
 
 ```sh
 omarchy-shell notch integrations           # every candidate, and why
@@ -196,7 +199,7 @@ is what `dev/platform.sh` tests.
 | State | What you see |
 |---|---|
 | **At rest** | A black rectangle at the top centre. Empty by default; can show time, date, now playing and battery. |
-| **Peek** | A new track, plugging in, unplugging or a low battery widens the notch for a few seconds. |
+| **Peek** | A new track, plugging in, unplugging or a low battery shows **that one thing** for a few seconds — the battery on its own when the charger goes in, the track on its own when it changes — not the resting glance with it added. |
 | **On hover** | If hover opens the notch (`openWith`), the open view. Otherwise your hover items (time, date, media, battery) next to your hover plugins, in one row. Either closes when the pointer leaves. |
 | **When open** | What `openAction` says, for every other way of opening it (click, keybind, …). |
 | **Settings** | The notch grows down into its settings panel -- the same surface, top edge on the screen edge. |
@@ -220,6 +223,25 @@ The open keybind works from any state. From the settings or the menu it goes str
 open view, or just closes the panel when the open action is that panel. A view opened by a
 keybind stays until you press the keybind again, or until the pointer has been over the notch
 and left. It doesn't rely on Hyprland's click-outside grab, which unrelated focus changes clear.
+
+### The way back
+
+Escape and ✕ close the lot, which is what you want when you are done and not
+when you went one page too far. So the notch keeps one step of history per page
+you opened, and **the strip at the top centre — where the resting notch sits —
+goes back one step**. The notch's own pages leave that strip clear (their title
+is on the left of that row and their buttons on the right), a chevron appears
+under the pointer, and it is only there when there is somewhere to go: at the
+first page a press falls through to the notch's usual gestures. It stays off a
+panel the notch is merely drawing for someone else — a hosted panel and an
+integration own their surface and their own back button. Over IPC: `notch back`.
+
+**Close it here, open it here** (`stateKey`, Settings → How it opens) shuts the
+notch where it stands and opens it where it stood — the same page, the same
+view. It is for working on a panel: testing a change means shutting the notch
+and opening it again, and without it that is the walk back in through the menus
+every time. Over IPC: `notch state`, which answers `stashed`, `restored` or
+`nothing to restore`.
 
 **Keep the notch open** (`stayOpen`, with `stayOpenKey`) keeps the open view up whatever the
 pointer does. The settings and the menu still open over it, and it comes back when they close. Keybinds go into the running
@@ -393,11 +415,10 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
 | `notifications` | `true` | Omarchy's toasts also show as a line in the notch, which widens sideways to fit. Omarchy's own toast still appears: the notch is a second display of the same thing, not a replacement for the notification daemon. |
 | `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |
-| `openKey`, `settingsKey`, `menuKey`, `autoHideKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. |
+| `openKey`, `settingsKey`, `menuKey`, `autoHideKey`, `stateKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. `stateKey` shuts the notch where it stands and opens it where it stood. |
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |
 | `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. `openAction` can also be `"settings"` or `"menu"`. |
 | `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. |
-| `hostedMono` | `true` | A panel the notch is drawing has its hue taken out, because it reads the theme's accent itself and the notch's surface is one colour. Off keeps the guest's own colours, for a camera preview or artwork. |
 | `color` / `foreground` | `#000000` / Apple white | Notch colour, and the colour of text on it. Text is Apple white (`#FFFFFF`, secondary `#EBEBF5` at 60 %) on a dark notch and black on a light one, whatever the theme. Widgets paint with it in the notch, as do the glance, settings, menu, pages, tooltips and any plugin panel the notch is drawing inside itself. Nothing in the notch has a hue: selected, hovered and urgent differ by alpha. That same panel opened in its own window keeps the theme's colours, because there it sits on the theme's background. |
 | `compactWidth`, `compactHeight` | `180`, `32` | Resting size, in logical px. The height is also what windows keep clear. |
 | `bottomRadius` | `10` | Convex bottom-corner radius, in every state including the settings panel. |

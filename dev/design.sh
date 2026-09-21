@@ -98,13 +98,21 @@ for r in ${RADII:-10 8 3 16}; do
   # accepted, while the card is still opening, so waiting on the preview and
   # then sleeping a fixed 0.4 s made this race: whichever radius block lost it
   # reported `carded false` and failed on a card whose radii were fine.
-  for _ in $(seq 1 80); do sleep 0.1; [[ $(ipc geometry | jq -r .plugins.card) == true ]] && break; done
-  sleep 0.4
-  cardAudit=$(ipc design | jq -c .plugins)
+  # The card opens only once GitHub has answered with the commit, so this
+  # waits on the card itself and waits longer than a round trip. `carded` is
+  # then read from the sample the audit is taken with -- reading it afterwards
+  # was its own race: a card that opened, was audited, and had closed again by
+  # the next IPC call failed a radius check for a reason that had nothing to do
+  # with radii.
+  for _ in $(seq 1 200); do [[ $(ipc geometry | jq -r .plugins.card) == true ]] && break; sleep 0.1; done
   carded=$(ipc geometry | jq -r .plugins.card)
+  cardAudit=$(ipc design | jq -c .plugins)
   ipc pluginsPress escape >/dev/null; ipc plugins close >/dev/null
   # The Setup page (forced on, so a test notch draws it).
-  ipc view setup >/dev/null; sleep 1.0
+  # Setup runs a detection pass before it has rows to draw, which takes as long
+  # as it takes; a fixed second was sometimes not one.
+  ipc view setup >/dev/null
+  for _ in $(seq 1 100); do [[ $(ipc geometry | jq -r .setup.open) == true ]] && break; sleep 0.1; done
   setupOpen=$(ipc geometry | jq -r .setup.open)
   setupAudit=$(ipc design | jq -c '.setup // []')
   ipc toggle >/dev/null

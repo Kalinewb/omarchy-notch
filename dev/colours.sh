@@ -134,9 +134,11 @@ QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl QT_QPA_PLATFORM=offscreen QT_FORCE_S
 check "rendered to a PNG" "true" "$([[ -f $png ]] && echo true || echo false)"
 
 if [[ -f $png ]]; then
-  # <colour> <x> <expected grey>. The expected value is HSL lightness --
-  # (brightest + dimmest channel) / 2 -- which is what keeps a saturated blue
-  # from coming out nearly black the way Rec. 709 luminance would.
+  # <colour> <x> <expected grey>. HSL lightness, lifted toward white by how
+  # saturated the colour was: lightness alone is what keeps a saturated blue
+  # from coming out nearly black (Rec. 709 luminance would), and the lift is
+  # what keeps a BUTTON filled with that blue at 15 % from staying near-black
+  # once it is grey. The two navies are those fills.
   while read -r hex x want; do
     got=$(magick "$png" -format "%[pixel:p{$x,20}]" info: | sed -n 's/.*(\([0-9]*\),\([0-9]*\),\([0-9]*\).*/\1 \2 \3/p')
     read -r r g b <<<"$got"
@@ -144,24 +146,30 @@ if [[ -f $png ]]; then
     near=$([[ -n $r ]] && (( r >= want - 2 && r <= want + 2 )) && echo "$want" || echo "$r")
     check "$hex comes out grey, at its own lightness" "grey $want" "$grey $near"
   done <<'SWATCHES'
-#1E68F9 20 139
-#1C60E7 60 129
-#4C4F69 100 90
-#FF453A 140 156
-#30D158 180 128
+#1E68F9 20 194
+#1C60E7 60 180
+#0B1F46 100 119
+#1F3257 140 106
+#4C4F69 180 104
+#FF453A 220 206
+#30D158 260 169
 SWATCHES
 
   # What must not move: the notch's own colours, and a 20 % white fill, which
   # only stays 20 % if premultiplied alpha is divided out and put back.
-  for spec in "white:220:255" "black:260:0" "grey:300:128"; do
+  for spec in "white:300:255" "black:340:0" "grey:380:128"; do
     IFS=: read -r name x want <<<"$spec"
     got=$(magick "$png" -format "%[pixel:p{$x,20}]" info: | sed -n 's/.*(\([0-9]*\).*/\1/p')
     check "$name is unchanged" "$want" "$got"
   done
   check "a 20 % white fill keeps its colour and its alpha" "1" \
-    "$(magick "$png" -format '%[fx:abs(p{340,20}.r-1)<0.01 && abs(p{340,20}.a-0.2)<0.01]' info:)"
+    "$(magick "$png" -format '%[fx:abs(p{420,20}.r-1)<0.01 && abs(p{420,20}.a-0.2)<0.01]' info:)"
   # The bottom row is the same colours with no layer over them: if the shader
   # had quietly not run, every check above would pass on the original colours.
+  # A button fill that was near-black navy has to end up light enough to read
+  # as a fill, which is the complaint the lift answers.
+  check "a button's accent fill is no longer near-black" "true" \
+    "$(magick "$png" -format '%[fx:p{100,20}.r > 0.4]' info: | sed 's/^1$/true/; s/^0$/false/')"
   check "…and the shader is what did it: untouched, the blue is still blue" "false" \
     "$(magick "$png" -format '%[fx:p{20,60}.r==p{20,60}.g && p{20,60}.g==p{20,60}.b]' info: | sed 's/^1$/true/; s/^0$/false/')"
 fi

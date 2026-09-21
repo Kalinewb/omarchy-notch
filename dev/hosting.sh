@@ -278,8 +278,8 @@ check "36. …and the plugin is told it is open, with the keyboard on the target
 # hue comes out of what it draws rather than being handed to it. dev/colours.sh
 # measures the shader; this is that it is on the slot at all, and only while
 # the notch is holding something.
-check "37. …with its hue taken out, by default" "true true" \
-  "$(field "$g" '.hosted.mono') $(field "$g" '.hosted.monoLayer')"
+check "37. …with its hue taken out, which is not a preference" "true" \
+  "$(field "$g" '.hosted.monoLayer')"
 check "38. every item of the panel came, not just the first" "true" \
   "$(field "$g" '.hosted.items >= 1')"
 

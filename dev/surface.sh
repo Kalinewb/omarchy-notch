@@ -164,6 +164,57 @@ stop
 hyprctl eval "hl.unbind(\"$KEY\")" >/dev/null 2>&1
 check "after cleanup no test bind is left" "[]" "$(binds)"
 
+# --- the way back, and the state key -------------------------------------------
+#
+# Escape and the ✕ close the lot, which is right for "I am done" and wrong for
+# "I went one page too far". The notch keeps one snapshot per step in, the
+# strip at the top centre pops one, and `notch back` is the same call the strip
+# makes. The state key (`notch state`) keeps one aside while the notch is shut,
+# so working on a panel does not mean walking back in through the menus after
+# every change.
+
+echo; echo "${BOLD}The way back${RESET}"
+start '{"batteryPeek":false}' NOTCH_FORCE_SETUP=1 NOTCH_SETUP_HOME="$root/setup-home" \
+  NOTCH_SETUP_CONFIG_DIR="$root/setup-home/.config" NOTCH_SETUP_TOGGLES_DIR="$root/setup-home/toggles" \
+  NOTCH_SETUP_STATE_DIR="$root/setup-state" NOTCH_SETUP_STATUS="$root/setup-run/setup.json"
+
+where() { ipc geometry | jq -r '"\(.state)/\(.view)"'; }
+settle_at() { # settle_at <want>
+  local got=""
+  for _ in $(seq 1 60); do got=$(where); [[ $got == "$1" ]] && break; sleep 0.1; done
+  printf '%s' "$got"
+}
+
+check "nothing to go back to at rest, and back just closes" "closed compact/widgets" \
+  "$(ipc back) $(settle_at compact/widgets)"
+
+ipc settings >/dev/null
+check "the settings open" "expanded/settings" "$(settle_at expanded/settings)"
+ipc view setup >/dev/null
+check "…Setup opens on top of them" "expanded/setup" "$(settle_at expanded/setup)"
+check "back goes to the settings, not away" "back expanded/settings" \
+  "$(ipc back) $(settle_at expanded/settings)"
+check "…and back again closes, because that was the way in" "closed compact/settings" \
+  "$(ipc back) $(settle_at compact/settings)"
+
+# The state key: two presses have to land where one started.
+ipc settings >/dev/null; settle_at expanded/settings >/dev/null
+ipc view setup >/dev/null
+check "at Setup again" "expanded/setup" "$(settle_at expanded/setup)"
+check "the state key shuts it where it stands" "stashed compact/setup" \
+  "$(ipc state) $(settle_at compact/setup)"
+check "…and opens it where it stood" "restored expanded/setup" \
+  "$(ipc state) $(settle_at expanded/setup)"
+# And it is a toggle, not a one-shot: shutting it again stashes the new state.
+check "shutting it again stashes again" "stashed compact/setup" \
+  "$(ipc state) $(settle_at compact/setup)"
+ipc state >/dev/null; settle_at expanded/setup >/dev/null
+ipc toggle >/dev/null; settle_at compact/setup >/dev/null
+check "with nothing stashed, the state key says so rather than guessing" "nothing to restore" \
+  "$(ipc state)"
+stop
+
+
 if grep -qE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log"; then
   check "no QML errors" "none" "$(grep -E 'TypeError|ReferenceError' "$root/qs.log" | head -1)"
 fi

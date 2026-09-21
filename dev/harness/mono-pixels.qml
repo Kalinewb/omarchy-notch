@@ -30,11 +30,14 @@ Window {
   readonly property string out: args.out || "mono.png"
 
   // The real offenders, then the cases that must not move: the accent this
-  // machine's Power Manager paints with, Catppuccin Latte's pinned token, the
-  // notch's own white and its secondary label, and a 20 % white fill (a
-  // selected row) to prove premultiplied alpha survives.
+  // machine's Power Manager paints with, System Monitor's, the two near-black
+  // navies they fill their BUTTONS with (an accent at 12-15 % over black --
+  // the ones that still read as dark after a faithful desaturation, which is
+  // what the lift is for), Catppuccin Latte's pinned token, the notch's own
+  // white and grey, and a 20 % white fill to prove premultiplied alpha
+  // survives.
   readonly property var swatches: [
-    "#1E68F9", "#1C60E7", "#4C4F69", "#FF453A", "#30D158",
+    "#1E68F9", "#1C60E7", "#0B1F46", "#1F3257", "#4C4F69", "#FF453A", "#30D158",
     "#FFFFFF", "#000000", "#808080", "#33FFFFFF"
   ]
   readonly property int cell: 40

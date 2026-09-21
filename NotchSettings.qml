@@ -367,6 +367,12 @@ Item {
 
         KeyRow { label: "Keybind to keep it open"; key: "stayOpenKey"; current: root.bar ? root.bar.notchStayOpenKey : "" }
 
+        // Close it where it stands, open it where it stood. For anyone working
+        // on a panel: testing a change means shutting the notch and opening it
+        // again, and without this that is the walk back in through the menus
+        // every single time.
+        KeyRow { label: "Keybind to close and reopen where you were"; key: "stateKey"; current: root.bar ? root.bar.notchStateKey : "" }
+
       }
 
       // The notch's shape, and how it sits on the screen: auto-hide and
@@ -587,20 +593,6 @@ Item {
                 onToggled: root.toggleHostedPanel(modelData.id, !checked)
               }
             }
-          }
-        }
-
-        // The one colour the notch cannot hand a guest. A hosted panel asks
-        // Omarchy's Color and Style itself, so its accent arrives on the
-        // notch's black whatever the notch says; the hue is taken out of what
-        // it draws instead. Off is for a panel whose colour is the point --
-        // a camera preview, artwork.
-        SettingRow {
-          visible: root.hostable.length > 0
-          label: "Drawn in the notch's colours"
-          Switch {
-            checked: root.bar ? root.bar.notchHostedMono : true
-            onToggled: root.set("hostedMono", !checked)
           }
         }
 
@@ -934,8 +926,10 @@ Item {
     // Every notch keybind, so one combination can't be recorded twice.
     function usedBy(combo) {
       if (!root.bar) return ""
-      var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey, menuKey: root.bar.notchMenuKey, stayOpenKey: root.bar.notchStayOpenKey }
-      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide", menuKey: "the menu", stayOpenKey: "keep open" }
+      var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey,
+                     menuKey: root.bar.notchMenuKey, stayOpenKey: root.bar.notchStayOpenKey, stateKey: root.bar.notchStateKey }
+      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide", menuKey: "the menu",
+                     stayOpenKey: "keep open", stateKey: "close and reopen" }
       for (var k in others) if (k !== keyRow.key && others[k] === combo) return labels[k]
       return ""
     }

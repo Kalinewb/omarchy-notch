@@ -1,3 +1,8 @@
 *.bak
 *.bak.*
 dev/baselines/local/
+
+# Working documents, kept out of the repository: the scope list and the
+# design rules live on the machine they are worked on.
+DESIGN-PHILOSOPHY.md
+INTEGRATION-SCOPE.md

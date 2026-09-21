@@ -212,7 +212,24 @@ Item {
           font.pixelSize: root.fontSize
         }
 
-        // Three bars that stand still when paused.
+        // Three bars that stand still when paused -- and that stop entirely
+        // when nobody can see them.
+        //
+        // Nine Glances exist at once: the resting one, the peek, the hover
+        // row, the expanded row, the clock and battery views, the activity
+        // line, and two invisible probes the notch measures widths with. On
+        // `playing` alone, all nine ran an infinite animation whenever
+        // anything was playing -- including the ones behind a hidden notch and
+        // the probes that are never drawn. Twenty-seven bars kept Qt's
+        // animation driver, and with it the shell's render loop, awake at
+        // 60 Hz to move nothing: about 10 % of a core in the shell, and as
+        // much again in the compositor compositing the frames. A notch nobody
+        // is touching should cost what an idle Quickshell costs.
+        //
+        // `visible` is effective -- false when any ancestor is hidden, which
+        // is how the notch turns each of these off -- and `opacity > 0`
+        // catches the two probes, which stay visible on purpose because a Row
+        // measures no width through an invisible child.
         Row {
           spacing: 2
           anchors.verticalCenter: parent.verticalCenter
@@ -227,7 +244,7 @@ Item {
               height: root.playing ? 4 + (root.fontSize - 4) * level : 3
               property real level: 0.5
               SequentialAnimation on level {
-                running: root.playing
+                running: root.playing && root.visible && root.opacity > 0
                 loops: Animation.Infinite
                 NumberAnimation { to: 1; duration: 260 + index * 90; easing.type: Easing.InOutSine }
                 NumberAnimation { to: 0.2; duration: 300 + index * 70; easing.type: Easing.InOutSine }

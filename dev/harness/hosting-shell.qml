@@ -36,6 +36,17 @@ ShellRoot {
     function targetBelongsToWindow(t, w) { return false }
   }
 
+  // The stand-in for the notch's panel surface. It has to be a real, mapped
+  // window -- a panel only lays out, binds and reports a size inside one -- and
+  // these suites run against the session's own compositor, so it is genuinely
+  // on screen while they run.
+  //
+  // So it stays out of the way: the BACKGROUND layer, under every window rather
+  // than an Overlay black square parked over the top-left corner of whatever
+  // you were doing, and an empty input mask, so a click on it goes to what is
+  // really there. Nothing measured here is a pixel -- sizes, parenting, live
+  // text, the plugin's own window state -- so being behind everything costs the
+  // suite nothing.
   PanelWindow {
     id: host
     anchors.top: true
@@ -43,7 +54,9 @@ ShellRoot {
     implicitWidth: 460
     implicitHeight: 420
     color: "#000000"
-    WlrLayershell.layer: WlrLayer.Overlay
+    exclusionMode: ExclusionMode.Ignore
+    mask: Region {}
+    WlrLayershell.layer: WlrLayer.Background
     WlrLayershell.namespace: "notch-hosting-probe"
 
     Item { id: hostSlot; anchors.fill: parent }

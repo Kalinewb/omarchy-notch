@@ -3327,7 +3327,16 @@ Item {
     Timer {
       id: autoHideTimer
       interval: root.notchCollapseDelay
-      onTriggered: if (!islandHover.hovered && !revealHover.hovered) barWindow.revealed = false
+      onTriggered: {
+        if (islandHover.hovered || revealHover.hovered) return
+        barWindow.revealed = false
+        // The hover view goes into the edge with it, in one step. Dropping it
+        // first would put the resting notch -- the glance, which is the media
+        // for anyone who has it there -- on screen for the moment between the
+        // two, on the way out of every reach.
+        barWindow.hoverExpanded = false
+        if (barWindow.pinned && !barWindow.panelOpen) barWindow.showPinnedView()
+      }
     }
 
     // The top strip above the auto-hidden notch, a little wider than it:
@@ -3343,8 +3352,23 @@ Item {
         id: revealHover
         enabled: root.notchAutoHide
         onHoveredChanged: {
-          if (hovered) { autoHideTimer.stop(); barWindow.revealed = true }
-          else autoHideTimer.restart()
+          if (!hovered) { autoHideTimer.restart(); return }
+          autoHideTimer.stop()
+          barWindow.revealed = true
+          // …showing what the pointer came for, not what the notch rests on.
+          //
+          // This strip means one thing: someone is reaching for the notch. It
+          // used to come out on its resting view and swap to the hover view a
+          // hover delay later -- so a notch that rests on the media flashed
+          // the track for ~200 ms, in its own width, before becoming the
+          // clock, on every single reach. Same reveal, same spring, one fade.
+          //
+          // A reach that stops short and turns away is still a reach: the
+          // notch sits there in the hover view until autoHideTimer takes both
+          // it and the reveal back down together.
+          if (barWindow.panelOpen || barWindow.expanded || barWindow.noticeShown) return
+          if (root.opensWith("hover")) barWindow.openView(root.notchOpenAction, "hoverOpen")
+          else if (root.notchHoverShowsSomething) barWindow.openView("hover", "hover")
         }
       }
     }
@@ -3354,7 +3378,11 @@ Item {
       interval: root.notchCollapseDelay
       onTriggered: {
         if (islandHover.hovered || barWindow.popoutHere || barWindow.dragHere) return
-        barWindow.hoverExpanded = false
+        // The hover view is dropped here -- unless the notch is on its way
+        // into the edge, which takes it down in one move (autoHideTimer). A
+        // pointer still in the reveal strip is the same reach, not a new one.
+        if (!(root.notchAutoHide && (revealHover.hovered || autoHideTimer.running)))
+          barWindow.hoverExpanded = false
         if (barWindow.keyVisited) { barWindow.keyExpanded = false; barWindow.keyVisited = false }
         if (barWindow.pinned && !barWindow.panelOpen) barWindow.showPinnedView()
       }

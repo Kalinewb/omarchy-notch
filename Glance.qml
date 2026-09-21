@@ -20,6 +20,10 @@ Item {
   property string dateFormat: "ddd d MMM"
   property int mediaMaxWidth: 240
   property int spacing: 14
+  // Whether the equaliser may dance here. The bar says no for the resting
+  // glance, which is on screen the whole time nobody is touching the notch;
+  // see the bars below.
+  property bool animate: true
   // Fed by the bar, so a simulated battery shows here too. -1: no battery.
   property int batteryPercent: -1
   property bool batteryCharging: false
@@ -212,8 +216,17 @@ Item {
           font.pixelSize: root.fontSize
         }
 
-        // Three bars that stand still when paused -- and that stop entirely
-        // when nobody can see them.
+        // Three bars that stand still when paused -- and when nobody is
+        // looking.
+        //
+        // Measured on a resting notch with the media in its glance: 10.85 % of
+        // a core with something playing, 2.00 % with it paused, same state,
+        // same screen. Three 2 px bars are not expensive to draw; what costs
+        // is that anything moving at all repaints the notch's surface at 60 Hz
+        // for as long as it moves, and the compositor composites every one of
+        // those frames. A notch nobody is touching has to cost nothing, so at
+        // rest the bars hold a still equaliser shape -- which still reads as
+        // playing -- and they dance when the notch is hovered, peeked or open.
         //
         // Nine Glances exist at once: the resting one, the peek, the hover
         // row, the expanded row, the clock and battery views, the activity
@@ -236,15 +249,25 @@ Item {
           Repeater {
             model: 3
             Rectangle {
+              id: bar
               required property int index
+              // The shape they hold when they are not dancing: uneven, so it
+              // reads as an equaliser standing still rather than as three
+              // bars nobody finished.
+              readonly property var restLevels: [0.45, 0.9, 0.6]
+              readonly property bool dancing: root.playing && root.animate
+                && root.visible && root.opacity > 0
               width: 2
               radius: 1
               color: root.foreground
               anchors.verticalCenter: parent.verticalCenter
-              height: root.playing ? 4 + (root.fontSize - 4) * level : 3
+              // Off the animated `level` only while it is animating: a binding
+              // that reads it at rest would be re-evaluated for a value that
+              // never changes, and the height would jump when it stopped.
+              height: root.playing ? 4 + (root.fontSize - 4) * (dancing ? level : restLevels[index]) : 3
               property real level: 0.5
               SequentialAnimation on level {
-                running: root.playing && root.visible && root.opacity > 0
+                running: bar.dancing
                 loops: Animation.Infinite
                 NumberAnimation { to: 1; duration: 260 + index * 90; easing.type: Easing.InOutSine }
                 NumberAnimation { to: 0.2; duration: 300 + index * 70; easing.type: Easing.InOutSine }

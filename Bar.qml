@@ -4115,6 +4115,11 @@ Item {
         Glance {
           player: root.mediaPlayer
           id: compactGlance
+          // The one glance that is on screen while nobody is touching the
+          // notch, so its equaliser only dances under the pointer. Everywhere
+          // else -- a peek, the hover row, an open view -- you are already
+          // looking, and the motion is worth a frame.
+          animate: islandHover.hovered
           x: (content.width - width) / 2
           width: implicitWidth
           height: root.notchCompactHeight

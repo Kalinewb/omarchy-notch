@@ -4221,6 +4221,12 @@ Item {
             Glance {
               player: root.mediaPlayer
               id: hoverGlance
+              // On screen only in the hover view. `visible` alone would do it
+              // here (the wrapper above is hidden otherwise), but the row this
+              // sits in hides by opacity, and opacity is NOT inherited the way
+              // visible is -- so every glance in the row says outright when it
+              // can be seen. See expandedGlance.
+              animate: widgetRow.opacity > 0 && barWindow.view === "hover"
               width: implicitWidth
               height: parent.height
               items: root.notchHoverItems
@@ -4247,6 +4253,14 @@ Item {
           Glance {
             player: root.mediaPlayer
             id: expandedGlance
+            // The row hides by opacity, and an item inside a parent with
+            // opacity 0 still reports `visible: true` and an opacity of its
+            // own: transparent is not hidden. So this glance cannot tell from
+            // its own properties that nobody can see it, and its equaliser
+            // danced whenever anything was playing -- for every notch, at
+            // rest, because `expanded` has media in it by default. 6.7 % of a
+            // core to animate something drawn at zero opacity (dev/perf.sh).
+            animate: widgetRow.opacity > 0
             anchors.verticalCenter: parent.verticalCenter
             // Hidden while it has nothing to show, so the row has no empty gap.
             // Whether it has anything is read from a copy outside the row: a

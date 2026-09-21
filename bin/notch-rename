@@ -19,6 +19,8 @@
 #   the companion     plugins/graveklar.notch-menu -> removed; the new notch
 #                                                     installs its own
 #   the bar           shell.json bar.id            -> kalinewb.notch
+#   the layout        shell.json bar.layout.*      -> the companion's new id,
+#                                                     which the menu button IS
 #   the state         state/graveklar.notch/       -> state/kalinewb.notch/
 #                     (Setup's snapshots and the install backups live here; not
 #                     moving them makes every snapshot unrestorable, which is
@@ -56,8 +58,10 @@ command -v jq >/dev/null || die "jq is needed to rewrite shell.json"
 
 # --- what is there ---------------------------------------------------------------
 
-[[ -d $PLUGINS/$OLD_ID ]] || say "no $OLD_ID checkout in $PLUGINS (already renamed?)"
-[[ -d $PLUGINS/$NEW_ID ]] && die "$NEW_ID is already there; move or remove it first"
+if [[ -d $PLUGINS/$OLD_ID && -d $PLUGINS/$NEW_ID ]]; then
+  die "both $OLD_ID and $NEW_ID are in $PLUGINS; sort that out by hand first"
+fi
+[[ -d $PLUGINS/$OLD_ID ]] || say "no $OLD_ID checkout in $PLUGINS; checking the rest anyway"
 
 if [[ -d $PLUGINS/$OLD_ID ]]; then
   # A checkout with uncommitted work is somebody's working copy, not an install.
@@ -86,6 +90,26 @@ elif [[ $current_bar == "$NEW_ID" ]]; then
   say "shell.json already says $NEW_ID"
 else
   say "shell.json bar.id is '$current_bar' -- not this notch, left alone"
+fi
+
+# --- the layout ------------------------------------------------------------------
+#
+# Turning the menu companion on swaps the bar's menu button for the companion's
+# identical one, in place -- so the companion's id is sitting in bar.layout. The
+# companion is renamed with everything else, and a layout still naming the old
+# one is a widget Omarchy cannot draw: Setup reports it as
+# `layout-missing-plugin`, and the menu button is simply gone from the bar.
+if [[ -f $SHELL_JSON ]] && grep -q "$OLD_COMPANION" "$SHELL_JSON"; then
+  would "rename $OLD_COMPANION to $NEW_COMPANION in the bar layout"
+  if ((APPLY)); then
+    tmp=$(mktemp)
+    jq --arg old "$OLD_COMPANION" --arg new "$NEW_COMPANION" \
+      '(.bar.layout | .. | objects | select(.id? == $old) | .id) = $new' "$SHELL_JSON" >"$tmp"
+    jq -e . "$tmp" >/dev/null || { rm -f "$tmp"; die "rewrite produced invalid JSON; shell.json untouched"; }
+    [[ -f $SHELL_JSON.before-rename ]] || cp "$SHELL_JSON" "$SHELL_JSON.before-rename"
+    mv "$tmp" "$SHELL_JSON"
+    say "the bar layout now names $NEW_COMPANION"
+  fi
 fi
 
 # --- the state -------------------------------------------------------------------

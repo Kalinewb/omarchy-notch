@@ -10,6 +10,7 @@ import qs.Ui
 import "BarModel.js" as BarModel
 import "spring.js" as Spring
 import "contract.js" as Contract
+import "osd-model.js" as OsdModel
 import "menu"
 import "plugins"
 import "plugins/PluginsModel.js" as PluginsModel
@@ -1980,6 +1981,22 @@ Item {
     return window.openHosted(item)
   }
 
+  // Turn Omarchy's OSD payload into the state its own model would produce --
+  // the same glyphs, the same "40%", the same duration -- and show it on the
+  // focused notch. `osd-model.js` is Omarchy's file, vendored.
+  function showOsd(payloadJson) {
+    var p = null
+    try { p = JSON.parse(String(payloadJson || "{}")) } catch (e) { return "declined:bad-payload" }
+    if (!p || typeof p !== "object") return "declined:bad-payload"
+    var state = OsdModel.stateForShow(p.icon || "", p.message || "",
+      p.value === undefined ? "" : String(p.value),
+      p.max === undefined ? "100" : String(p.max),
+      p.progressText || "", p.duration === undefined ? "1200" : String(p.duration))
+    var window = focusedNotchWindow() || notchWindows[0]
+    if (!window) return "declined:no-notch"
+    return window.showOsd(state)
+  }
+
   function releaseHostedPanel() {
     var windows = notchWindows
     for (var i = 0; i < windows.length; i++) if (windows[i].hostedOpen) windows[i].hostedOpen = false
@@ -2637,6 +2654,20 @@ Item {
       return w ? w.toggleState() : "no notch"
     }
 
+    // Omarchy's OSD, in the notch. The payload is Omarchy's own, passed
+    // through by the companion: {icon, message, value, max, progressText,
+    // duration}. Answers "shown" or "declined:<reason>", and the companion
+    // shows Omarchy's own card on anything but "shown".
+    function osd(payloadJson: string): string {
+      return root.showOsd(payloadJson)
+    }
+
+    function osdClose(): string {
+      var windows = root.notchWindows
+      for (var i = 0; i < windows.length; i++) windows[i].hideOsd()
+      return "closed"
+    }
+
     // One step back, the same as pressing the strip at the top centre.
     // Answers "back" or "closed".
     function back(): string {
@@ -3014,8 +3045,10 @@ Item {
     readonly property bool activityPresent: !root.barHidden && activityLine !== null
     // A notification must never be silently missed: one arriving while the
     // notch is tucked into the edge brings it back out on the existing reveal.
-    readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking && !noticeShown && !activityPresent
-    readonly property string notchState: root.barHidden || autoHidden ? "hidden" : expanded ? "expanded" : noticeShown ? "notice" : activityPresent ? "activity" : peeking ? "peek" : "compact"
+    readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking && !noticeShown
+      && !activityPresent && !osdShown
+    readonly property string notchState: root.barHidden || autoHidden ? "hidden" : expanded ? "expanded" : noticeShown ? "notice"
+      : osdShown ? "osd" : activityPresent ? "activity" : peeking ? "peek" : "compact"
 
     function collapseNow() {
       expandTimer.stop()
@@ -3415,6 +3448,40 @@ Item {
       // never changes under the shrinking notch (NotchPlugins.qml).
     }
 
+    // --- the on-screen display ------------------------------------------------
+    //
+    // Omarchy's OSD, routed here by the companion (OsdCompanion.qml). It is a
+    // transient like a peek -- the notch widens around one row and shrinks
+    // back -- but it outranks one: an OSD answers a key the user just pressed,
+    // where a peek is the notch volunteering something.
+    property bool osdShown: false
+    property var osdState: null
+
+    // Show one. Answers "shown", or why not -- the companion falls back to
+    // Omarchy's own OSD on anything else, so a decline is never a key press
+    // that did nothing.
+    function showOsd(state) {
+      if (!state) return "declined:no-payload"
+      if (root.barHidden) return "declined:hidden"
+      // A panel is what the user is looking at, and an OSD over it would cover
+      // the thing they opened. Omarchy's own card is the better answer here.
+      if (panelOpen) return "declined:panel-open"
+      osdState = state
+      osdShown = true
+      peeking = false
+      if (Number(state.duration) > 0) osdTimer.interval = Number(state.duration)
+      osdTimer.restart()
+      return "shown"
+    }
+
+    function hideOsd() { osdShown = false; osdTimer.stop() }
+
+    Timer {
+      id: osdTimer
+      interval: 1200
+      onTriggered: barWindow.osdShown = false
+    }
+
     function startPeek(kind) {
       if (expanded) return
       peekKind = kind === "battery" ? "battery" : "media"
@@ -3602,6 +3669,8 @@ Item {
     readonly property real compactWidth: Math.max(root.notchCompactWidth,
       compactGlance.empty ? 0 : compactGlance.implicitWidth + 2 * root.notchSidePadding)
     readonly property real peekWidth: Math.max(compactWidth, peekGlance.implicitWidth + 2 * root.notchSidePadding)
+    readonly property real osdWidth: Math.max(compactWidth,
+      Math.min(560, osdRow.implicitWidth + 2 * root.notchSidePadding))
     readonly property real activityWidth: Math.max(compactWidth,
       Math.min(560, activityGlance.implicitWidth + 2 * root.notchSidePadding))
     // A notification grows the notch DOWN for its body, the way a panel does:
@@ -3640,6 +3709,7 @@ Item {
 
     readonly property real targetWidth: Math.min(maxBarWidth,
       notchState === "expanded" ? expandedWidth : notchState === "notice" ? noticeWidth
+        : notchState === "osd" ? osdWidth
         : notchState === "activity" ? activityWidth : notchState === "peek" ? peekWidth : compactWidth)
     // Every view but the settings and the menu is one row at the resting
     // height; those grow the notch down, top edge still on the screen edge.
@@ -4220,10 +4290,24 @@ Item {
       Item {
         id: content
         width: Math.max(barWindow.rowWidth, barWindow.peekWidth, barWindow.clockWidth,
-                        barWindow.batteryWidth)
+                        barWindow.batteryWidth, barWindow.osdWidth)
         height: root.notchCompactHeight
         x: (island.barWidth - width) / 2
         y: 0
+
+        // Omarchy's on-screen display, in the notch: one row, the notch widens
+        // around it and shrinks back (NotchOsd.qml).
+        NotchOsd {
+          id: osdRow
+          bar: root
+          osd: barWindow.osdState
+          x: (content.width - width) / 2
+          width: implicitWidth
+          height: root.notchCompactHeight
+          opacity: barWindow.notchState === "osd" ? 1 : 0
+          visible: opacity > 0
+          Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        }
 
         Glance {
           player: root.mediaPlayer

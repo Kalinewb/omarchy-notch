@@ -21,6 +21,20 @@ Contract version **1**. `graveklar.notch` accepts contracts 1 to 1.
 
 ---
 
+## 0. Which of these are you?
+
+Three different things get called "integrating with the notch", and only one of
+them is this contract. Find your row first.
+
+| you have | what happens | where to read |
+|---|---|---|
+| an ordinary bar widget with a pop-out panel (a `KeyboardPanel`) | the host draws that panel inside itself, **with no change to your plugin** | §1's *You may not need any of this*, then §11 for what your own code sees while it is hosted |
+| UI that is not a pop-out panel, or you want activities, `available`, or a layout meant for the notch | you declare an integration and write a panel for it | all of this document |
+| a plugin that wants to reach another plugin inside the shell | there is no general answer, and the notch's menu bridge is not one — §12 | §12 |
+| a plugin you want the notch to be able to **install** | the catalogue, which is not open to everyone — §13 | §13 |
+
+---
+
 ## 1. Declare it
 
 Add two things to your `manifest.json`:
@@ -412,3 +426,130 @@ works with no notch at all.
 | contract | notch release | changes |
 |---|---|---|
 | 1 | 0.1.0 | panels, activity claims, the heartbeat |
+
+---
+
+## 11. The unmodified path, in full
+
+This is the path almost every plugin is on, including the two the notch knows
+best (Face ID and Profiles) and every Omarchy panel it draws. It has no manifest
+key and nothing to opt into: the host recognises the shape, takes the panel, and
+gives it back. Written down here because it is a contract whether or not anyone
+wrote it down, and because the alternative is reading the host's source.
+
+### What is recognised
+
+Your widget's root must have, in its own `data` or one `Loader` deep and no
+deeper:
+
+- a **`KeyboardPanel`** with something in its `contentItem`, and
+- a **`PanelController`** — the object holding the open state.
+
+One level of Loader, and no further: a panel behind two of them is as likely to
+belong to something else as to you. Both shapes in the wild work — a widget that
+*is* its `Panel` (Omarchy's audio), and a `BarWidget` that loads `Panel.qml`
+through a `Loader` (its clock, weather).
+
+Declined, in these words, if not: `no widget`, `no panel`, `panel has nothing in
+it`, `no panel controller`. The user sees the reason in Settings → Integrations.
+
+### What the host does, in order
+
+1. Takes **every** item in your panel's `contentItem` — not just the first; a
+   panel with dialogs anchored over its column travels whole — recording each
+   one's parent and size first.
+2. Parents them into its own slot. An item that filled its parent is re-filled
+   to the slot; one that did not is given the size it had, because it was being
+   sized by the card it just left.
+3. Breaks the binding that maps your window (`open: root.opened` on every panel
+   built on Omarchy's `Ui/Panel`) and sets it false, **then** opens your
+   controller. In that order, or your window maps for the frame between the two.
+4. On close: tells your controller it closed — while the binding is still broken,
+   so you pack up with nothing on screen — then puts the items back where they
+   were, at the size they were, and restores the binding.
+
+### What you can rely on
+
+Everything in §1's table: `opened` is true, your `focusTarget` has the keyboard,
+your `close()` closes the host's copy, and you are told it closed before anything
+is handed back. Your bindings, your model and your layout survive the move —
+that is proven rather than assumed (`dev/harness/reparent-probe.qml` moves
+Omarchy's real audio panel into a foreign window and back, and `dev/hosting.sh`
+keeps it proven against the real widget, a fixture that counts what it is told,
+and a widget whose panel is behind a Loader).
+
+### What you must not assume
+
+- **Your window is not there.** Anything keyed to it — its screen, its geometry,
+  its `visible`, an animation you run on it — is not running.
+- **Your colours are not yours.** `bar.foreground`, `background` and `urgent`
+  are the host's for as long as it holds you, and anything you read from
+  Omarchy's `Color`/`Style` singletons instead is drawn through the host's own
+  transform (see DESIGN-PHILOSOPHY.md: hue out, lightness back). Neutral greys
+  are untouched; a saturated accent is not.
+- **Nothing moves where it cannot be seen.** A looping animation inside a panel
+  that is drawn at zero opacity still repaints the host's surface every frame.
+  Gate yours on being visible. `dev/perf.sh` is the measurement.
+- **You may be given back at any moment** — the user switching you off, the host
+  going away, another panel opening. Handle `close()` as a real close.
+
+### Turning it off
+
+The user owns it: Settings → Integrations, per widget, off by default. Switching
+it off gives you your own window back at once, with no reload. Nothing about
+your plugin is modified, ever — no file is touched and no property of yours is
+rewritten except the one binding above, which is put back.
+
+## 12. The menu bridge is not an extension point
+
+The notch has a bridge (`bridge/NotchMenuBridge.qml`, a singleton both sides
+resolve through the same `qmldir`) that lets one specific companion plugin —
+`graveklar.notch-menu`, which Omarchy routes every `omarchy.menu` call to —
+reach the notch inside one shell process. Omarchy gives plugins no way to reach
+each other, so this looks like the general answer to that, and it is not:
+
+- **It is deliberately narrow.** `target` is not the notch's root. It is
+  `MenuCompanion.qml`'s `menuApi`, which can open the menu, close it, refresh it
+  and answer whether it is open. Anything that can load the connector could
+  otherwise reach the notch's shell facade and its settings.
+- **It is versioned and refused on mismatch.** `apiVersion` is bumped when
+  `menuApi`'s shape changes; the companion refuses a mismatch and uses Omarchy's
+  own menu instead. Singleton code is cached for the life of the shell process,
+  so a change needs a shell restart — `install.sh` does one.
+- **It is private.** Not because the mechanism is secret (it is thirty lines and
+  in this repository), but because a second consumer would make `menuApi` a
+  public surface that has to keep its shape, and there is no version of that we
+  have thought through.
+
+If you need to reach another plugin, the supported routes are the ones Omarchy
+already has: your own IPC target (`omarchy-shell <your-id> …`), a file both
+sides watch, or — for the host specifically — `surfaceHost` (§3) and
+`SurfaceLink.qml` (§6) from outside the shell.
+
+## 13. The catalogue: what the notch can install
+
+Setup → Plugins installs from `plugins/catalogue.json` and nothing else. An id
+that is not in it cannot be installed from the notch, and two are refused by
+name. That is a deliberately short list, not an oversight, and the rules matter
+more than the membership:
+
+- **Pinned URL.** Every entry names the exact GitHub URL it may be installed
+  from. A repository that has moved is a new entry, reviewed again.
+- **Checked three times.** The card asks GitHub for the exact commit and that
+  commit's manifest id and kinds before it offers to install; the job checks the
+  commit, id and kinds again before anything lands in the plugins folder; and
+  upstream clones once more afterwards, so the result is verified too. A folder
+  that fails the last check is moved aside to `plugins/.notch-refused.<name>.<ms>`,
+  which Omarchy ignores, and the notice names it for deleting.
+- **A bar is refused.** A plugin whose kinds have become `bar` would replace the
+  notch itself.
+- **Nothing here asks for your password.** Setup and removal happen in each
+  plugin's own panel. A plugin whose install needs root does not fit the page as
+  it stands — that is an open question, not a gap to route around.
+- **No IPC call installs anything.** `notch plugins open|close|status|refresh`
+  is the whole surface; there is no verb that installs, updates, enables, sets
+  up or removes.
+
+If you want a plugin listed, the honest answer today is that the list is
+maintained by hand, in this repository, by people who have read the plugin. What
+a general answer would need is written up in INTEGRATION-SCOPE.md §3.

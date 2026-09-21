@@ -3147,6 +3147,9 @@ Item {
       integrationOpen = false
       view = "hosted"
       hostedOpen = true
+      // Once it has been laid out where it landed: the plugin's own focus call
+      // ran on a window that never maps, so the notch makes the same one here.
+      Qt.callLater(function () { if (barWindow.hostedOpen) root.hosting.focusContent() })
       return "opened"
     }
 
@@ -5049,14 +5052,26 @@ Item {
     // and takes the panel the moment it goes up -- in the same turn, because
     // `open` is what maps the plugin's window, and a Timer would show it for a
     // frame. This also catches a click the notch's own handler did not win.
+    //
+    // The close is watched too, and it is the same state read the other way: a
+    // hosted panel's controller is open for as long as the notch draws it
+    // (PanelHosting.take), so the plugin closing itself -- its Escape, its own
+    // `close()`, Profiles' idle timeout, `omarchy-shell <plugin> close` -- is
+    // the plugin asking for the notch's copy to go down with it.
     Connections {
       target: root.hostsPanelOf(slot.moduleName) ? slot.panelController : null
       enabled: !!target
       ignoreUnknownSignals: true
       function onOpenChanged() {
-        if (!target || target.open !== true) return
-        if (root.hosting.widget === slot.activeItem && root.hosting.active) { target.open = false; return }
-        if (root.hostPanel(slot.activeItem, root.slotScreenName(slot)) === "opened") target.open = false
+        if (!target) return
+        var ours = root.hosting.active && root.hosting.widget === slot.activeItem
+        if (target.open !== true) {
+          if (ours) root.releaseHostedPanel()
+          return
+        }
+        // Already ours: this is hosting's own open, not a summons.
+        if (ours) return
+        root.hostPanel(slot.activeItem, root.slotScreenName(slot))
       }
     }
 

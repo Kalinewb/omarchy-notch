@@ -149,10 +149,18 @@ that came from outside the shell).
 
 **A plugin doesn't have to know about the notch.** Most Omarchy bar widgets keep
 their pop-out panel in a `KeyboardPanel`, and the notch can draw that panel
-inside itself without the plugin changing anything: it takes the panel's content
-while it is open, grows to the size the plugin asked its own card for — on the
-notch's spring, fading on the notch's timings — and gives it back untouched when
-it closes. The plugin's own window never maps. Audio, Bluetooth, Wifi, the
+inside itself without the plugin changing anything: it **opens** the panel, takes
+its content, grows to the size the plugin asked its own card for — on the notch's
+spring, fading on the notch's timings — and gives it back untouched when it
+closes. The plugin's own window never maps: it is held down at the one binding
+that maps it, so the plugin's own state is left alone and simply reads open. That
+matters, because a panel does its work when it opens — Omarchy's Wifi panel
+starts its only scan there, and a panel that was drawn without being opened
+showed a list with no networks in it. The keyboard goes to the target the plugin
+named, so Escape, the arrow keys and type-to-search work where it lands. When the
+notch gives the panel back the plugin is told it closed, and anything it runs
+while open stops; when the plugin closes its own panel, the notch's copy goes
+down with it. Audio, Bluetooth, Wifi, the
 clock, the weather, the power and monitor panels, Profiles, Face ID, Touchpad
 Comfortable, Power Manager and System Monitor all work this way today, unmodified.
 

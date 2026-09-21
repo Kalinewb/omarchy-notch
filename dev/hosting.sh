@@ -73,6 +73,12 @@ check "6. …at the host's size" "460x420" \
   "$(field "$after" '.contentSize.width')x$(field "$after" '.contentSize.height')"
 check "7. …and the plugin's own window never mapped" "false false" \
   "$(field "$after" '.ownWindowVisible') $(field "$after" '.ownPanelOpen')"
+# The window is held down at the one binding that maps it, not by telling the
+# plugin its panel is shut. A panel does its work when it opens -- the network
+# panel's only wifi scan starts there -- so a panel that is never told is drawn
+# and inert, which is a wifi list with no networks in it.
+check "7a. …while the plugin itself is told its panel is open" "true" \
+  "$(field "$after" '.told')"
 
 texts=$(ipc texts)
 echo "  ${DIM}live text: $texts${RESET}"
@@ -93,6 +99,10 @@ check "12. the notch's slot is empty again" "false 0" \
   "$(field "$back" '.hosting') $(field "$back" '.slotChildren')"
 check "13. …and the panel is its own size again, not the notch's" "460" \
   "$(field "$back" '.contentSize.width // 460')"
+check "13a. …the plugin is told it closed, so what it runs while open stops" "false" \
+  "$(field "$back" '.told')"
+check "13b. …and its window is still down, because the close came first" "false" \
+  "$(field "$back" '.ownWindowVisible')"
 
 ipc openOwn >/dev/null; sleep 0.8
 own=$(ipc state)
@@ -103,6 +113,55 @@ check "15. …and is still live after the round trip" "true" "$(jq -r 'length >=
 ipc closeOwn >/dev/null; sleep 0.4
 
 check "16. giving back when nothing is hosted does nothing and says nothing" "" "$(ipc giveBack)"
+
+# --- what the panel is told, as counts ---------------------------------------------
+#
+# No real panel can report how many times it was opened, so this is the same
+# shape built to say so: Omarchy's Panel base, a KeyboardPanel mapped by
+# `open: opened`, a PanelKeyCatcher inside it, and counters. What it measures is
+# the thing the notch got wrong -- a panel drawn on the notch's surface while
+# its own state said "shut", so nothing it runs on open ever ran.
+
+ipc quit >/dev/null 2>&1; wait "$qs_pid" 2>/dev/null; qs_pid=""
+OMARCHY_SHELL_PATH="$SHELL_PATH/shell" HOSTING_WIDGET="$REPO/dev/fixtures/hosting/PanelWidget.qml" \
+  quickshell -p "$root" -n >>"$sb/qs.log" 2>&1 &
+qs_pid=$!
+for _ in $(seq 1 60); do sleep 0.1; [[ $(ipc ready) == yes ]] && break; done
+sleep 0.4
+
+check "16a. the fixture loads and is hostable" "yes " "$(ipc ready) $(ipc hostable)"
+f=$(ipc state)
+check "16b. nothing has opened it, and nothing it runs while open is running" "0 0 false" \
+  "$(field "$f" '.fixture.opens') $(field "$f" '.fixture.ticks') $(field "$f" '.fixture.workRan')"
+
+ipc take >/dev/null; sleep 0.6
+f=$(ipc state)
+echo "  ${DIM}$(jq -c '{told, ownWindowVisible, fixture}' <<<"$f")${RESET}"
+check "16c. taking it opens it exactly once" "1 0 true" \
+  "$(field "$f" '.fixture.opens') $(field "$f" '.fixture.closes') $(field "$f" '.fixture.workRan')"
+check "16d. …its open-time work ran, and what it runs while open is running" "true" \
+  "$(field "$f" '.fixture.ticks >= 1')"
+check "16e. …with its own window still down" "false false" \
+  "$(field "$f" '.ownWindowVisible') $(field "$f" '.ownPanelOpen')"
+
+ticks_held=$(field "$f" '.fixture.ticks')
+ipc giveBack >/dev/null; sleep 0.6
+f=$(ipc state)
+check "16f. giving it back closes it exactly once" "1 1" \
+  "$(field "$f" '.fixture.opens') $(field "$f" '.fixture.closes')"
+stopped=$(field "$f" '.fixture.ticks')
+sleep 0.5
+check "16g. …and what it ran while open has stopped" "true" \
+  "$([[ $(ipc state | jq -r '.fixture.ticks') -eq $stopped && $stopped -ge $ticks_held ]] && echo true || echo false)"
+
+# The binding that maps the plugin's own window was broken to hold it down, so
+# the round trip has to put it back -- or the widget's panel never opens again
+# in its own window, under this bar or any other.
+ipc openOwn >/dev/null; sleep 0.6
+f=$(ipc state)
+check "16h. its own window opens again afterwards: the binding was put back, not left broken" "true true 2" \
+  "$(field "$f" '.ownPanelOpen') $(field "$f" '.ownWindowVisible') $(field "$f" '.fixture.opens')"
+ipc closeOwn >/dev/null; sleep 0.4
 
 # --- a widget that cannot be hosted ------------------------------------------------
 
@@ -185,6 +244,8 @@ check "23. it is on the notch's surface, in the notch's view" "expanded hosted t
 # notch those are the notch's -- white on black -- not the theme's.
 check "23a. …painting with the notch's colours: text, background and urgent are the notch's, not the theme's" "true true true" \
   "$(field "$g" '.colours | "\(.widgets.foreground == .text) \(.widgets.background == .notch) \(.urgent == .text)"')"
+check "23b. …and the plugin is told it is open, with the keyboard on the target it named" "true true" \
+  "$(field "$g" '.hosted.report.told') $(field "$g" '.hosted.report.focused')"
 check "24. every item of the panel came, not just the first" "true" \
   "$(field "$g" '.hosted.items >= 1')"
 check "25. the notch grew to the size the PLUGIN asked its own card for" "true" \
@@ -200,14 +261,27 @@ samples=$(grep -c . "$sb/opening")
 target=$(field "$g" '.hosted.height')
 peak=$(sort -g <<<"$heights" | tail -1)
 settled=$(notch geometry | jq -r '.bar.height')
-echo "  ${DIM}$samples height samples while opening: $(echo "$heights" | head -8 | tr '\n' ' ')…  peak $peak, target $target${RESET}"
+echo "  ${DIM}$samples samples while opening (height/target): $(awk '{printf "%.0f/%.0f ", $1, $2}' "$sb/opening" | head -c 120)…  target $target${RESET}"
 check "28. it grew rather than jumped: more than one height seen on the way" "true" \
   "$([[ $(sort -u <<<"$heights" | grep -c .) -gt 1 ]] && echo true || echo false)"
 # The notch's spring overshoots once by 3.8 % (damping 0.72, spring.js) and
 # settles. So a peak slightly above the target is the design, and a peak well
 # above it, or a resting height that is not the target, is not.
-spring=$(awk -v p="$peak" -v t="$target" -v s="$settled" 'BEGIN {
-  printf "%s %s", (p <= t * 1.05 ? "true" : "false"), ((s - t) < 0.5 && (t - s) < 0.5 ? "true" : "false") }')
+#
+# Measured against the LARGEST target seen on the way, not the one it ends on.
+# The size is a live binding to what the plugin asks for, and a panel that is
+# now genuinely open fills in while the notch is still moving: Omarchy's audio
+# panel refreshes its device lists in `onOpenedChanged`, so it asks for 519 px
+# and then, a frame or two later, for 443. The notch chasing a target that
+# moved under it is the contract working. What would still be the spring going
+# wrong is rising more than its one overshoot above anything it was ever asked
+# for, or resting anywhere but the final ask. With a panel whose size does not
+# move, this is the same check it always was.
+spring=$(awk -v s="$settled" -v t="$target" '
+  $1 > peak { peak = $1 }
+  $2 > asked { asked = $2 }
+  END { printf "%s %s", (asked > 0 && peak <= asked * 1.05 ? "true" : "false"),
+        ((s - t) < 0.5 && (t - s) < 0.5 ? "true" : "false") }' "$sb/opening")
 check "29. it springs the way the notch springs: one small overshoot, then rest at the target" "true true" "$spring"
 
 # The guest's own controls keep their own shapes -- Omarchy's toggle is a pill,
@@ -310,9 +384,20 @@ check "44. the plugin's own summon now opens inside the notch" "expanded hosted 
 check "45. …and the plugin's own window was put straight back down" "false false" \
   "$(jq -r '.visible' <<<"$own") $(jq -r '.open' <<<"$own")"
 
+# The other direction of the same state: a hosted panel's controller is open
+# for as long as the notch draws it, so the plugin closing itself -- its own
+# Escape, a timeout, `omarchy-shell <plugin> close` -- has to take the notch's
+# copy down with it. Before, the notch held a panel whose plugin had gone.
+harness dismiss >/dev/null; sleep 1.2
+check "45a. the plugin closing its own panel closes the notch's copy of it" "compact false 0" \
+  "$(notch geometry | jq -r '.state') $(notch geometry | jq -r '.hosted.open') $(notch geometry | jq -r '.hosted.items')"
+
+harness summon >/dev/null; sleep 1.0
 notch releasePanel >/dev/null; sleep 1.0
 check "46. releasing it gives the panel back" "false 0" \
   "$(notch geometry | jq -r '.hosted.open') $(notch geometry | jq -r '.hosted.items')"
+check "46a. …and the plugin was told, so nothing of it is left running" "false" \
+  "$(notch hosting | jq -r '.told')"
 
 # Setup has to ask, or nobody finds the switch.
 harness setNotch '{"batteryPeek":false,"bottomRadius":10}' >/dev/null; sleep 0.8

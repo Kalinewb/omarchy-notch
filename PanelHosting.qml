@@ -24,6 +24,7 @@ QtObject {
   // whether this had to give it one.
   property var widget: null
   property var panel: null
+  property var controller: null
   property var taken: []
   property bool hosting_: false
 
@@ -118,6 +119,7 @@ QtObject {
 
     hosting.widget = item
     hosting.panel = found
+    hosting.controller = controllerOf(item)
     hosting.taken = records
 
     for (var j = 0; j < records.length; j++) {
@@ -126,12 +128,51 @@ QtObject {
       if (record.filled) record.item.anchors.fill = slot
     }
     hosting.hosting_ = true
+
+    // Tell the plugin its panel is open -- and keep its own window down by
+    // breaking the binding that maps it, not by lying about its state.
+    //
+    // A panel does its work when it opens: Omarchy's network panel starts its
+    // ONLY wifi scan there (`onOpenedChanged → refresh(true)`) and runs its
+    // throughput, ping and band timers on `running: opened`; Face re-reads its
+    // watched files; Profiles goes back to its picker. Taking the content
+    // without ever opening the panel drew all of them inert -- a wifi list with
+    // no networks in it, because nothing had asked the radio to look.
+    //
+    // Every panel built on Omarchy's `Ui/Panel` maps its window with
+    // `open: root.opened`, and `opened` IS `controller.open`. So the window is
+    // held down at that one binding, which giveBack() puts back; the plugin's
+    // own state is left alone and simply becomes true. Order matters: break the
+    // binding first, or the window maps for the frame between the two.
+    //
+    // `hosting_` is already true here, so the notch's own watcher on the
+    // controller sees a panel it is hosting rather than a summons to host.
+    found.open = false
+    if (hosting.controller) hosting.controller.open = true
     return ""
+  }
+
+  // Where the keyboard goes once the panel is in the notch.
+  //
+  // The plugin names its own target (`KeyboardPanel.focusTarget` -- usually a
+  // PanelKeyCatcher), and the panel's own focus call runs on the window that
+  // never maps. So the notch honours the same declaration on its own surface:
+  // without it a hosted panel has no keyboard at all, which is Escape, arrow
+  // keys and type-to-search gone.
+  readonly property var focusTarget: (panel && panel.focusTarget) ? panel.focusTarget : content
+
+  function focusContent() {
+    var target = focusTarget
+    if (!target || typeof target.forceActiveFocus !== "function") return false
+    target.forceActiveFocus()
+    return true
   }
 
   // Put it back exactly as it was found. Safe to call when nothing is hosted.
   function giveBack() {
     if (taken.length === 0) { reset(); return "" }
+    var heldController = hosting.controller
+    var heldPanel = hosting.panel
     for (var i = 0; i < taken.length; i++) {
       var record = taken[i]
       if (!record.item) continue
@@ -145,6 +186,18 @@ QtObject {
       record.item.parent = record.origin
     }
     reset()
+
+    // Closed before the window can map again: the binding is still broken
+    // here, so the plugin packs up (the wifi scanner released, its timers
+    // stopped, its own close() run) with nothing on screen. Then the binding
+    // goes back, evaluating to the false it now holds.
+    //
+    // Cleared first, so the notch's watcher on the controller reads this close
+    // as the plugin's panel going down rather than as a panel to let go of.
+    if (heldController) {
+      heldController.open = false
+      if (heldPanel) heldPanel.open = Qt.binding(function() { return heldController.open === true })
+    }
     return ""
   }
 
@@ -152,6 +205,7 @@ QtObject {
     hosting.hosting_ = false
     hosting.taken = []
     hosting.panel = null
+    hosting.controller = null
     hosting.widget = null
   }
 
@@ -173,6 +227,11 @@ QtObject {
       opted: opted,
       widget: widget ? String(widget.moduleName || "") : "",
       items: taken.length,
+      // What the plugin itself believes: open while the notch holds it, and
+      // its own window still down.
+      told: !!controller && controller.open === true,
+      ownWindow: !!panel && panel.open === true,
+      focused: !!focusTarget && focusTarget.activeFocus === true,
       wanted: { width: Math.round(wantedWidth), height: Math.round(wantedHeight) },
       contentSize: content ? { width: Math.round(content.width), height: Math.round(content.height) } : null
     }

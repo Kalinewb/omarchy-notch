@@ -75,10 +75,24 @@ notch and never opens a window.
 
 If your plugin is an ordinary Omarchy bar widget with a pop-out panel — a
 `KeyboardPanel` holding your content — **the notch can already draw it inside
-itself, with no change to your plugin at all.** It takes your panel's content
-while the panel is open, grows to the size you asked your own card for, and
-gives it back exactly as it found it when it closes. Your own window never maps,
-so there is nothing for you to suppress.
+itself, with no change to your plugin at all.** It opens your panel, takes its
+content, grows to the size you asked your own card for, and gives it back exactly
+as it found it when it closes. Your own window never maps, so there is nothing
+for you to suppress.
+
+What that means for the code you have already written:
+
+| your code | while the notch is drawing it |
+|---|---|
+| `opened` / your `PanelController` | **true** — so `onOpenedChanged`, and anything on `running: opened`, runs exactly as it does in your own window |
+| `KeyboardPanel.open`, and the window it maps | false, and never mapped. The notch holds your window down at that one binding and puts it back afterwards |
+| `KeyboardPanel.focusTarget` | given the keyboard on the notch's surface, because your own window is not there to focus |
+| your `close()` (Escape, a timeout, your IPC) | closes the notch's copy too |
+| the notch closing the panel | your panel is told it closed first, so what you run while open stops before anything is given back |
+
+So a panel that does its work when it opens keeps working: Omarchy's Wifi panel
+starts its only scan in `onOpenedChanged`, and that is what fills the network
+list in the notch.
 
 That covers most widgets. Declare an integration when you want more than your
 panel in the notch:

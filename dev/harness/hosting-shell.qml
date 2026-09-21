@@ -90,6 +90,7 @@ ShellRoot {
     // plugin's own window is mapped.
     function state(): string {
       var panel = hosting.panelOf(widget.item)
+      var controller = hosting.controllerOf(widget.item)
       var body = hosting.content
       return JSON.stringify({
         hosting: hosting.active,
@@ -98,6 +99,15 @@ ShellRoot {
         contentSize: body ? { width: Math.round(body.width), height: Math.round(body.height) } : null,
         ownWindowVisible: panel ? panel.visible === true : false,
         ownPanelOpen: panel ? panel.open === true : false,
+        // What the plugin itself believes. A hosted panel is open -- that is
+        // what starts the work every panel does when it opens -- while the
+        // window above stays down.
+        told: controller ? controller.open === true : false,
+        // The fixture's own counters, when the widget under test is it.
+        fixture: (widget.item && widget.item.opens !== undefined)
+          ? { opens: widget.item.opens, closes: widget.item.closes,
+              ticks: widget.item.ticks, workRan: widget.item.workRan }
+          : null,
         report: hosting.report()
       })
     }

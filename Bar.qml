@@ -1368,6 +1368,10 @@ Item {
   // window of its own. Empty by default: nothing changes until it is asked for.
   readonly property var notchHostedPanels: notchItems("hostedPanels", []).map(function (id) { return canonicalWidgetId(id) })
   function hostsPanelOf(name) { return notchHostedPanels.indexOf(canonicalWidgetId(name)) !== -1 }
+  // A hosted panel's own colours, taken out while the notch draws it. The
+  // notch's own colours reach everything else it draws; this is the one guest
+  // that reads the theme itself (see hostedSlot).
+  readonly property bool notchHostedMono: notchSetting("hostedMono", true) !== false
   readonly property var notchEffectiveHidden: Contract.effectiveHidden(notchHiddenPlugins, notchPlugins.byId)
 
   // --- the plugin contract (contract.js) --------------------------------------
@@ -3770,6 +3774,9 @@ Item {
         hosted: { open: barWindow.hostedOpen, items: hostedSlot.children.length,
                   width: Number(barWindow.hostedWidth.toFixed(3)), height: Number(barWindow.hostedHeight.toFixed(3)),
                   opacity: Number(hostedHost.opacity.toFixed(3)),
+                  // The guest's hue taken out: the setting, and whether the
+                  // layer that does it is actually on the slot.
+                  mono: root.notchHostedMono, monoLayer: hostedSlot.layer.enabled,
                   report: root.hosting.report() },
         integration: { open: barWindow.integrationOpen, id: barWindow.integrationId, route: barWindow.integrationRoute,
                        loaded: integrationHost.item !== null,
@@ -4428,10 +4435,19 @@ Item {
 
             // The notch's own side padding, so a hosted panel sits in the
             // surface the way the notch's own panels do.
+            //
+            // And the one colour it cannot be handed: a hosted panel asks
+            // Omarchy's Color and Style singletons itself, so a theme's accent
+            // and a plugin's own hard-coded blue arrive on the notch's black
+            // whatever the notch tells it (DESIGN-PHILOSOPHY.md). The hue is
+            // taken out of what it draws instead, by lightness so a selected
+            // row keeps its presence. Off gives the guest its own colours back.
             Item {
               id: hostedSlot
               anchors.fill: parent
               anchors.margins: root.notchSidePadding
+              layer.enabled: root.notchHostedMono && barWindow.hostedOpen
+              layer.effect: ShaderEffect { fragmentShader: "shaders/mono.frag.qsb" }
             }
           }
 

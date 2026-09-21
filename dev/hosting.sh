@@ -246,6 +246,12 @@ check "23a. …painting with the notch's colours: text, background and urgent ar
   "$(field "$g" '.colours | "\(.widgets.foreground == .text) \(.widgets.background == .notch) \(.urgent == .text)"')"
 check "23b. …and the plugin is told it is open, with the keyboard on the target it named" "true true" \
   "$(field "$g" '.hosted.report.told') $(field "$g" '.hosted.report.focused')"
+# The guest is the one thing in the notch that reads the theme itself, so the
+# hue comes out of what it draws rather than being handed to it. dev/colours.sh
+# measures the shader; this is that it is on the slot at all, and only while
+# the notch is holding something.
+check "23c. …with its hue taken out, by default" "true true" \
+  "$(field "$g" '.hosted.mono') $(field "$g" '.hosted.monoLayer')"
 check "24. every item of the panel came, not just the first" "true" \
   "$(field "$g" '.hosted.items >= 1')"
 check "25. the notch grew to the size the PLUGIN asked its own card for" "true" \
@@ -309,6 +315,8 @@ g=$(notch geometry)
 check "32. closing gives the panel back and the notch rests" "compact false 0" \
   "$(field "$g" '.state') $(field "$g" '.hosted.open') $(field "$g" '.hosted.items')"
 check "33. …and the notch is holding nothing" "false" "$(notch hosting | jq -r '.active')"
+check "33b. …and nothing is being drawn through the mono layer" "false" \
+  "$(field "$g" '.hosted.monoLayer')"
 check "33a. …and the panel's colours are the theme's again, for its own window" "true true" \
   "$(field "$g" '.colours | "\(.widgets.foreground == .themeText) \(.widgets.background == .themeBarBackground)"')"
 

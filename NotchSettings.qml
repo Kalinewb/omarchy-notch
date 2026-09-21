@@ -590,6 +590,20 @@ Item {
           }
         }
 
+        // The one colour the notch cannot hand a guest. A hosted panel asks
+        // Omarchy's Color and Style itself, so its accent arrives on the
+        // notch's black whatever the notch says; the hue is taken out of what
+        // it draws instead. Off is for a panel whose colour is the point --
+        // a camera preview, artwork.
+        SettingRow {
+          visible: root.hostable.length > 0
+          label: "Drawn in the notch's colours"
+          Switch {
+            checked: root.bar ? root.bar.notchHostedMono : true
+            onToggled: root.set("hostedMono", !checked)
+          }
+        }
+
         Text {
           width: parent.width
           wrapMode: Text.WordWrap

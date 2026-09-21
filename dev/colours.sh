@@ -117,6 +117,55 @@ c=$(ipc geometry | jq -c .colours)
 check "foreground \"#FF8800\" is what the notch, its widgets and the glance paint with" "#FF8800 #FF8800 #FF8800" "$(jq -r '"\(.foreground) \(.widgets.barForeground) \(.glance)"' <<<"$c")"
 stop
 
+# --- the one guest that reads the theme itself ---------------------------------
+#
+# A hosted panel asks Omarchy's Color and Style singletons, not the notch, so
+# its accent arrives on the notch's black whatever the notch hands it: Power
+# Manager's blue toggle buttons, Catppuccin Latte's pinned #4c4f69. The notch
+# takes the hue out of what it draws (shaders/mono.frag). Rendered offscreen
+# over known colours, because "it looks grey now" is not a measurement.
+
+echo; echo "${BOLD}A hosted panel's hue${RESET}  ${DIM}shaders/mono.frag.qsb, offscreen${RESET}"
+ln -sfn "$REPO" "$root/notch" 2>/dev/null
+cp "$REPO/dev/harness/mono-pixels.qml" "$root/mono-pixels.qml"
+png="$root/mono.png"
+QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 \
+  timeout 60 qml6 "$root/mono-pixels.qml" -- "out=$png" >"$root/mono.log" 2>&1
+check "rendered to a PNG" "true" "$([[ -f $png ]] && echo true || echo false)"
+
+if [[ -f $png ]]; then
+  # <colour> <x> <expected grey>. The expected value is HSL lightness --
+  # (brightest + dimmest channel) / 2 -- which is what keeps a saturated blue
+  # from coming out nearly black the way Rec. 709 luminance would.
+  while read -r hex x want; do
+    got=$(magick "$png" -format "%[pixel:p{$x,20}]" info: | sed -n 's/.*(\([0-9]*\),\([0-9]*\),\([0-9]*\).*/\1 \2 \3/p')
+    read -r r g b <<<"$got"
+    grey=$([[ $r == "$g" && $g == "$b" ]] && echo grey || echo "hue($r,$g,$b)")
+    near=$([[ -n $r ]] && (( r >= want - 2 && r <= want + 2 )) && echo "$want" || echo "$r")
+    check "$hex comes out grey, at its own lightness" "grey $want" "$grey $near"
+  done <<'SWATCHES'
+#1E68F9 20 139
+#1C60E7 60 129
+#4C4F69 100 90
+#FF453A 140 156
+#30D158 180 128
+SWATCHES
+
+  # What must not move: the notch's own colours, and a 20 % white fill, which
+  # only stays 20 % if premultiplied alpha is divided out and put back.
+  for spec in "white:220:255" "black:260:0" "grey:300:128"; do
+    IFS=: read -r name x want <<<"$spec"
+    got=$(magick "$png" -format "%[pixel:p{$x,20}]" info: | sed -n 's/.*(\([0-9]*\).*/\1/p')
+    check "$name is unchanged" "$want" "$got"
+  done
+  check "a 20 % white fill keeps its colour and its alpha" "1" \
+    "$(magick "$png" -format '%[fx:abs(p{340,20}.r-1)<0.01 && abs(p{340,20}.a-0.2)<0.01]' info:)"
+  # The bottom row is the same colours with no layer over them: if the shader
+  # had quietly not run, every check above would pass on the original colours.
+  check "…and the shader is what did it: untouched, the blue is still blue" "false" \
+    "$(magick "$png" -format '%[fx:p{20,60}.r==p{20,60}.g && p{20,60}.g==p{20,60}.b]' info: | sed 's/^1$/true/; s/^0$/false/')"
+fi
+
 if grep -qE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log"; then
   check "no QML errors" "none" "$(grep -E 'TypeError|ReferenceError' "$root/qs.log" | head -1)"
 fi

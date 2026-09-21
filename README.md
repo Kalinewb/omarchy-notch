@@ -170,6 +170,16 @@ something isn't shown the reason is there in words. Switching one off gives that
 plugin its own window back at once, with no reload. Nothing is hosted until you
 ask for it.
 
+**Drawn in the notch's colours** (`hostedMono`, on) is in the same section, and it
+is about the one colour the notch cannot hand a guest. Everything the notch draws
+is given the notch's colours, but a hosted panel asks Omarchy's `Color` and `Style`
+itself, so a theme's accent — or a plugin's own hard-coded blue — used to paint its
+toggle buttons, selected rows and graphs on the notch's black. The hue is taken out
+of what it draws instead, by lightness, so a selected row keeps its presence and
+reads as selected (`shaders/mono.frag`). Switch it off for a panel whose colour is
+the point — a camera preview, artwork. Either way the same panel in its own window
+keeps every colour it always had.
+
 ```sh
 omarchy-shell notch integrations           # every candidate, and why
 omarchy-shell notch panel <id> <route>     # open one plugin's panel
@@ -387,6 +397,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |
 | `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. `openAction` can also be `"settings"` or `"menu"`. |
 | `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. |
+| `hostedMono` | `true` | A panel the notch is drawing has its hue taken out, because it reads the theme's accent itself and the notch's surface is one colour. Off keeps the guest's own colours, for a camera preview or artwork. |
 | `color` / `foreground` | `#000000` / Apple white | Notch colour, and the colour of text on it. Text is Apple white (`#FFFFFF`, secondary `#EBEBF5` at 60 %) on a dark notch and black on a light one, whatever the theme. Widgets paint with it in the notch, as do the glance, settings, menu, pages, tooltips and any plugin panel the notch is drawing inside itself. Nothing in the notch has a hue: selected, hovered and urgent differ by alpha. That same panel opened in its own window keeps the theme's colours, because there it sits on the theme's background. |
 | `compactWidth`, `compactHeight` | `180`, `32` | Resting size, in logical px. The height is also what windows keep clear. |
 | `bottomRadius` | `10` | Convex bottom-corner radius, in every state including the settings panel. |

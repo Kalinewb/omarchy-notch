@@ -285,13 +285,28 @@ Item {
           locked: root.bar ? root.bar.notchPlugins.list.filter(function(p) { return p.hideable === false }).map(function(p) { return p.id }) : []
         }
 
-        // Omarchy's own toast still appears as well: the notch is a second
-        // display of the same thing, not a replacement for the daemon.
+        // Omarchy's own toast still appears as well, unless the switch below
+        // is on and Setup has patched Omarchy to respect it: the notch is a
+        // second display of the same thing, not a replacement for the daemon.
         SettingRow {
           label: "Omarchy's notifications"
           Switch {
             checked: root.bar ? root.bar.notchNotifications : true
             onToggled: root.set("notifications", !checked)
+          }
+        }
+
+        // Needs Setup → Fix once (it patches Omarchy's notification popup to
+        // read this); until then the switch is stored but does nothing.
+        // Acting on a notification -- its click, its own dismiss -- only
+        // ever worked from Omarchy's popup, so hiding it means losing that,
+        // not moving it here: the notch's copy can only stop showing itself.
+        SettingRow {
+          label: "Suppress Omarchy's own toast"
+          Switch {
+            enabled: root.bar ? root.bar.notchNotifications : false
+            checked: root.bar ? root.bar.notchSuppressNativeToast : false
+            onToggled: root.set("suppressNativeToast", !checked)
           }
         }
 

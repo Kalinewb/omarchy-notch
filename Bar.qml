@@ -2016,7 +2016,7 @@ Item {
 
   function releaseHostedPanel() {
     var windows = notchWindows
-    for (var i = 0; i < windows.length; i++) if (windows[i].hostedOpen) windows[i].hostedOpen = false
+    for (var i = 0; i < windows.length; i++) if (windows[i].hostedOpen) windows[i].closePanels()
   }
   readonly property var platform: platformService
   // Activities are claimed and queued, but nothing draws them at rest yet, so a
@@ -2025,6 +2025,11 @@ Item {
   // it sideways), so a claim the queue shows is a claim the user sees.
   readonly property bool activitiesRendered: true
   readonly property bool notchNotifications: notchSetting("notifications", true) !== false
+  // Omarchy's own toast stays off screen once Setup has patched its service
+  // file to read the flag this setting drives (Setup → the point nags until
+  // that's done). Without the patch this does nothing: Omarchy just keeps
+  // showing its toast the way it always has.
+  readonly property bool notchSuppressNativeToast: notchNotifications && notchSetting("suppressNativeToast", false) === true
 
   NotchNotifications { id: notifications; bar: root }
 
@@ -2381,7 +2386,7 @@ Item {
   function clearPluginHandoff() { pluginsHandoff = ({}) }
 
   function closePluginsPages() {
-    for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].pluginsOpen) notchWindows[i].pluginsOpen = false
+    for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].pluginsOpen) notchWindows[i].closePanels()
   }
 
   // A finished job re-reads the disk before its notice says anything: a local
@@ -2607,12 +2612,12 @@ Item {
     var w = focusedNotchWindow()
     if (!w || !w.menuHostItem) return false
     for (var i = 0; i < notchWindows.length; i++)
-      if (notchWindows[i] !== w) notchWindows[i].menuOpen = false
+      if (notchWindows[i] !== w) notchWindows[i].closePanels()
     return w.openMenuRequest(payloadJson)
   }
 
   function closeMenus() {
-    for (var i = 0; i < notchWindows.length; i++) notchWindows[i].menuOpen = false
+    for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].menuOpen) notchWindows[i].closePanels()
   }
 
   function refreshMenus() {
@@ -2718,7 +2723,7 @@ Item {
     function settings(): void {
       var w = root.focusedNotchWindow()
       if (!w) return
-      if (w.settingsOpen) w.settingsOpen = false
+      if (w.settingsOpen) w.closePanels()
       else w.openSettings()
     }
     // Open the Omarchy menu inside the focused screen's notch at a route --
@@ -2727,7 +2732,7 @@ Item {
     function menu(route: string): void {
       var w = root.focusedNotchWindow()
       if (!w) return
-      if (w.menuOpen) w.menuOpen = false
+      if (w.menuOpen) w.closePanels()
       else w.openMenu(route)
     }
     // Save one notch setting the way the settings panel does (no bar reload):
@@ -3206,6 +3211,7 @@ Item {
     property string menuRoute: "root"
 
     function openMenuRequest(payloadJson) {
+      var stackBefore = viewStack.length
       pushState()
       // The route, for a snapshot to put the menu back on. A picker payload
       // carries files its caller is waiting on, and those are not somewhere to
@@ -3225,8 +3231,14 @@ Item {
       var menu = menuHost.item
       if (!menu) return false
       menu.open(payloadJson)
-      // A route that names an action runs it and never opens.
-      if (!menu.opened) menuOpen = false
+      // A route that names an action runs it and never opens -- so the
+      // pushState() above turned out to be for nothing; take it back rather
+      // than leave a step in the history that goes nowhere. Only when it
+      // actually pushed: from a closed notch there was nothing to snapshot.
+      if (!menu.opened) {
+        menuOpen = false
+        if (viewStack.length > stackBefore) viewStack = viewStack.slice(0, -1)
+      }
       return true
     }
 
@@ -3301,7 +3313,7 @@ Item {
     function openHosted(item) {
       var why = root.hosting.reasonNotHostable(item)
       if (why !== "") return "declined:" + why
-      if (hostedOpen && root.hosting.widget === item) { hostedOpen = false; return "closed" }
+      if (hostedOpen && root.hosting.widget === item) { closePanels(); return "closed" }
       pushState()
       if (root.hosting.active) root.hosting.giveBack()
       var taken = root.hosting.take(item, hostedSlot)
@@ -3354,7 +3366,7 @@ Item {
     // them, and clearing them would destroy the panel mid-shrink, leaving an
     // empty notch closing on an empty box.
     function closeIntegration(id) {
-      if (integrationOpen && integrationId === id) integrationOpen = false
+      if (integrationOpen && integrationId === id) closePanels()
     }
 
     // The open settings panel itself, for settingsReport.
@@ -3382,12 +3394,12 @@ Item {
     // widgets, according to which trigger list claims it.
     function trigger(name) {
       if (root.settingsWith(name)) {
-        if (settingsOpen) settingsOpen = false
+        if (settingsOpen) closePanels()
         else openSettings()
         return
       }
       if (root.menuWith(name)) {
-        if (menuOpen) menuOpen = false
+        if (menuOpen) closePanels()
         else openMenu("root")
         return
       }
@@ -4759,7 +4771,7 @@ Item {
               if ("route" in panel) panel.route = Qt.binding(function () { return barWindow.integrationRoute })
               if ("maxWidth" in panel) panel.maxWidth = Qt.binding(function () { return barWindow.maxBarWidth - 2 * root.notchSidePadding })
               if ("maxHeight" in panel) panel.maxHeight = Qt.binding(function () { return barWindow.panelMaxHeight })
-              if (panel.closeRequested) panel.closeRequested.connect(function () { barWindow.integrationOpen = false })
+              if (panel.closeRequested) panel.closeRequested.connect(function () { barWindow.closePanels() })
               if (typeof panel.open === "function" && barWindow.integrationOpen) panel.open(barWindow.integrationRoute)
             }
           }
@@ -4824,7 +4836,7 @@ Item {
         headerHeight: root.notchCompactHeight
         maxHeight: barWindow.panelMaxHeight
         glowReach: glow.reach
-        onCloseRequested: barWindow.settingsOpen = false
+        onCloseRequested: barWindow.closePanels()
         onSetupRequested: barWindow.openSetup()
         onPluginsRequested: barWindow.openPlugins("")
       }
@@ -4844,7 +4856,7 @@ Item {
         headerHeight: root.notchCompactHeight
         maxHeight: barWindow.panelMaxHeight
         focusId: barWindow.pluginsFocusId
-        onCloseRequested: barWindow.pluginsOpen = false
+        onCloseRequested: barWindow.closePanels()
         onBackRequested: barWindow.openSetup()
       }
     }
@@ -4854,7 +4866,7 @@ Item {
         bar: root
         headerHeight: root.notchCompactHeight
         maxHeight: barWindow.panelMaxHeight
-        onCloseRequested: barWindow.setupOpen = false
+        onCloseRequested: barWindow.closePanels()
         onBackRequested: barWindow.openSettings()
         onPluginsRequested: barWindow.openPlugins("")
       }
@@ -4873,7 +4885,7 @@ Item {
         bar: root
         maxWidth: barWindow.maxBarWidth - 2 * root.notchSidePadding
         maxHeight: barWindow.panelMaxHeight
-        onCloseRequested: barWindow.menuOpen = false
+        onCloseRequested: barWindow.closePanels()
       }
     }
 

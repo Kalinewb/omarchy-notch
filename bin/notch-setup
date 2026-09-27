@@ -59,6 +59,7 @@ OMARCHY_DIR="${NOTCH_SETUP_OMARCHY_PATH:-${OMARCHY_PATH:-/usr/share/omarchy}}"
 PLUGINS="${NOTCH_SETUP_PLUGINS_DIR:-$CONFIG/omarchy/plugins}"
 SHELL_JSON="$CONFIG/omarchy/shell.json"
 HYPR="$CONFIG/hypr"
+NOTIFICATIONS_SERVICE="$OMARCHY_DIR/shell/plugins/notifications/Service.qml"
 
 # The notch's own folder. Resolved before the self-copy (see `relocate`), because
 # afterwards the script runs from the state directory.
@@ -79,6 +80,7 @@ split TOGGLE_BAR "${NOTCH_SETUP_TOGGLE_BAR:-omarchy-toggle-bar}"
 split QS "${NOTCH_SETUP_QS:-qs}"
 split KILL_CMD "${NOTCH_SETUP_KILL:-kill}"
 split LUA "${NOTCH_SETUP_LUA:-lua}"
+split QMLLINT "${NOTCH_SETUP_QMLLINT:-qmllint}"
 split SESSION_LOCKED "${NOTCH_SETUP_SESSION_LOCKED:-omarchy-hyprland-session-locked}"
 split RESTART_SHELL "${NOTCH_SETUP_RESTART_SHELL:-omarchy restart shell}"
 PLUGINS_STATE="${NOTCH_SETUP_PLUGINS_STATE:-}"
@@ -106,7 +108,7 @@ OVERRIDE_NAMES=(NOTCH_SETUP_SANDBOX NOTCH_SETUP_HOME NOTCH_SETUP_CONFIG_DIR NOTC
   NOTCH_SETUP_STATE_DIR NOTCH_SETUP_STATUS NOTCH_SETUP_OMARCHY_PATH NOTCH_SETUP_PLUGINS_DIR
   NOTCH_SETUP_NOTCH_DIR NOTCH_SETUP_HYPRCTL NOTCH_SETUP_OMARCHY_SHELL NOTCH_SETUP_OMARCHY
   NOTCH_SETUP_OMARCHY_VERSION NOTCH_SETUP_TOGGLE_BAR NOTCH_SETUP_QS NOTCH_SETUP_KILL
-  NOTCH_SETUP_LUA NOTCH_SETUP_PLUGINS_STATE NOTCH_SETUP_SESSION_LOCKED NOTCH_SETUP_RESTART_SHELL)
+  NOTCH_SETUP_LUA NOTCH_SETUP_QMLLINT NOTCH_SETUP_PLUGINS_STATE NOTCH_SETUP_SESSION_LOCKED NOTCH_SETUP_RESTART_SHELL)
 
 guard_triggered() {
   [[ ${NOTCH_HARNESS:-} == 1 ]] && return 0
@@ -204,6 +206,16 @@ hypr_config_errors() {
   json_or "$out" "[]"
 }
 
+# How many warnings qmllint gives a QML file in categories that mean "this
+# will not load or bind" -- same list dev/lint.sh gates on. Both the original
+# and the candidate are missing the same qs.* module context, so that noise
+# is identical on both sides and cancels out; what's left is whatever the
+# edit itself introduced.
+QML_FATAL='syntax|import|missing-type|uncreatable-type|unresolved-type|signal-handler-parameters|incompatible-type|read-only-property|duplicated-name|required|unresolved-alias|missing-enum-entry|recursion-depth-errors|attached-property-reuse|non-list-property'
+qmllint_fatal_count() {
+  "${QMLLINT[@]}" -I /usr/lib/qt6/qml "$1" 2>&1 | grep -cE "\[($QML_FATAL)\]\$"
+}
+
 omarchy_version() {
   runnable OMARCHY_VERSION && timeout 10 "${OMARCHY_VERSION[@]}" 2>/dev/null | tr -d '\n' && return
   echo ""
@@ -259,6 +271,50 @@ detect_bar_off() {
   else
     point bar-off ok "The bar is shown" "Omarchy's bar toggle is on."
   fi
+}
+
+# The exact anchors the fix patches. If Omarchy's file no longer has them
+# (moved, reworded, restructured), the fix can't be applied blind, so
+# detection says so instead of guessing.
+TOAST_MARKER="kalinewb.notch setup: native-toast-visible"
+TOAST_ANCHOR='      visible: popupModel.count > 0'
+TOAST_INSERT_BEFORE='  NotificationServer {'
+
+detect_native_toast() {
+  local suppress notif wants=false
+  suppress=$(setting .bar.notch.suppressNativeToast)
+  notif=$(setting .bar.notch.notifications)
+  [[ $suppress == true && $notif != false ]] && wants=true
+  if [[ $wants != true ]]; then
+    point native-toast-visible ok "Omarchy's own toast" \
+      "Off, or \"Suppress Omarchy's own toast\" isn't on, so there's nothing to patch."
+    return
+  fi
+  if [[ ! -f $NOTIFICATIONS_SERVICE ]]; then
+    point native-toast-visible info "Can't find Omarchy's notification service" \
+      "$(strings "$NOTIFICATIONS_SERVICE doesn't exist, so there's nothing here to patch.")"
+    return
+  fi
+  if grep -qF -- "$TOAST_MARKER" "$NOTIFICATIONS_SERVICE" 2>/dev/null; then
+    point native-toast-visible ok "Omarchy's own toast is suppressed" \
+      "$NOTIFICATIONS_SERVICE was patched to keep its popup off screen whenever the notch asks; the notch shows its own copy instead."
+    return
+  fi
+  local anchor insert
+  anchor=$(grep -cxF -- "$TOAST_ANCHOR" "$NOTIFICATIONS_SERVICE" 2>/dev/null || echo 0)
+  insert=$(grep -cxF -- "$TOAST_INSERT_BEFORE" "$NOTIFICATIONS_SERVICE" 2>/dev/null || echo 0)
+  if [[ $anchor != 1 || $insert != 1 ]]; then
+    point native-toast-visible warn "Can't safely patch Omarchy's toast" \
+      "\"Suppress Omarchy's own toast\" is on, but $NOTIFICATIONS_SERVICE doesn't look the way this fix expects (Omarchy has likely changed it), so patching it blind isn't safe."
+    return
+  fi
+  point native-toast-visible fix "Omarchy's own toast still shows" \
+    "\"Suppress Omarchy's own toast\" is on, but $NOTIFICATIONS_SERVICE hasn't been patched yet, so Omarchy still draws its own popup alongside the notch's." \
+    "$(strings \
+      "Fix adds a marked block to $NOTIFICATIONS_SERVICE and changes one line so its popup window stays off screen whenever the notch asks it to. Restarts the Omarchy shell, which this destroys and reopens Setup for." \
+      "Once patched, the switch in Settings is live: no more Fix, no more restart, just the flag file the notch already writes." \
+      "A notification's click action and its own dismiss only work from Omarchy's popup. Once that's hidden, the notch's copy can only stop showing its own copy -- there's no reaching back into Omarchy's notification object from here.")" \
+    '[]' "$(fixspec block "Fix" "$(strings "$NOTIFICATIONS_SERVICE")" "$(strings "restarts the Omarchy shell")" medium true)"
 }
 
 detect_notch_not_bar() {
@@ -716,7 +772,7 @@ detect_notch_not_git() {
 POINT_ORDER=(bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion osd-companion menu-keys-bypass
   notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids
   plugin-face plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift
-  layer-rules notch-not-git)
+  layer-rules notch-not-git native-toast-visible)
 
 LOCAL_ONLY=0
 detect_point() {
@@ -746,6 +802,7 @@ detect_point() {
     upstream-drift) detect_upstream_drift ;;
     layer-rules) detect_layer_rules ;;
     notch-not-git) detect_notch_not_git ;;
+    native-toast-visible) detect_native_toast ;;
     *) return 1 ;;
   esac
 }
@@ -976,6 +1033,7 @@ snapshots_json() {
 files_for() { # the files a fix would change
   case $1 in
     menu-keys-bypass) echo "$HYPR/bindings.lua" ;;
+    native-toast-visible) echo "$NOTIFICATIONS_SERVICE" ;;
     bar-off) echo "$TOGGLES/bar-off" ;;
     menu-replace-companion|osd-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo "$SHELL_JSON" ;;
     stray-backups) stray_backup_files ;;
@@ -985,7 +1043,7 @@ files_for() { # the files a fix would change
 
 kind_for() {
   case $1 in
-    menu-keys-bypass) echo block ;;
+    menu-keys-bypass|native-toast-visible) echo block ;;
     bar-off) echo flag ;;
     menu-replace-companion|osd-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo ipc ;;
     stray-backups) echo archive ;;
@@ -1016,6 +1074,48 @@ build_block() {
     printf 'hl.unbind("%s")\n%s\n' "$combo" "$line" >>"$out"
   done < <(jq -r '.[].arg' <<<"$items")
   echo "$BLOCK_END" >>"$out"
+}
+
+# Keep Omarchy's popup window off screen whenever the notch (a separate
+# plugin) asks it to. The FileView reads "1"/"0" from a file the notch writes
+# and never deletes, so the flag stays live once patched -- turning the
+# notch's own switch off just writes "0" and the popup comes straight back,
+# no fix or restart needed again.
+build_toast_block() {
+  local out=$1
+  [[ -f $NOTIFICATIONS_SERVICE ]] || return 1
+  grep -qF -- "$TOAST_MARKER" "$NOTIFICATIONS_SERVICE" && return 1
+  local anchor insert
+  anchor=$(grep -cxF -- "$TOAST_ANCHOR" "$NOTIFICATIONS_SERVICE") || anchor=0
+  insert=$(grep -cxF -- "$TOAST_INSERT_BEFORE" "$NOTIFICATIONS_SERVICE") || insert=0
+  [[ $anchor == 1 && $insert == 1 ]] || return 1
+  local when; when=$(stamp)
+  BLOCK_BEGIN="  // >>> $TOAST_MARKER ($when) -- delete this block to undo"
+  BLOCK_END="  // <<< $TOAST_MARKER"
+  awk -v insert="$TOAST_INSERT_BEFORE" -v anchor="$TOAST_ANCHOR" -v begin="$BLOCK_BEGIN" -v end="$BLOCK_END" '
+    $0 == insert {
+      print begin
+      print "  // The notch draws its own copy of these toasts; this keeps"
+      print "  // Omarchy'\''s from drawing on top of it too. kalinewb.notch (a"
+      print "  // separate plugin) writes \"1\" into this file exactly when it"
+      print "  // wants that, and \"0\" the rest of the time."
+      print "  readonly property bool kalinewbNotchToastSuppressed: kalinewbNotchToastFlagText === \"1\""
+      print "  property string kalinewbNotchToastFlagText: \"\""
+      print "  FileView {"
+      print "    id: kalinewbNotchToastFlag"
+      print "    path: (Quickshell.env(\"HOME\") || \"\") + \"/.local/state/kalinewb.notch/suppress-native-toast\""
+      print "    watchChanges: true"
+      print "    printErrors: false"
+      print "    onFileChanged: reload()"
+      print "    onLoaded: service.kalinewbNotchToastFlagText = text()"
+      print "    onLoadFailed: service.kalinewbNotchToastFlagText = \"\""
+      print "  }"
+      print end
+      print ""
+    }
+    $0 == anchor { print anchor " && !service.kalinewbNotchToastSuppressed"; next }
+    { print }
+  ' "$NOTIFICATIONS_SERVICE" >"$out"
 }
 
 # Does this file compile? `lua -e '<code>' <file>` would also RUN the file, so
@@ -1061,6 +1161,35 @@ apply_fix() { # apply_fix <point> <arg> <snapshot name>
       fi
       meta_set "$name" --arg begin "${BLOCK_BEGIN%% (*}" --arg end "$BLOCK_END" '.block = {begin: $begin, end: $end}'
       install_file "$tmp" "$HYPR/bindings.lua"
+      ;;
+    native-toast-visible)
+      local tmp; tmp=$(mktemp "$(dirname -- "$NOTIFICATIONS_SERVICE")/.notch-setup.XXXXXX") \
+        || { step "no temp file next to $NOTIFICATIONS_SERVICE"; return 1; }
+      build_toast_block "$tmp" || { step "couldn't build the block"; rm -f "$tmp"; return 1; }
+      [[ ${NOTCH_SETUP_FAIL_AT:-} == write ]] && { rm -f "$tmp"; return 1; }
+      if runnable QMLLINT; then
+        local before after
+        before=$(qmllint_fatal_count "$NOTIFICATIONS_SERVICE")
+        after=$(qmllint_fatal_count "$tmp")
+        if (( after > before )); then
+          step "the candidate adds $((after - before)) fatal qmllint warning(s)"
+          rm -f "$tmp"; return 1
+        fi
+      fi
+      meta_set "$name" --arg begin "${BLOCK_BEGIN%% (*}" --arg end "$BLOCK_END" '.block = {begin: $begin, end: $end}'
+      install_file "$tmp" "$NOTIFICATIONS_SERVICE"
+      # Omarchy's shell has this file loaded already; only a restart reads the
+      # patched version. That destroys the notch running this fix, same as
+      # layout-empty-widget -- so wait for the new one before calling it done.
+      session_locked && return 1
+      DESTROYED=true
+      bash -c "${RESTART_SHELL[*]}" >/dev/null 2>&1
+      local i
+      for i in $(seq 1 20); do
+        [[ $("${OMARCHY_SHELL[@]}" shell reloadConfig 2>/dev/null) == *ok* ]] && return 0
+        sleep 0.5
+      done
+      return 1
       ;;
     bar-off)
       runnable TOGGLE_BAR || return 1
@@ -1153,11 +1282,13 @@ apply_fix() { # apply_fix <point> <arg> <snapshot name>
 }
 
 reload_for() { # reload_for <point>
-  case $(kind_for "$1") in
-    block)
+  case $1 in
+    menu-keys-bypass)
       runnable HYPRCTL || return 0
       "${HYPRCTL[@]}" reload >/dev/null 2>&1
       ;;
+    # native-toast-visible already restarted the shell and waited for it back
+    # up, inside apply_fix -- same as layout-empty-widget's runtime kind.
     *) : ;;
   esac
 }
@@ -1165,7 +1296,7 @@ reload_for() { # reload_for <point>
 verify_fix() { # verify_fix <point> <arg>
   local point=$1
   [[ ${NOTCH_SETUP_FAIL_AT:-} == verify ]] && return 1
-  if [[ $(kind_for "$point") == block ]]; then
+  if [[ $point == menu-keys-bypass ]]; then
     local errors; errors=$(hypr_config_errors)
     [[ $(jq '[.[] | select(. != null and . != "")] | length' <<<"$errors") == 0 ]] || return 1
   fi
@@ -1256,7 +1387,7 @@ do_fix() {
       return 2
     fi
   fi
-  if [[ $kind == block ]]; then
+  if [[ $point == menu-keys-bypass ]]; then
     local errors; errors=$(hypr_config_errors)
     if [[ $(jq '[.[] | select(. != null and . != "")] | length' <<<"$errors") != 0 ]]; then
       finish failed 2 "Hyprland already reports config errors, so a fix couldn't be verified."

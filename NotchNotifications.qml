@@ -29,6 +29,28 @@ Item {
   readonly property bool enabled: !!bar && bar.notchNotifications && dir !== ""
     && ((!!bar.shell && !bar.harnessed) || forced)
 
+  // The flag Setup's fix teaches Omarchy's own popup to read (see
+  // bin/notch-setup's native-toast-visible point). Written here regardless of
+  // `enabled` above, so turning notifications off -- or never installing the
+  // fix at all -- still clears a stale "1" back to "0" rather than leaving
+  // Omarchy's toast suppressed with nothing left to show in its place.
+  readonly property string suppressFlagPath: {
+    var override = Quickshell.env("NOTCH_NOTIFICATIONS_SUPPRESS_FLAG")
+    if (override) return override
+    if (!bar || bar.harnessed) return ""
+    return (Quickshell.env("HOME") || "") + "/.local/state/kalinewb.notch/suppress-native-toast"
+  }
+  readonly property bool suppressNative: !!bar && bar.notchSuppressNativeToast
+
+  FileView { id: suppressFlagFile; path: source.suppressFlagPath; atomicWrites: true; printErrors: false }
+  function writeSuppressFlag() {
+    if (suppressFlagPath === "") return
+    suppressFlagFile.setText(suppressNative ? "1" : "0")
+  }
+  onSuppressNativeChanged: writeSuppressFlag()
+  onSuppressFlagPathChanged: writeSuppressFlag()
+  Component.onCompleted: writeSuppressFlag()
+
   // When this source came up. A file stamped before it is never read: Omarchy
   // rewrites restored toasts under their old names at restart, so anything
   // older is something the user has already seen.

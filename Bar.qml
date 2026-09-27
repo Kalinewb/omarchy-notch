@@ -2025,10 +2025,9 @@ Item {
   // it sideways), so a claim the queue shows is a claim the user sees.
   readonly property bool activitiesRendered: true
   readonly property bool notchNotifications: notchSetting("notifications", true) !== false
-  // Omarchy's own toast stays off screen once Setup has patched its service
-  // file to read the flag this setting drives (Setup → the point nags until
-  // that's done). Without the patch this does nothing: Omarchy just keeps
-  // showing its toast the way it always has.
+  // Omarchy's own toast stays off screen while the notch shows the same
+  // notification. The notch installs the companion plugin that does the hiding
+  // by itself (NotificationsCompanion.qml); Setup reports it if that fails.
   readonly property bool notchSuppressNativeToast: notchNotifications && notchSetting("suppressNativeToast", false) === true
 
   NotchNotifications { id: notifications; bar: root }
@@ -2552,6 +2551,8 @@ Item {
   readonly property var menuCompanion: menuCompanionHelper
   OsdCompanion { id: osdCompanionHelper; bar: root }
   readonly property var osdCompanion: osdCompanionHelper
+  NotificationsCompanion { id: notificationsCompanionHelper; bar: root }
+  readonly property var notificationsCompanion: notificationsCompanionHelper
 
   function setNotchSetting(key, value) {
     if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false

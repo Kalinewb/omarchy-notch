@@ -285,9 +285,8 @@ Item {
           locked: root.bar ? root.bar.notchPlugins.list.filter(function(p) { return p.hideable === false }).map(function(p) { return p.id }) : []
         }
 
-        // Omarchy's own toast still appears as well, unless the switch below
-        // is on and Setup has patched Omarchy to respect it: the notch is a
-        // second display of the same thing, not a replacement for the daemon.
+        // Omarchy's own toast still appears as well unless the switch below is
+        // on: the notch is a second display of the same notification.
         SettingRow {
           label: "Omarchy's notifications"
           Switch {
@@ -296,11 +295,10 @@ Item {
           }
         }
 
-        // Needs Setup → Fix once (it patches Omarchy's notification popup to
-        // read this); until then the switch is stored but does nothing.
-        // Acting on a notification -- its click, its own dismiss -- only
-        // ever worked from Omarchy's popup, so hiding it means losing that,
-        // not moving it here: the notch's copy can only stop showing itself.
+        // The same deal as the OSD's switch: the notch installs the companion
+        // plugin that keeps Omarchy's toast off screen, and Setup reports it
+        // if that fails. The toast comes back by itself whenever the notch
+        // can't show one (bar hidden, no notch running).
         SettingRow {
           label: "Suppress Omarchy's own toast"
           Switch {

@@ -1,0 +1,91 @@
+import QtQuick
+import QtTest
+import Quickshell
+import "file://@REPO@/bridge"
+
+TestCase {
+  id: tc
+  name: "NotificationsCompanion"
+  property var comp: null
+  property var stock: null
+  property var api: null
+
+  function initTestCase() {
+    Quickshell.envMap = {
+      NOTCH_NOTIFICATIONS_STOCK_URL: "file://@HARNESS@/omarchy/shell/plugins/notifications/Service.qml",
+      NOTCH_NOTIFICATIONS_CONNECTOR_URL: "file://@REPO@/bridge/Connector.qml"
+    }
+    var c = Qt.createComponent("file://@REPO@/companion/kalinewb.notch-notifications/Service.qml")
+    verify(c.status === Component.Ready, c.errorString())
+    comp = c.createObject(tc)
+    verify(comp !== null)
+    stock = comp.stockItem
+    verify(stock !== null, "stock service loaded: " + comp.stockError)
+  }
+
+  function wins() { return stock.variantsObj.instances }
+  function vis() { var l = wins(); var out = []; for (var i = 0; i < l.length; i++) out.push(l[i].visible); return out.join(",") }
+
+  function test_01_bound() {
+    compare(comp.windowsBound, 2)
+    compare(comp.suppressible, true)
+    compare(NotchNotificationsBridge.facade, comp)
+  }
+  function test_02_noNotch_showsLikeOmarchy() {
+    compare(vis(), "false,false")
+    stock.popupModel.append({ originalId: 1, timestamp: 2000 })
+    compare(vis(), "true,true")
+  }
+  function test_03_notchTakesOver_hides() {
+    tc.api = Qt.createComponent("Api.qml").createObject(tc)
+    NotchNotificationsBridge.target = tc.api
+    compare(comp.takeOver, true)
+    compare(comp.hideToasts, true)
+    compare(vis(), "false,false")
+  }
+  function test_04_newArrival_staysHidden() {
+    stock.popupModel.insert(0, { originalId: 2, timestamp: 3000 })
+    compare(vis(), "false,false")
+  }
+  function test_05_olderRow_showsOmarchy() {
+    stock.popupModel.append({ originalId: 3, timestamp: 500 })
+    compare(vis(), "true,true")
+    stock.popupModel.remove(stock.popupModel.count - 1)
+    compare(vis(), "false,false")
+  }
+  function test_06_placeholder_showsOmarchy() {
+    stock.popupModel.append({ originalId: -1, timestamp: 9999 })
+    compare(vis(), "true,true")
+    stock.popupModel.remove(stock.popupModel.count - 1)
+    compare(vis(), "false,false")
+  }
+  function test_07_notchDeclines_showsOmarchy() {
+    tc.api.takeOver = false
+    compare(vis(), "true,true")
+    tc.api.takeOver = true
+    compare(vis(), "false,false")
+  }
+  function test_08_notchGone_showsOmarchy() {
+    NotchNotificationsBridge.target = null
+    compare(vis(), "true,true")
+    NotchNotificationsBridge.target = tc.api
+    compare(vis(), "false,false")
+  }
+  function test_09_empty_invisible() {
+    stock.popupModel.clear()
+    compare(vis(), "false,false")
+    tc.api.takeOver = false
+    compare(vis(), "false,false")
+    tc.api.takeOver = true
+  }
+  function test_10_newScreen_bound() {
+    var w = Qt.createComponent("Win.qml").createObject(tc)
+    var l = [wins()[0], wins()[1], w]
+    stock.variantsObj.instances = l
+    compare(comp.windowsBound, 3)
+    stock.popupModel.append({ originalId: 5, timestamp: 4000 })
+    compare(vis(), "false,false,false")
+    tc.api.takeOver = false
+    compare(vis(), "true,true,true")
+  }
+}

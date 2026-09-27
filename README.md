@@ -102,13 +102,12 @@ settings into the Setup page: a list of things about this machine that stop the 
 way you want, each in plain words, with a **Fix** button where the notch can safely put it right.
 `omarchy-shell notch view setup` opens it directly.
 
-It checks twenty things — whether the bar is hidden, whether the notch is the active bar and
-loaded, Hyprland config errors, the menu companion and menu keys that go around it, keybind
-clashes and leftover notch binds, widgets in the layout that aren't installed or drew nothing,
-settings naming plugins that are gone, Face ID and Profiles, stray test shells, old `.bak` files,
-Omarchy files that moved upstream, layer rules that fight the notch's animation, whether the
-notch can update itself, and whether Omarchy's own toast still shows when "Suppress Omarchy's own
-toast" asks it not to.
+It checks twenty-one things — whether the bar is hidden, whether the notch is the active bar and
+loaded, Hyprland config errors, the menu, OSD and notifications companions and menu keys that go
+around the menu, keybind clashes and leftover notch binds, widgets in the layout that aren't
+installed or drew nothing, settings naming plugins that are gone, Face ID and Profiles, stray test
+shells, old `.bak` files, Omarchy files that moved upstream, layer rules that fight the notch's
+animation, and whether the notch can update itself.
 
 **Nothing is done behind your back.** Fix unfolds a confirmation that names the files it will
 change. Before it changes them they are copied into
@@ -161,6 +160,30 @@ there is no card, no theme colour and no accent on the bar.
   (`{icon, message, value, max, progressText, duration}`) and answers `shown` or
   why not; `notch osdClose` takes it down. `dev/osd.sh` tests the lot, with the
   notch and the companion laid out the way the plugins folder is.
+
+### Notifications
+
+With **Omarchy's notifications** on (the default), a toast also shows in the notch: its glyph and
+summary on the resting row, the body wrapped underneath. **Suppress Omarchy's own toast**
+(`suppressNativeToast`, Settings → What it shows) makes the notch the only place it shows.
+
+- **The same kind of one-time set-up as the OSD**, done by the notch itself: a companion plugin
+  (`kalinewb.notch-notifications`) that says `clonedFrom: omarchy.notifications`, so Omarchy loads it
+  instead of its own. It runs Omarchy's real `Service.qml`, unchanged, from `$OMARCHY_PATH`, so the
+  notification server, Do Not Disturb, history and the `notifications` IPC target are all
+  Omarchy's own code. The only thing it changes is whether the toast window is visible. Nothing on
+  disk is patched, which is what makes it work on a packaged install, where `$OMARCHY_PATH` belongs
+  to root.
+- **A notification is never shown nowhere.** Omarchy's toast is back whenever the notch can't show
+  it: no notch running, the bar hidden, the notch's notifications off, or a toast the notch
+  wouldn't show anyway (one restored after a shell restart, or your notification history replayed
+  on request).
+- **What you give up:** clicking a toast to run its action, and its own ✕. The notch's copy is a
+  display. Omarchy's keyboard verbs still reach the real notification, because it is still
+  Omarchy's service: `omarchy-shell notifications dismissOne`, `invokeLast`, `dismissAll`.
+- **To undo:** turn the switch off (Omarchy's toast is back at once), or
+  `omarchy plugin disable kalinewb.notch-notifications`, which puts `omarchy.notifications` back
+  exactly.
 
 ## Plugin integrations
 
@@ -443,8 +466,8 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
 | `replaceOsd` | `false` | Omarchy's volume, brightness and media overlays show in the notch instead of its card at the bottom of the screen. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
 | `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
-| `notifications` | `true` | Omarchy's toasts also show in the notch: the glyph and summary on the resting row, the body wrapped underneath it (up to two rows, elided after that), with the notch widening and growing down to fit. Omarchy's own toast still appears too, unless `suppressNativeToast` is also on and Setup has patched it away. |
-| `suppressNativeToast` | `false` | Keeps Omarchy's own toast off screen once Setup → Fix has patched Omarchy's notification popup to check for it — a marked block plus a one-line change, restarting the shell to load it. Until that fix is applied this setting is stored but does nothing; once applied, flipping it here is live (a file the notch writes, no further fix or restart). It costs something real: a notification's click action and its own dismiss only ever worked from Omarchy's popup, and hiding it doesn't move that capability into the notch — there's no reaching back into Omarchy's notification object from here, so an unacted notification just times out. |
+| `notifications` | `true` | Omarchy's toasts also show in the notch: the glyph and summary on the resting row, the body wrapped underneath it (up to two rows, elided after that), with the notch widening and growing down to fit. Omarchy's own toast still appears too, unless `suppressNativeToast` is on. |
+| `suppressNativeToast` | `false` | The notch is the only place a toast shows: Omarchy's own is kept off screen by the notifications companion, which the notch installs by itself (see Notifications). Omarchy's toast comes back whenever the notch can't show one. |
 | `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |
 | `openKey`, `settingsKey`, `menuKey`, `autoHideKey`, `stateKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. `stateKey` shuts the notch where it stands and opens it where it stood. |
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |

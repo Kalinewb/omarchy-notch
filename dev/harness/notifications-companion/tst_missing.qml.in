@@ -1,0 +1,20 @@
+import QtQuick
+import QtTest
+import Quickshell
+
+TestCase {
+  id: tc
+  name: "MissingStock"
+  function test_missingStock_reports() {
+    Quickshell.envMap = {
+      NOTCH_NOTIFICATIONS_STOCK_URL: "file://@HARNESS@/nowhere/Service.qml",
+      NOTCH_NOTIFICATIONS_CONNECTOR_URL: "file://@REPO@/bridge/Connector.qml"
+    }
+    var comp = Qt.createComponent("file://@REPO@/companion/kalinewb.notch-notifications/Service.qml").createObject(tc)
+    verify(comp !== null)
+    compare(comp.stockItem, null)
+    verify(comp.stockError.indexOf("couldn't load") === 0, comp.stockError)
+    compare(comp.suppressible, false)
+    compare(comp.hideToasts, false)
+  }
+}

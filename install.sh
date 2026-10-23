@@ -50,8 +50,7 @@ export GIT_TERMINAL_PROMPT=0
 # `restart` is set once it is known a restart is wanted and allowed; the EXIT
 # trap then brings the shell back however this script ends.
 restart=0
-SHELL_DIR=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^OMARCHY_PATH=//p' | tail -n 1)
-: "${SHELL_DIR:=${OMARCHY_PATH:-/usr/share/omarchy}}"
+SHELL_DIR=${OMARCHY_PATH:-/usr/share/omarchy}
 
 stop_shell() {
   (( restart )) || return 0

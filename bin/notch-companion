@@ -1,7 +1,8 @@
 #!/bin/bash
 # A companion: the small plugin that lets the notch be one of Omarchy's own
-# surfaces -- the menu (kalinewb.notch-menu) or the on-screen display
-# (kalinewb.notch-osd). Which one is NOTCH_COMPANION_ID's business; everything
+# surfaces -- the menu (kalinewb.notch-menu), the on-screen display
+# (kalinewb.notch-osd) or the notification toast (kalinewb.notch-notifications).
+# Which one is NOTCH_COMPANION_ID's business; everything
 # here is the same work either way.
 #
 #   notch-companion status                    one line of JSON about the installed copy
@@ -49,6 +50,7 @@ LABEL="${NOTCH_COMPANION_LABEL:-}"
 if [[ -z $LABEL ]]; then
   case "$SOURCE_ID" in
     omarchy.osd) LABEL="OSD" ;;
+    omarchy.notifications) LABEL="notifications" ;;
     *) LABEL="menu" ;;
   esac
 fi

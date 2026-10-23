@@ -81,8 +81,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "battery",
@@ -170,8 +170,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "clock",
@@ -259,8 +259,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "compact",
       "view": "widgets",
@@ -348,8 +348,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "widgets",
@@ -437,8 +437,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "compact",
       "view": "widgets",
@@ -526,8 +526,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "widgets",
@@ -547,8 +547,6 @@
         ],
         "hover": [],
         "peek": [
-          "clock",
-          "date",
           "media"
         ]
       },
@@ -629,8 +627,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "battery",
@@ -648,8 +646,6 @@
         ],
         "hover": [],
         "peek": [
-          "clock",
-          "date",
           "media"
         ]
       },
@@ -730,8 +726,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "clock",
@@ -749,8 +745,6 @@
         ],
         "hover": [],
         "peek": [
-          "clock",
-          "date",
           "media"
         ]
       },
@@ -831,8 +825,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "compact",
       "view": "widgets",
@@ -850,8 +844,6 @@
         ],
         "hover": [],
         "peek": [
-          "clock",
-          "date",
           "media"
         ]
       },
@@ -932,8 +924,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "widgets",
@@ -951,8 +943,6 @@
         ],
         "hover": [],
         "peek": [
-          "clock",
-          "date",
           "media"
         ]
       },
@@ -1033,8 +1023,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "compact",
       "view": "widgets",
@@ -1052,8 +1042,6 @@
         ],
         "hover": [],
         "peek": [
-          "clock",
-          "date",
           "media"
         ]
       },
@@ -1134,8 +1122,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "widgets",
@@ -1230,8 +1218,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 511,
-        "width": 353
+        "height": 635,
+        "width": 424
       },
       "state": "expanded",
       "view": "battery",
@@ -1324,8 +1312,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 511,
-        "width": 353
+        "height": 635,
+        "width": 424
       },
       "state": "expanded",
       "view": "clock",
@@ -1415,8 +1403,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 511,
-        "width": 353
+        "height": 635,
+        "width": 424
       },
       "state": "expanded",
       "view": "hover",
@@ -1502,8 +1490,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 511,
-        "width": 353
+        "height": 635,
+        "width": 424
       },
       "state": "expanded",
       "view": "plugin",
@@ -1596,8 +1584,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 511,
-        "width": 353
+        "height": 635,
+        "width": 424
       },
       "state": "compact",
       "view": "widgets",
@@ -1690,8 +1678,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 511,
-        "width": 353
+        "height": 635,
+        "width": 424
       },
       "state": "expanded",
       "view": "widgets",
@@ -1782,8 +1770,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 481,
-        "width": 353
+        "height": 599,
+        "width": 424
       },
       "state": "expanded",
       "view": "battery",
@@ -1872,8 +1860,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 481,
-        "width": 353
+        "height": 599,
+        "width": 424
       },
       "state": "expanded",
       "view": "clock",
@@ -1955,8 +1943,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 481,
-        "width": 353
+        "height": 599,
+        "width": 424
       },
       "state": "expanded",
       "view": "hover",
@@ -2045,8 +2033,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 481,
-        "width": 353
+        "height": 599,
+        "width": 424
       },
       "state": "expanded",
       "view": "widgets",
@@ -2135,8 +2123,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 481,
-        "width": 353
+        "height": 599,
+        "width": 424
       },
       "state": "compact",
       "view": "widgets",
@@ -2225,8 +2213,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 481,
-        "width": 353
+        "height": 599,
+        "width": 424
       },
       "state": "expanded",
       "view": "widgets",
@@ -2243,7 +2231,6 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery",
           "media"
         ]
       },
@@ -2320,8 +2307,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "battery",
@@ -2336,7 +2323,6 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery",
           "media"
         ]
       },
@@ -2413,8 +2399,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "clock",
@@ -2429,7 +2415,6 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery",
           "media"
         ]
       },
@@ -2501,8 +2486,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "compact",
       "view": "plugin",
@@ -2517,7 +2502,6 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery",
           "media"
         ]
       },
@@ -2589,8 +2573,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "plugin",
@@ -2605,7 +2589,6 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery",
           "media"
         ]
       },
@@ -2682,8 +2665,8 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "compact",
       "view": "widgets",
@@ -2698,7 +2681,6 @@
         "expanded": [],
         "hover": [],
         "peek": [
-          "battery",
           "media"
         ]
       },
@@ -2775,8 +2757,8 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 498,
-        "width": 353
+        "height": 619,
+        "width": 424
       },
       "state": "expanded",
       "view": "widgets",

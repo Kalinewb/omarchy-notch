@@ -4900,7 +4900,10 @@ Item {
         bar: root
         maxWidth: barWindow.maxBarWidth - 2 * root.notchSidePadding
         maxHeight: barWindow.panelMaxHeight
-        onCloseRequested: barWindow.closePanels()
+        // The menu says this whenever it closes, including when another page
+        // has just replaced it; closing everything then would shut that page
+        // too. Only a menu that closed itself takes the notch down.
+        onCloseRequested: if (barWindow.menuOpen) barWindow.closePanels()
       }
     }
 

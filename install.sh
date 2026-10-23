@@ -138,12 +138,19 @@ if (( ! restart )); then
   exit 0
 fi
 
-# An installed menu companion is a copy of the notch's companion/ folder, so it
-# follows the notch. Run the installed copy's own script, which syncs from the
-# checkout that was just fast-forwarded. Nothing happens when it isn't installed.
-if [[ -d "$PLUGINS/kalinewb.notch-menu" && -x "$DEST/bin/notch-companion" ]]; then
-  "$DEST/bin/notch-companion" sync >/dev/null 2>&1 && say "synced the menu companion"
-fi
+# An installed companion is a copy of the notch's companion/<id> folder, so it
+# follows the notch. Each is copied from the live checkout that was just
+# fast-forwarded and checked clean, never from this working tree, by this
+# repo's own script: nothing in the plugins folder is run. Nothing happens for
+# a companion that isn't installed.
+for pair in kalinewb.notch-menu:omarchy.menu kalinewb.notch-osd:omarchy.osd \
+            kalinewb.notch-notifications:omarchy.notifications; do
+  companion=${pair%%:*}
+  [[ -d "$PLUGINS/$companion" && -d "$DEST/companion/$companion" ]] || continue
+  NOTCH_COMPANION_ID=$companion NOTCH_COMPANION_SOURCE_ID=${pair#*:} \
+    "$SRC/bin/notch-companion" sync --from "$DEST/companion/$companion" >/dev/null 2>&1 \
+    && say "synced $companion"
+done
 
 # A rescan reloads the entry point but not the other QML files, so restart the
 # shell: the honest way to see every file's change.

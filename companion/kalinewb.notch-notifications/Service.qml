@@ -17,7 +17,7 @@ import Quickshell
 // draws toasts in one PanelWindow per screen, bound to
 // `popupModel.count > 0`; that binding is replaced here with the same test
 // and one more: the toasts stay off screen only while every row on it is one
-// the notch will show. So Omarchy's toast is back the moment:
+// the notch has drawn. So Omarchy's toast is back the moment:
 //
 //   - no notch is running, or it is a notch that doesn't speak this bridge
 //   - the notch says it isn't taking them (setting off, notifications off,
@@ -25,6 +25,8 @@ import Quickshell
 //   - a row is older than the notch's notification source (a toast restored
 //     after a restart, or a history replay the user asked for), or isn't a
 //     notification at all ("No recent notifications")
+//   - a row the notch hasn't drawn: still being read, waiting for a free line
+//     in a burst, unreadable or declined (the notch's `shows`)
 //
 // If Omarchy restructures the file so there is no popup window to find, the
 // toasts simply show: the fallback is always Omarchy's own behaviour.
@@ -76,15 +78,19 @@ Item {
   readonly property bool takeOver: !!notch && notch.takeOver === true
 
   // Whether Omarchy's toast is off screen right now. Reads popupModel.count so
-  // it is re-asked whenever a toast arrives or leaves.
+  // it is re-asked whenever a toast arrives or leaves, and the notch's `shows`
+  // so it is re-asked when the notch draws one. A notch that can't say which
+  // toasts it has drawn hides none.
   readonly property bool hideToasts: {
     if (!takeOver || !stockItem || !stockItem.popupModel) return false
+    if (typeof notch.shows !== "function") return false
     var model = stockItem.popupModel
     var since = Number(notch.since || 0)
     if (since <= 0) return false
     for (var i = 0; i < model.count; i++) {
       var row = model.get(i)
       if (!row || Number(row.originalId) < 0 || Number(row.timestamp) < since) return false
+      if (notch.shows(row.originalId, row.timestamp) !== true) return false
     }
     return true
   }

@@ -53,6 +53,27 @@ TestCase {
     stock.popupModel.remove(stock.popupModel.count - 1)
     compare(vis(), "false,false")
   }
+  // Six at once: the notch draws four and the last two wait for a free line,
+  // so Omarchy's toast stays until the notch has drawn those too.
+  function test_05b_burst_waitingRows_showOmarchy() {
+    tc.api.drawn = ["2000-1", "3000-2"]
+    compare(vis(), "false,false")
+    for (var i = 1; i <= 6; i++) stock.popupModel.insert(0, { originalId: 10 + i, timestamp: 5000 + i })
+    compare(vis(), "true,true", "none of the burst drawn yet")
+    for (i = 1; i <= 4; i++) tc.api.drawn = tc.api.drawn.concat([(5000 + i) + "-" + (10 + i)])
+    compare(vis(), "true,true", "rows 5-6 wait for a line")
+    tc.api.drawn = tc.api.drawn.concat(["5005-15"])
+    compare(vis(), "true,true", "row 6 still waits")
+    tc.api.drawn = tc.api.drawn.concat(["5006-16"])
+    compare(vis(), "false,false")
+    // A notch that can't say which toasts it has drawn hides none.
+    NotchNotificationsBridge.target = Qt.createQmlObject("import QtQuick; QtObject { property bool takeOver: true; property real since: 1000 }", tc)
+    compare(vis(), "true,true")
+    NotchNotificationsBridge.target = tc.api
+    stock.popupModel.remove(0, 6)
+    tc.api.drawn = null
+    compare(vis(), "false,false")
+  }
   function test_06_placeholder_showsOmarchy() {
     stock.popupModel.append({ originalId: -1, timestamp: 9999 })
     compare(vis(), "true,true")

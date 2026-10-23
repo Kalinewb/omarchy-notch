@@ -27,14 +27,26 @@ Item {
   // --- what the companion may ask the notch ----------------------------------
   //
   // Not the Bar root. Whether the notch is taking Omarchy's toasts right now,
-  // and the time its notification source started (anything older, the notch
-  // never shows, so the companion leaves those on Omarchy's own toast).
+  // the time its notification source started (anything older, the notch
+  // never shows, so the companion leaves those on Omarchy's own toast), and
+  // whether it has drawn a given toast.
   readonly property QtObject notificationsApi: QtObject {
     readonly property bool takeOver: !!companion.bar && companion.bar.notchSuppressNativeToast
       && !companion.bar.barHidden && !!companion.bar.notificationsSource
       && companion.bar.notificationsSource.enabled
     readonly property real since: companion.bar && companion.bar.notificationsSource
       ? companion.bar.notificationsSource.startedAt : 0
+
+    // Whether the notch is drawing this toast, has it in line, or drew it and
+    // the user dismissed it there. A toast still being read, waiting for one
+    // of the notch's four lines in a burst, skipped as unreadable or declined
+    // is not, so Omarchy's own stays on screen for it. The file Omarchy writes
+    // per toast is "<timestamp>-<originalId>.json"; that name is the key.
+    function shows(originalId, timestamp) {
+      var source = companion.bar ? companion.bar.notificationsSource : null
+      var entry = source && source.entries ? source.entries[Number(timestamp) + "-" + Number(originalId) + ".json"] : undefined
+      return !!entry && (entry.state === "shown" || entry.state === "queued" || entry.state === "dismissed")
+    }
   }
 
   readonly property string id: "kalinewb.notch-notifications"

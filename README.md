@@ -175,9 +175,10 @@ summary on the resting row, the body wrapped underneath. **Suppress Omarchy's ow
   disk is patched, which is what makes it work on a packaged install, where `$OMARCHY_PATH` belongs
   to root.
 - **A notification is never shown nowhere.** Omarchy's toast is back whenever the notch can't show
-  it: no notch running, the bar hidden, the notch's notifications off, or a toast the notch
+  it: no notch running, the bar hidden, the notch's notifications off, a toast the notch
   wouldn't show anyway (one restored after a shell restart, or your notification history replayed
-  on request).
+  on request), or one it hasn't drawn yet (in a burst, the fifth waits for a free line, and
+  Omarchy's toast stays until it has one).
 - **What you give up:** clicking a toast to run its action, and its own ✕. The notch's copy is a
   display. Omarchy's keyboard verbs still reach the real notification, because it is still
   Omarchy's service: `omarchy-shell notifications dismissOne`, `invokeLast`, `dismissAll`.

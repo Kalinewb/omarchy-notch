@@ -328,7 +328,7 @@ edge stays on the screen edge. It grows and shrinks with the spring as you move 
 - **The Apps list** needs an app library. A bar plugin isn't given one, so the menu loads its own
   copy of the shell's `AppLibrary` the first time it opens.
 
-**Keeping up with Omarchy.** `dev/upstream/menu/` holds Omarchy 4.0.3's `Menu.qml` and
+**Keeping up with Omarchy.** `dev/upstream/menu/` holds Omarchy 4.0.5's `Menu.qml` and
 `MenuModel.js` exactly as released. `menu/MenuModel.js` is identical to that copy.
 `menu/NotchMenu.qml` keeps upstream's structure and names, and its header lists every change. After
 an Omarchy update, compare the installed files with the saved copies:

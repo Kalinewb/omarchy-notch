@@ -595,6 +595,8 @@ Item {
     id: beatFile
     path: platform.writesBeat ? (platform.stateDir + "/platform.json") : ""
     atomicWrites: true
+    // Only ever written; the read Qt tries first fails until the first beat.
+    printErrors: false
   }
 
   // The last word, written synchronously: without it every plugin reload would
@@ -603,6 +605,7 @@ Item {
     id: finalFile
     path: platform.writesBeat ? (platform.stateDir + "/platform.json") : ""
     atomicWrites: true
+    printErrors: false
     blockWrites: true
   }
 

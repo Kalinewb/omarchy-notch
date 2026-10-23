@@ -2,7 +2,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Omarchy's Ui/ConfirmDialog.qml (4.0.3) for the menu inside the notch. The
+// Omarchy's Ui/ConfirmDialog.qml (4.0.5) for the menu inside the notch. The
 // changes: its Cancel/Confirm buttons and its scrim take the dialog's corner
 // radius (the notch's, capped at half their size) instead of square corners
 // (DESIGN-PHILOSOPHY.md, 5), so the scrim never shows square corners past the

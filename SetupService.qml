@@ -284,6 +284,8 @@ Item {
   FileView {
     id: statusFile
     path: root.enabled ? root.statusPath : ""
+    // No status file until the first fix runs; that is the normal state.
+    printErrors: false
     watchChanges: true
     onFileChanged: reload()
     onLoaded: {

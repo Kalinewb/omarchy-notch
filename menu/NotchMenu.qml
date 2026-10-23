@@ -5,7 +5,7 @@ import qs.Commons
 import qs.Ui
 import "MenuModel.js" as MenuModel
 
-// Omarchy's menu (shell/plugins/menu/Menu.qml, 4.0.3), forked to draw inside
+// Omarchy's menu (shell/plugins/menu/Menu.qml, 4.0.5), forked to draw inside
 // the notch: the notch grows around this Item -- same surface, top edge on the
 // screen edge -- instead of the menu opening its own full-screen window with a
 // scrim and a bordered card. The verbatim upstream file is kept in

@@ -3,7 +3,7 @@ import QtQuick.Controls
 import qs.Commons
 import qs.Ui
 
-// Omarchy's Ui/Button.qml (4.0.3) for the notch. The one change: every fill
+// Omarchy's Ui/Button.qml (4.0.5) for the notch. The one change: every fill
 // and border is the notch's text colour at the theme's alpha, never a colour
 // the theme picked. Upstream routes them through Style's state tokens, and a
 // theme may pin those to its own colour (Catppuccin Latte pins all four to

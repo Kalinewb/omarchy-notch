@@ -3,7 +3,7 @@ import QtQuick.Controls as QQC
 import qs.Commons
 import qs.Ui
 
-// Omarchy's Ui/NumberField.qml (4.0.3) for the notch: its box, outline and
+// Omarchy's Ui/NumberField.qml (4.0.5) for the notch: its box, outline and
 // text selection are the notch's text colour at the theme's alpha, never a
 // colour the theme pinned in its style tokens (see NotchButton.qml). The
 // verbatim upstream file is dev/upstream/ui/NumberField.qml.

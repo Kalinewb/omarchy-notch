@@ -226,7 +226,7 @@ Size yourself with `implicitWidth` and `implicitHeight`; the notch grows to
 them on its own spring. Do not animate your own container — the notch is already
 moving.
 
-**What a panel may not do** (DESIGN-PHILOSOPHY.md):
+**What a panel may not do** (the notch's design rules):
 
 - No background of its own. The notch's black surface is the background.
 - No colour that didn't come from `surfaceHost`. No theme colours, no gradients,
@@ -485,7 +485,7 @@ and a widget whose panel is behind a Loader).
 - **Your colours are not yours.** `bar.foreground`, `background` and `urgent`
   are the host's for as long as it holds you, and anything you read from
   Omarchy's `Color`/`Style` singletons instead is drawn through the host's own
-  transform (see DESIGN-PHILOSOPHY.md: hue out, lightness back). Neutral greys
+  transform (hue out, lightness back). Neutral greys
   are untouched; a saturated accent is not.
 - **Nothing moves where it cannot be seen.** A looping animation inside a panel
   that is drawn at zero opacity still repaints the host's surface every frame.

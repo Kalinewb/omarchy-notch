@@ -2,7 +2,7 @@ import QtQuick
 
 // The notch's shape: a bar hanging from the top edge of the screen and fused
 // to it, the way a Dynamic Island grows out of the notch above it. Adapted
-// from graveklar.face's Island.qml, which settled the geometry.
+// from Face ID's (kalinewb.face) Island.qml, which settled the geometry.
 //
 // Three items, and the split between them is the whole point:
 //

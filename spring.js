@@ -1,6 +1,6 @@
 .pragma library
 
-// The curve the notch grows on (copied from graveklar.face common/spring.js).
+// The curve the notch grows on (copied from Face ID, kalinewb.face, common/spring.js).
 //
 // It is the step response of a damped second-order system: the thing a spring
 // actually does, which is to overshoot once by a known amount and settle, and

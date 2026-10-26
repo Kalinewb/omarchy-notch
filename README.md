@@ -9,12 +9,18 @@ It replaces `omarchy.bar` as a full `bar` plugin, and hosts the same widgets and
 
 ## Install
 
+From the Omarchy plugin marketplace, or in a terminal:
+
 ```sh
 omarchy plugin add https://github.com/Kalinewb/omarchy-notch --yes
 omarchy plugin enable kalinewb.notch
 ```
 
-That installs a git checkout, so `omarchy plugin update kalinewb.notch` updates it.
+That installs a git checkout, so the notch can update itself (below), and
+`omarchy plugin update kalinewb.notch` works too. The notch is one plugin; its three companions
+(the menu, the OSD and the notification toast) come from its own folder, and it installs each one
+only when you switch on the setting that needs it. Face ID, Profiles and OLED Corners install from
+its Plugins page (below), at the commits the marketplace verified.
 
 ### Updates
 
@@ -205,6 +211,17 @@ summary on the resting row, the body wrapped underneath. **Suppress Omarchy's ow
 - **To undo:** turn the switch off (Omarchy's toast is back at once), or
   `omarchy plugin disable kalinewb.notch-notifications`, which puts `omarchy.notifications` back
   exactly.
+
+## Remove
+
+```sh
+omarchy plugin remove kalinewb.notch
+```
+
+brings back `omarchy.bar`. The companions are separate plugins in their own folders: turning their
+settings off gives Omarchy's own menu, OSD and toast back, and `omarchy plugin remove
+kalinewb.notch-menu` (`-osd`, `-notifications`) removes one for good. Anything installed from the
+Plugins page is its own plugin and stays.
 
 ## Plugin integrations
 
@@ -547,7 +564,7 @@ pixel's distance to the outline by brute force and checks each pixel's opacity a
 ## Credits
 
 `Bar.qml` and `BarModel.js` start from Omarchy's `omarchy.bar` (MIT), with the full-width
-strip replaced by the notch. `menu/` is Omarchy's `omarchy.menu` (MIT), drawn inside the notch. The island shape and spring curve come from graveklar.face.
+strip replaced by the notch. `menu/` is Omarchy's `omarchy.menu` (MIT), drawn inside the notch. The island shape and spring curve come from Face ID (kalinewb.face).
 
 ## Checks
 

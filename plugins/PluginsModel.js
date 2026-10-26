@@ -6,7 +6,6 @@
 //
 //   entryView(entry, job, now, options) -> { id, name, version, state, words, actions: [{ name, label, primary, enabled }] }
 //   deriveState(entry)                   -> the runner's state for a probed entry
-//   mergeLocal(full, local)              -> a `state --local` result with the last full result's network fields
 //
 // `entry` is a catalogue entry merged with its probe (`checked: true` once
 // probed). options: { canAct, handoff, checking }. Actions are in display
@@ -22,32 +21,11 @@ function jobRunning(job, now) {
 function deriveState(e) {
   if (!e.installed) return "not-installed"
   if (!e.git || !e.originMatches) return "other-source"
-  if (e.dirty || e.detached || e.relation === "ahead" || e.relation === "diverged") return "local-changes"
+  if (e.dirty || e.relation === "diverged") return "local-changes"
   if (!e.enabled) return "disabled"
-  if (e.relation === "offline") return "offline"
-  if (e.relation === "unchecked") return "unchecked"
   if (e.relation === "behind") return "update-available"
+  if (e.relation === "newer") return "newer"
   return "current"
-}
-
-var NETWORK_FIELDS = ["remote", "behind", "ahead", "relation", "subject", "remoteVersion"]
-
-// A local probe (HEAD, enabled, setup; no network) keeps what the last full
-// probe learned from GitHub for every entry still at the same commit.
-function mergeLocal(full, local) {
-  var previous = {}
-  var known = (full && full.entries) || []
-  for (var i = 0; i < known.length; i++) previous[known[i].id] = known[i]
-  var entries = ((local && local.entries) || []).map(function(e) {
-    var merged = Object.assign({}, e)
-    var p = previous[e.id]
-    if (p && p.relation !== "unchecked" && p.installed === e.installed && p.local === e.local) {
-      for (var j = 0; j < NETWORK_FIELDS.length; j++) merged[NETWORK_FIELDS[j]] = p[NETWORK_FIELDS[j]]
-      merged.state = deriveState(merged)
-    }
-    return merged
-  })
-  return Object.assign({}, local, { entries: entries })
 }
 
 function reasonWords(reason, name) {
@@ -65,9 +43,13 @@ function reasonWords(reason, name) {
     case "wrong-origin": return n + " was installed from somewhere else."
     case "local-changes": return n + " has local changes."
     case "plugin-busy": return n + " is busy. Try again when it has finished."
-    case "changed": return "GitHub changed since you checked. Review it again."
-    case "wrong-id": return "This repository isn't " + n + " any more, so nothing changed."
-    case "bar-kind": return "This repository is a bar now, not " + n + ", so nothing changed."
+    case "changed": return "The notch was updated while this card was open. Open it again."
+    case "wrong-id": return "The verified commit isn't " + n + ", so nothing changed."
+    case "bar-kind": return "The verified commit is a bar, not " + n + ", so nothing changed."
+    case "renamed": return n + " is installed under its old name. Update it instead."
+    case "rename": return n + " was updated, but its rename didn't finish. Setup can finish it."
+    case "invalid": return "The verified " + n + " didn't validate here, so it stays as it was."
+    case "newer": return n + " is newer than the verified version, so it stays as it is."
     case "not-started": return "It didn't start. Another plugin job or a notch update may be running."
     case "command": return "The command failed."
     case "stopped": return "Stopped without finishing."
@@ -79,7 +61,12 @@ function reasonWords(reason, name) {
 }
 
 function busyWords(action) {
-  return action === "update" ? "Updating…" : action === "enable" ? "Turning on…" : "Installing…"
+  return action === "update" ? "Updating…" : action === "enable" ? "Turning on…" : action === "remove" ? "Removing…" : "Installing…"
+}
+
+// "Update to 1.4.0…", or "Update…" when the catalogue names no version.
+function updateLabel(e) {
+  return e.pinVersion ? "Update to " + e.pinVersion + "…" : "Update…"
 }
 
 function entryView(entry, job, now, options) {
@@ -110,44 +97,36 @@ function entryView(entry, job, now, options) {
   view.state = String(e.state || "")
   switch (view.state) {
     case "not-installed":
-      words = e.relation === "offline" ? "Not installed · couldn't reach GitHub" : "Not installed"
-      act("install", "Install…", true, e.relation !== "offline")
+      words = "Not installed"
+      act("install", "Install…", true)
       break
     case "other-source":
       words = "Installed from somewhere else"
       act("remove", "Remove…", false)
       break
     case "local-changes":
-      words = e.dirty ? "Local edits" : "Differs from GitHub"
+      words = e.dirty ? "Local edits" : "Differs from the verified version"
       act("review", "Review in terminal", false)
       act("remove", "Remove…", false)
       break
     case "disabled":
-      words = "Installed, turned off" + (e.relation === "behind" ? " · update available" : "")
+      words = "Installed, turned off" + (e.relation === "behind" ? " · verified update ready" : "")
       if (setupDue) words += ". Turn it on to set it up."
-      if (e.relation === "behind") act("update", "Update…", false, !e.pluginBusy)
+      if (e.relation === "behind") act("update", updateLabel(e), false, !e.pluginBusy)
       act("enable", "Enable", true)
       break
-    case "offline":
-      words = "Couldn't reach GitHub"
-      if (!e.enabled) act("enable", "Enable", false)
-      act("remove", "Remove…", false)
-      break
-    case "update-available": {
-      var n = Number(e.behind || 0)
-      words = "Update available · " + n + (n === 1 ? " change" : " changes")
+    case "update-available":
+      words = "Verified update ready" + (e.renames ? " · renames it " + id : "")
       if (e.pluginBusy) words += " · busy"
-      act("review", "Review diff", false)
       act("remove", "Remove…", false)
-      act("update", "Update…", true, !e.pluginBusy)
+      act("update", updateLabel(e), true, !e.pluginBusy)
       break
-    }
-    case "unchecked":
-      words = "Installed" + (options.checking ? " · checking for updates" : "")
+    case "newer":
+      words = "Newer than the verified version"
       act("remove", "Remove…", false)
       break
     case "current":
-      words = "Up to date"
+      words = "Pinned to the verified version"
       act("remove", "Remove…", false)
       break
     default:

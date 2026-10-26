@@ -7,8 +7,9 @@ import "PluginsModel.js" as PluginsModel
 // The Plugins page, drawn inside the notch: opening it grows the notch -- the
 // same surface, top edge on the screen edge -- into this list of the user's
 // own plugins (plugins/catalogue.json), each with what it is doing and what
-// can be done about it. Install… and Update… replace the list with a
-// confirmation card; nothing runs until it is confirmed.
+// can be done about it. Install…, Update… and a panel-less plugin's Remove…
+// replace the list with a confirmation card; nothing runs until it is
+// confirmed.
 //
 // A pure view: it reads the notch's Bar.qml root (see Bar.qml, "plugins") and
 // calls its functions, and starts nothing itself. On the notch's colours and
@@ -57,6 +58,8 @@ Item {
 
   function radiusFor(size) { return bar ? bar.radiusFor(size) : Math.max(0, Math.min(10, size / 2)) }
   function shortSha(sha) { return String(sha || "").slice(0, 7) }
+  // "Kalinewb/omarchy-profiles" from its GitHub URL.
+  function repoName(url) { return String(url || "").replace(/^[a-z]+:\/\/(github\.com\/)?/, "").replace(/\.git$/, "") }
 
   readonly property var views: bar ? bar.pluginsViews : []
   readonly property var rows: views.concat(bar ? [bar.pluginsSelfView] : [])
@@ -67,7 +70,7 @@ Item {
   readonly property var cardEntry: {
     var listed = bar && bar.pluginsCatalogue ? (bar.pluginsCatalogue.plugins || []) : []
     for (var i = 0; i < listed.length; i++) if (listed[i].id === confirm.id) return listed[i]
-    return { id: confirm.id, name: confirm.id, url: "" }
+    return { id: confirm.id, name: confirm.id, url: "", pin: "", version: "" }
   }
   property int selectedIndex: 0
 
@@ -215,7 +218,8 @@ Item {
     return false
   }
 
-  // One entry button: "<action>:<id>". Install and Update only open the card.
+  // One entry button: "<action>:<id>". Install, Update and a panel-less
+  // plugin's Remove only open the card.
   function run(name) {
     if (!bar) return
     var at = name.indexOf(":")
@@ -362,7 +366,7 @@ Item {
           if (b && !b.pluginsCanAct) lines.push("Test notch: plugins aren't checked.")
           else if (b && b.pluginsState && b.pluginsState.reason) lines.push(PluginsModel.reasonWords(b.pluginsState.reason, ""))
           else if (b && b.pluginsState && b.pluginsState.shell === false) lines.push(PluginsModel.reasonWords("not-running", ""))
-          lines.push("Only these plugins can be installed here. Anything that needs your password is set up in the plugin's own panel.")
+          lines.push("Only these plugins can be installed here, each at the commit the marketplace verified. Anything that needs your password is set up in the plugin's own panel.")
           return lines.join("\n")
         }
         color: root.secondary
@@ -385,7 +389,10 @@ Item {
       property string name: ""
       property string url: ""
       property string pluginId: ""
+      property string pin: ""
+      property string version: ""
       readonly property bool install: action === "install"
+      readonly property bool removal: action === "remove"
       readonly property var commits: card.p.commits || []
       // The repository isn't this plugin any more (or couldn't be reached).
       readonly property string refused: String(card.p.refused || "")
@@ -398,6 +405,8 @@ Item {
           card.action = String(root.confirm.action || "install")
           card.name = String(root.cardEntry.name || root.confirm.id || "")
           card.url = String(root.cardEntry.url || "")
+          card.pin = String(root.cardEntry.pin || "")
+          card.version = String(root.cardEntry.version || "")
           card.pluginId = String(root.confirm.id)
           card.p = root.preview
           card.ready = root.ready
@@ -410,7 +419,7 @@ Item {
         width: parent.width
         wrapMode: Text.WordWrap
         textFormat: Text.PlainText
-        text: (card.install ? "Install " : "Update ") + card.name + "?"
+        text: (card.install ? "Install " : card.removal ? "Remove " : "Update ") + card.name + "?"
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -422,10 +431,9 @@ Item {
         wrapMode: Text.WrapAnywhere
         textFormat: Text.PlainText
         text: {
-          if (card.install)
-            return card.url.replace(/^[a-z]+:\/\//, "") + " → " + card.pluginId
-              + (card.ready ? "  (commit " + root.shortSha(card.p.remote) + ")" : "")
-          if (!card.ready) return card.url.replace(/^[a-z]+:\/\//, "")
+          // What it is, before anything is fetched: the catalogue's pin.
+          if (card.install || card.removal || !card.ready)
+            return root.repoName(card.url) + (card.removal ? "" : " · verified " + card.version + " (" + root.shortSha(card.pin) + ")")
           var n = Number(card.p.behind || 0), f = Number(card.p.files || 0)
           return n + (n === 1 ? " commit" : " commits") + " · " + f + (f === 1 ? " file" : " files")
             + ", +" + Number(card.p.insertions || 0) + " −" + Number(card.p.deletions || 0)
@@ -436,7 +444,7 @@ Item {
       }
 
       Repeater {
-        model: card.install ? [] : card.commits.slice(0, 5)
+        model: card.install || card.removal ? [] : card.commits.slice(0, 5)
         Text {
           required property var modelData
           width: card.width
@@ -456,15 +464,20 @@ Item {
         text: {
           var lines = []
           if (card.refused === "wrong-id" || card.refused === "bar-kind") {
-            return (card.refused === "wrong-id" ? "This repository isn't " + card.name + " any more."
-                                                : "This repository is a bar now, not " + card.name + ".")
+            return (card.refused === "wrong-id" ? "The verified commit isn't " + card.name + "."
+                                                : "The verified commit is a bar, not " + card.name + ".")
               + (card.install ? " Nothing was installed." : " Nothing was updated.")
           }
           if (card.install) {
-            lines.push("Plugins run unsandboxed inside your shell. It's added to your bar and turned on.")
-            lines.push("Anything " + card.name + " needs your password for is set up in its own panel, not here.")
+            lines.push("Plugins run unsandboxed inside your shell. It's turned on when it lands.")
+          } else if (card.removal) {
+            lines.push("Its folder is deleted. You can install it again here.")
           } else {
             lines.push("Plugins run unsandboxed inside your shell.")
+            // The one surprise in the flow: a new name, a restart, a password.
+            if (card.p.renames === true)
+              lines.push("This renames " + card.name + " to " + card.pluginId + " and restarts the shell. "
+                + card.name + "'s Setup then asks for your password once, to update its system files.")
             if (card.p.panelOpen === true) lines.push("Updating closes " + card.name + "'s panel.")
             if (card.p.restartLikely === true) lines.push("The shell may need a restart to load every file.")
             if (card.p.pluginBusy === true) lines.push(PluginsModel.reasonWords("plugin-busy", card.name))
@@ -487,7 +500,7 @@ Item {
           id: reviewButton
           anchors.left: parent.left
           anchors.verticalCenter: cardButtons.verticalCenter
-          visible: !card.install && card.ready
+          visible: !card.install && !card.removal && card.ready
           text: "Review full diff in terminal"
           focusable: true
           onActiveFocusChanged: if (activeFocus) root.cardFocus = "review"
@@ -525,7 +538,7 @@ Item {
 
           NotchButton {
             id: confirmButton
-            text: card.ready ? (card.install ? "Install" : "Update") : card.p.id ? (card.install ? "Install" : "Update") : "Checking…"
+            text: card.ready || card.p.id ? (card.install ? "Install" : card.removal ? "Remove" : "Update") : "Checking…"
             visible: card.refused === ""
             enabled: card.ready
             opacity: enabled ? 1 : 0.35

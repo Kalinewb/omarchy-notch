@@ -57,8 +57,6 @@ jq '.version = "9.9.9-fixture"' "$NOTCH_SB/manifest.json" >"$NOTCH_SB/manifest.n
 cp "$REPO/bin/notch-setup" "$NOTCH_SB/bin/notch-setup"
 cp "$REPO/bin/notch-setup-binds.lua" "$NOTCH_SB/bin/notch-setup-binds.lua"
 cp "$REPO/plugins/catalogue.json" "$NOTCH_SB/plugins/catalogue.json"
-# (Until the catalogue lists OLED Corners itself, the sandbox copy does.)
-jq '.plugins += [{"id": "kalinewb.oled-corners"}]' "$NOTCH_SB/plugins/catalogue.json" >"$NOTCH_SB/plugins/c.new" && mv "$NOTCH_SB/plugins/c.new" "$NOTCH_SB/plugins/catalogue.json"
 PLUGINS_SB="$CONFIG_SB/omarchy/plugins"
 
 # The user's Hyprland config, shaped like the real one.

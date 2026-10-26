@@ -2135,22 +2135,22 @@ Item {
 
   // --- plugins -------------------------------------------------------------------
   //
-  // The user's own plugins (plugins/catalogue.json: Face ID and Profiles) are
-  // installed, turned on and updated from the Plugins page inside the notch
-  // (plugins/NotchPlugins.qml). bin/notch-plugins does the work: `state` probes
-  // every entry, `preview` fills the confirmation card, and `run` is launched
-  // detached like the notch's own update, because installing or updating a
+  // The user's own plugins (plugins/catalogue.json: Face ID, Profiles and OLED
+  // Corners) are installed, turned on, updated and removed from the Plugins
+  // page inside the notch (plugins/NotchPlugins.qml), each at the commit the
+  // catalogue pins. bin/notch-plugins does the work: `state` probes every
+  // entry from the disk alone, `preview` fills the confirmation card, and `run`
+  // is launched detached like the notch's own update, because changing a
   // plugin reloads every plugin and destroys this notch. The rebuilt notch
   // reads the job's status file, re-reads the disk and pops down a notice
-  // (plugins/NotchPluginsNotice.qml). Setup and removal are handed to each
-  // plugin's own panel.
+  // (plugins/NotchPluginsNotice.qml). Setup, and removal of a plugin with a
+  // panel of its own, are handed to that panel.
   //
   // Nothing is checked at startup: the page checks when it opens (if the last
-  // full check is a minute old), on Refresh, and after a job -- first locally
-  // (no network: the notice never waits for GitHub), then in full. Test
-  // notches never probe, read the status file or act unless
-  // NOTCH_FORCE_PLUGINS=1 and the NOTCH_PLUGINS_DIR and NOTCH_PLUGINS_OMARCHY
-  // sandbox hooks are set (dev/plugins.sh).
+  // check is a minute old), on Refresh, and after a job. Only an update's card
+  // touches the network. Test notches never probe, read the status file or act
+  // unless NOTCH_FORCE_PLUGINS=1 and the NOTCH_PLUGINS_DIR and
+  // NOTCH_PLUGINS_OMARCHY sandbox hooks are set (dev/plugins.sh).
   readonly property bool pluginsEnabled: (!!root.shell && !root.harnessed) || Quickshell.env("NOTCH_FORCE_PLUGINS") === "1"
   readonly property bool pluginsSandboxed: !!Quickshell.env("NOTCH_PLUGINS_DIR") && !!Quickshell.env("NOTCH_PLUGINS_OMARCHY")
   readonly property bool pluginsCanAct: pluginsEnabled && (!root.harnessed || pluginsSandboxed)
@@ -2158,12 +2158,10 @@ Item {
   // The status dir hook is honoured only in a sandbox.
   readonly property string pluginsStatusPath: ((pluginsSandboxed && Quickshell.env("NOTCH_PLUGINS_STATE_DIR"))
     || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/kalinewb.notch")) + "/plugins-job.json"
-  // The validated catalogue, the last probe (a local one merged over the last
-  // full one), the last full probe, the job's status file, the card
+  // The validated catalogue, the last probe, the job's status file, the card
   // ({ action, id, token }) and its preview, and the last handoff's answer.
   property var pluginsCatalogue: ({ self: {}, plugins: [] })
   property var pluginsState: ({ checkedAt: 0, startedAt: 0, entries: [] })
-  property var pluginsFull: ({ checkedAt: 0, startedAt: 0, entries: [] })
   property var pluginsJob: ({})
   property var pluginsPreview: ({})
   property var pluginsConfirm: ({})
@@ -2249,41 +2247,41 @@ Item {
     }
     return ""
   }
-  // The card's confirm button: a fresh preview returned the exact commit, and
-  // the repository there is still this plugin (its manifest id and kinds).
-  readonly property bool pluginsConfirmReady: !!(pluginsConfirm || {}).id && pluginsPreview.id === pluginsConfirm.id
-    && pluginsPreview.token === pluginsConfirm.token && pluginsPreview.ok === true && pluginsPreview.refused === ""
-    && /^[0-9a-f]{40}$/.test(String(pluginsPreview.remote || "")) && !pluginJobRunning && updateNotice !== "updating"
-    && !pluginsStateProcess.running
+  // The card's confirm button: a fresh preview returned the pin, and the
+  // commit there is still this plugin (its manifest id and kinds). Removal has
+  // nothing to preview.
+  readonly property bool pluginsConfirmReady: !!(pluginsConfirm || {}).id && !pluginJobRunning && updateNotice !== "updating"
+    && !pluginsStateProcess.running && (pluginsConfirm.action === "remove"
+      || (pluginsPreview.id === pluginsConfirm.id && pluginsPreview.token === pluginsConfirm.token && pluginsPreview.ok === true
+          && pluginsPreview.refused === "" && /^[0-9a-f]{40}$/.test(String(pluginsPreview.remote || ""))))
 
   function loadPluginsCatalogue() {
     if (!pluginsCanAct || pluginsCatalogueProcess.running || ((pluginsCatalogue || {}).plugins || []).length > 0) return
     pluginsCatalogueProcess.running = true
   }
 
-  // Probe the plugins: `local` true for HEAD, enabled and setup only (no
-  // network). While a job runs every probe is local, so nothing fetches into
-  // a checkout the job is changing.
-  function refreshPlugins(local) {
+  // Probe the plugins: what is on disk, no network.
+  function refreshPlugins() {
     loadPluginsCatalogue()
     if (!pluginsCanAct) return false
-    var p = local === true || pluginJobRunning ? pluginsLocalProcess : pluginsStateProcess
-    if (p.running) p.again = true
-    else p.running = true
+    if (pluginsStateProcess.running) pluginsStateProcess.again = true
+    else pluginsStateProcess.running = true
     return true
   }
 
   function refreshPluginsIfStale() {
     loadPluginsCatalogue()
-    if (Date.now() - Number((pluginsFull || {}).checkedAt || 0) > 60000 && !pluginsStateProcess.running) refreshPlugins()
+    if (Date.now() - Number((pluginsState || {}).checkedAt || 0) > 60000 && !pluginsStateProcess.running) refreshPlugins()
   }
 
-  // Install… and Update… open the card; nothing runs until it is confirmed.
+  // Install…, Update… and a plugin's own Remove… open the card; nothing runs
+  // until it is confirmed.
   function askPluginAction(action, id) {
-    if (!pluginsCanAct || (action !== "install" && action !== "update") || pluginJobRunning) return false
+    if (!pluginsCanAct || ["install", "update", "remove"].indexOf(action) < 0 || pluginJobRunning) return false
     pluginsTokens += 1
     pluginsConfirm = { action: action, id: String(id), token: pluginsTokens }
     pluginsPreview = {}
+    if (action === "remove") return true
     pluginsPreviewProcess.nextToken = pluginsTokens
     pluginsPreviewProcess.nextId = String(id)
     if (!pluginsPreviewProcess.running) pluginsPreviewProcess.begin()
@@ -2325,7 +2323,9 @@ Item {
   function startPluginJob(token) {
     var c = pluginsConfirm || {}
     if (!c.id || token !== c.token || !pluginsConfirmReady) return false
-    if (!launchPluginsRun([c.action, c.id, pluginsStatusPath, String(pluginsPreview.remote)])) return false
+    var args = [c.action, c.id, pluginsStatusPath]
+    if (c.action !== "remove") args.push(String(pluginsPreview.remote))
+    if (!launchPluginsRun(args)) return false
     cancelPluginAction()
     return true
   }
@@ -2336,7 +2336,13 @@ Item {
   }
 
   function openPluginSetup(id) { return pluginsHandOff("setup", id) }
-  function openPluginRemoval(id) { return pluginsHandOff("remove", id) }
+  // A plugin with a panel removes itself there; one without, from a card here.
+  function openPluginRemoval(id) {
+    var listed = (pluginsCatalogue || {}).plugins || []
+    for (var i = 0; i < listed.length; i++)
+      if (listed[i].id === String(id) && listed[i].removeVia === "omarchy") return askPluginAction("remove", id)
+    return pluginsHandOff("remove", id)
+  }
   function pluginsHandOff(kind, id) {
     if (!pluginsCanAct || pluginsHandoffProcess.running) return false
     pluginsHandoff = { id: String(id), kind: kind, pending: true }
@@ -2378,15 +2384,12 @@ Item {
     for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].pluginsOpen) notchWindows[i].closePanels()
   }
 
-  // A finished job re-reads the disk before its notice says anything: a local
-  // probe first (a few hundred ms, no network), then a full one.
+  // A finished job re-reads the disk before its notice says anything.
   function pluginsJobSettled() {
     var job = pluginsJob || {}
-    if ((job.phase === "done" || job.phase === "failed") && job.seen !== true && !pluginsLocalProcess.running
-        && Date.now() - Number(job.finishedAt || 0) < 10 * 60000 && !pluginsProbedAfterJob) {
-      pluginsLocalProcess.thenFull = true
-      refreshPlugins(true)
-    }
+    if ((job.phase === "done" || job.phase === "failed") && job.seen !== true && !pluginsStateProcess.running
+        && Date.now() - Number(job.finishedAt || 0) < 10 * 60000 && !pluginsProbedAfterJob)
+      refreshPlugins()
   }
 
   function pluginsReport() {
@@ -2398,9 +2401,8 @@ Item {
     var s = pluginsState || {}
     return {
       enabled: pluginsEnabled, canAct: pluginsCanAct, sandboxed: pluginsSandboxed, open: w ? w.pluginsOpen : false,
-      checking: pluginsStateProcess.running, checkingLocal: pluginsLocalProcess.running,
-      checkedAt: Number(s.checkedAt || 0), startedAt: Number(s.startedAt || 0), local: s.local === true,
-      fullCheckedAt: Number((pluginsFull || {}).checkedAt || 0), pluginsDir: s.pluginsDir || "", shell: s.shell,
+      checking: pluginsStateProcess.running,
+      checkedAt: Number(s.checkedAt || 0), startedAt: Number(s.startedAt || 0), pluginsDir: s.pluginsDir || "", shell: s.shell,
       entries: pluginsViews, self: pluginsSelfView, probe: s.entries || [],
       job: pluginsJob, jobRunning: pluginJobRunning, notice: pluginsNotice, doneNeedsClick: pluginsDoneNeedsClick,
       confirm: c.id ? { action: c.action, id: c.id, url: entry ? entry.url : "", token: c.token, ready: pluginsConfirmReady,
@@ -2430,35 +2432,13 @@ Item {
         var s = null
         try { s = JSON.parse(text) } catch (e) { }
         if (!s || !s.entries) s = { checkedAt: Date.now(), startedAt: 0, entries: [], reason: s && s.reason ? s.reason : "command" }
-        else root.pluginsFull = s
-        // A local probe newer than this one stays; its network fields come from this.
-        if (Number((root.pluginsState || {}).startedAt || 0) > Number(s.startedAt || 0) && root.pluginsState.local === true && s.entries.length)
-          root.pluginsState = PluginsModel.mergeLocal(s, root.pluginsState)
-        else
-          root.pluginsState = s
-        root.pluginsClock = Date.now()
-      }
-    }
-    onRunningChanged: if (!running && again) { again = false; root.refreshPlugins() }
-  }
-  Process {
-    id: pluginsLocalProcess
-    property bool again: false
-    // A job just finished: the full probe follows this one.
-    property bool thenFull: false
-    command: [root.pluginsScript, "state", "--local"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        var s = null
-        try { s = JSON.parse(text) } catch (e) { }
-        if (s && s.entries) root.pluginsState = PluginsModel.mergeLocal(root.pluginsFull, s)
+        root.pluginsState = s
         root.pluginsClock = Date.now()
       }
     }
     onRunningChanged: {
       if (running) return
       if (again) { again = false; running = true; return }
-      if (thenFull) { thenFull = false; root.refreshPlugins() }
       root.pluginsJobSettled()
     }
   }

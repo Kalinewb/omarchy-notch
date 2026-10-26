@@ -11,25 +11,31 @@
 # plugin add/update/enable/list` run against it, through a stand-in that logs
 # each call.
 #
-# A. The shipped catalogue: its entries, pins and deny list; invalid catalogues
-#    are refused.
-# B. Guards: denied and unknown ids, URLs and paths as ids, every sandbox hook
-#    without both partners, the job lock (live, half made, stale), the notch
-#    update's lock, a locked session, the plugins folder ignoring
-#    XDG_CONFIG_HOME, and ack only ever marking its own finished job.
-# C. bin/notch-plugins against the sandbox: every state, the local probe,
-#    install (the exact commit, id and kinds checked before anything lands,
-#    verified again after, a wrong folder moved aside, then enabled; the exit
-#    code isn't trusted; a shell that never sees the plugin, within a
-#    wall-clock bound), update (preview numbers, stale commits, a renamed
-#    manifest, restart hints), the refusals, a stopped job (its whole process
-#    group, its staging folder), the status file's mode, and the handoffs.
+# A. The shipped catalogue: its three entries, their full-SHA pins and the
+#    versions at them, the deny list, suite.json in step with it; invalid
+#    catalogues are refused.
+# B. Guards: denied and unknown ids (an old name too), URLs and paths as ids,
+#    every sandbox hook without both partners, the job lock (live, half made,
+#    stale), the notch update's lock, a locked session, the plugins folder
+#    ignoring XDG_CONFIG_HOME, and ack only ever marking its own finished job.
+# C. bin/notch-plugins against the sandbox, where GitHub has always moved past
+#    the pin: every state from the disk alone, install (the pin and nothing
+#    else, its id and kinds read with git before anything lands, verified
+#    again after, a wrong folder moved aside, then enabled; the exit code
+#    isn't trusted; a shell that never sees the plugin, within a wall-clock
+#    bound), update (to a moved pin and only forward: stale cards, ahead and
+#    diverged checkouts, a renamed manifest, restart hints, a global update
+#    past the pin), review, the refusals, OLED Corners' install and removal,
+#    Face's rename (a `was` folder, the stub rename through Setup, a stranded
+#    checkout, a rerun, a copy), a stopped job (its whole process group, its
+#    staging folder), the status file's mode, and the handoffs.
 # D. The Plugins page in throwaway notches: its size and shape, the card (its
-#    motion, keys, a refused repository), an install through it that survives
-#    the notch being stopped, the notice after it (also with GitHub gone), a
-#    failure, a job that never starts, handoffs, page switching and every
-#    close path, the notch update and Refresh blocked while a plugin job runs,
-#    and a forced test notch without hooks refusing everything.
+#    motion, keys), an install through it that survives the notch being
+#    stopped, the notice after it (also with GitHub gone), a failure, a
+#    refused pin, a job that never starts, handoffs, Corners' removal card,
+#    page switching and every close path, the notch update and Refresh blocked
+#    while a plugin job runs, and a forced test notch without hooks refusing
+#    everything.
 # E. The live plugins folder is exactly as it was.
 
 set -uo pipefail
@@ -102,7 +108,7 @@ case "$1 ${2:-}" in
     exit "$(cat "$sb/stub-rescan-exit" 2>/dev/null || echo 0)" ;;
   *)
     if [[ -f $sb/stub-target-missing ]]; then echo "Target not found." >&2; exit 1; fi
-    [[ "$1 ${2:-}" == "graveklar.face state" ]] && echo '{"open":false}'
+    [[ "$1 ${2:-}" == "graveklar.face state" || "$1 ${2:-}" == "kalinewb.face state" ]] && echo '{"open":false}'
     exit 0 ;;
 esac
 EOF
@@ -120,6 +126,7 @@ printf '#!/bin/bash\necho "[]"\n' >"$sb/xdgstubs/omarchy"
 # The omarchy stand-in: logs the call and its exit code, then runs the real
 # omarchy with the sandbox HOME and the stubs first on PATH. For add/update,
 # $sb/omarchy-sleep delays it and $sb/omarchy-fail makes it fail with that line.
+# (Upstream's plugin commands find the plugins folder from HOME alone.)
 cat >"$sb/bin/omarchy" <<EOF
 #!/bin/bash
 sb="$sb"
@@ -176,6 +183,7 @@ mkrepo() { # mkrepo <fixture> <repo name> [jq filter for its manifest]
 }
 mkrepo face omarchy-face
 mkrepo profiles omarchy-profiles
+mkrepo corners omarchy-oled-corners
 mkrepo profiles evil-profiles '.id = "evil.profiles"'
 mkrepo profiles bar-profiles '.kinds = ["bar"] | .entryPoints = {bar: "Panel.qml"}'
 mkrepo profiles sneaky-profiles
@@ -190,9 +198,16 @@ publish_manifest() { # publish_manifest <repo> <jq filter> <subject>
 }
 head_of() { git -C "$sb/gh/$1.git" rev-parse HEAD; }
 
-catalogue() { # catalogue <file> <profiles repo>
+# catalogue <file> <profiles repo> [face pin] [profiles pin] [corners pin]: the
+# shipped catalogue on the sandbox's "GitHub", pinned to each repo's HEAD unless
+# given.
+catalogue() {
   jq --arg face "file://$sb/gh/omarchy-face.git" --arg profiles "file://$sb/gh/$2.git" \
-    '.plugins[0].url = $face | .plugins[1].url = $profiles' "$REPO/plugins/catalogue.json" >"$1"
+     --arg corners "file://$sb/gh/omarchy-oled-corners.git" \
+     --arg fpin "${3:-$(head_of omarchy-face)}" --arg ppin "${4:-$(head_of "$2")}" --arg cpin "${5:-$(head_of omarchy-oled-corners)}" '
+    .plugins[0].url = $face | .plugins[0].pin = $fpin | .plugins[0].version = "2.0.0"
+    | .plugins[1].url = $profiles | .plugins[1].pin = $ppin | .plugins[1].version = "1.0.0"
+    | .plugins[2].url = $corners | .plugins[2].pin = $cpin | .plugins[2].version = "1.0.0"' "$REPO/plugins/catalogue.json" >"$1"
 }
 catalogue "$sb/catalogue.json" omarchy-profiles
 catalogue "$sb/catalogue-evil.json" evil-profiles
@@ -202,7 +217,14 @@ catalogue "$sb/catalogue-sneaky.json" sneaky-profiles
 HOOKS=(NOTCH_PLUGINS_DIR="$PD" NOTCH_PLUGINS_OMARCHY="$sb/bin/omarchy" NOTCH_PLUGINS_CATALOGUE="$sb/catalogue.json"
        NOTCH_PLUGINS_SHELL="$sb/stubs/omarchy-shell" NOTCH_PLUGINS_TERMINAL="$sb/stubs/terminal"
        NOTCH_PLUGINS_SESSION_LOCKED="$sb/stubs/omarchy-hyprland-session-locked" NOTCH_PLUGINS_SCRATCH="$SCRATCH")
+# What a renamed plugin's update needs: Setup sandboxed into the same HOME,
+# every command it runs a stub (bin/notch-setup refuses otherwise).
+SETUP_HOOKS=(NOTCH_SETUP_SANDBOX="$sb" NOTCH_SETUP_HYPRCTL="$sb/stubs/hyprctl" NOTCH_SETUP_OMARCHY_SHELL="$sb/stubs/omarchy-shell"
+             NOTCH_SETUP_OMARCHY="$sb/bin/omarchy" NOTCH_SETUP_TOGGLE_BAR=true NOTCH_SETUP_KILL=true
+             NOTCH_SETUP_SESSION_LOCKED="$sb/stubs/omarchy-hyprland-session-locked" NOTCH_SETUP_RESTART_SHELL=true
+             NOTCH_SETUP_LUA=false FIXTURE_RENAME_LOG="$sb/rename.log")
 np() { env "${HOOKS[@]}" "$SCRIPT" "$@"; }
+npc() { local c=$1; shift; env "${HOOKS[@]}" "${SETUP_HOOKS[@]}" NOTCH_PLUGINS_CATALOGUE="$c" "$SCRIPT" "$@"; }
 st="$sb/state/plugins-job.json"
 field() { jq -r "$1" <<<"$2" 2>/dev/null; }
 entry() { jq -c --arg id "$1" '.entries[] | select(.id == $id)' <<<"$2"; }
@@ -211,66 +233,104 @@ log_since() { tail -n +"$(($2 + 1))" "$sb/$1"; }
 exists() { [[ -e $1 ]] && echo true || echo false; }
 under() { (( $1 < $2 )) && echo true || echo false; } # under <ms> <limit>
 scratch_left() { find "$SCRATCH" -mindepth 1 2>/dev/null | wc -l; }
-forget_profiles() { rm -rf "$PD/kalinewb.profiles"; grep -vx kalinewb.profiles "$sb/enabled" >"$sb/enabled.new"; mv "$sb/enabled.new" "$sb/enabled"; }
+forget() { rm -rf "$PD/$1"; grep -vx "$1" "$sb/enabled" >"$sb/enabled.new"; mv "$sb/enabled.new" "$sb/enabled"; }
+forget_profiles() { forget kalinewb.profiles; }
+head_in() { git -C "$PD/$1" rev-parse HEAD 2>/dev/null; }
 
 # ---------------------------------------------------------------------------
 echo "${BOLD}A. The catalogue${RESET}  ${DIM}sandbox $sb${RESET}"
 shipped="$REPO/plugins/catalogue.json"
-check "the shipped catalogue parses and validates" "0 2" "$(jq -e . "$shipped" >/dev/null; echo $?) $("$SCRIPT" catalogue | jq '.plugins | length')"
-check "it has exactly the two entries" "graveklar.face kalinewb.profiles" "$(jq -r '[.plugins[].id] | join(" ")' "$shipped")"
-check "both URLs are the pinned GitHub repos" \
-  "https://github.com/Kalinewb/omarchy-face.git https://github.com/Kalinewb/omarchy-profiles.git" "$(jq -r '[.plugins[].url] | join(" ")' "$shipped")"
-check "deny names liquid-notifications and face-lock; no entry is denied or the notch itself" "true true" \
-  "$(jq -r '.deny as $d | "\(($d | index("graveklar.liquid-notifications") != null) and ($d | index("graveklar.face-lock") != null)) \(all(.plugins[]; .id as $i | $i != "kalinewb.notch" and ($d | index($i)) == null))"' "$shipped")"
+check "the shipped catalogue parses and validates, version 2" "0 3 2" \
+  "$(jq -e . "$shipped" >/dev/null; echo $?) $("$SCRIPT" catalogue | jq '.plugins | length') $(jq .version "$shipped")"
+check "it has exactly the three entries" "kalinewb.face kalinewb.profiles kalinewb.oled-corners" "$(jq -r '[.plugins[].id] | join(" ")' "$shipped")"
+check "every URL is the plugin's GitHub repo" \
+  "https://github.com/Kalinewb/omarchy-face.git https://github.com/Kalinewb/omarchy-profiles.git https://github.com/Kalinewb/omarchy-oled-corners.git" \
+  "$(jq -r '[.plugins[].url] | join(" ")' "$shipped")"
+check "every entry pins a full 40-hex commit and names its version" "true" \
+  "$(jq -r 'all(.plugins[]; (.pin | test("^[0-9a-f]{40}$")) and (.version | length > 0))' "$shipped")"
+check "Face is kalinewb.face, and was graveklar.face; only Corners is removed by Omarchy, with no panel" "graveklar.face kalinewb.oled-corners true" \
+  "$(jq -r '"\(.plugins[0].was) \([.plugins[] | select(.removeVia == "omarchy") | .id] | join(" ")) \(.plugins[2] | has("status") or has("setup") or has("remove") | not)"' "$shipped")"
+check "deny names liquid-notifications and both face-locks; no entry is denied or the notch itself" "true true" \
+  "$(jq -r '.deny as $d | "\(["graveklar.liquid-notifications", "graveklar.face-lock", "kalinewb.face-lock"] | all(. as $i | $d | index($i) != null)) \(all(.plugins[]; .id as $i | $i != "kalinewb.notch" and ($d | index($i)) == null))"' "$shipped")"
 check "no entry's kinds include bar" "true" "$(jq -r 'all(.plugins[]; .kinds | index("bar") == null)' "$shipped")"
+# Each pin, read in the sibling checkout when it is there: the version the
+# catalogue shows is the manifest's at the pin, and the id is the entry's (or
+# the name it had).
+SIBLINGS=${NOTCH_SIBLINGS:-$(dirname "$REPO")}
+while read -r id was url pin version; do
+  repo="$SIBLINGS/$(basename "$url" .git)"
+  if ! git -C "$repo" cat-file -e "$pin^{commit}" 2>/dev/null; then echo "  ${DIM}skip  $id's pin: no checkout of it at $repo${RESET}"; continue; fi
+  at=$(git -C "$repo" show "$pin:manifest.json")
+  [[ $was == - ]] && was=""
+  check "$id: the manifest at its pin is version $version, and names $id${was:+ or $was}" "$version true" \
+    "$(jq -r .version <<<"$at") $(jq -r --arg id "$id" --arg was "$was" '.id == $id or .id == $was' <<<"$at")"
+done < <(jq -r '.plugins[] | "\(.id) \(.was // "-") \(.url) \(.pin) \(.version)"' "$shipped")
+suite="$REPO/suite.json"
+pins_all=$(jq -r --slurpfile c "$shipped" '.pinned as $p | ([$c[0].self.id] + [$c[0].plugins[] | .id, (.was // empty)]) | all(. as $i | $p | index($i) != null)' "$suite")
+check "suite.json: version 1, the bar is the notch, and it pins the notch, every entry and every old name" "1 true true" \
+  "$(jq -r .version "$suite") $(jq -r --slurpfile c "$shipped" '.bar == $c[0].self.id' "$suite") $pins_all"
+check "…and the companions and both lock clones" "true" \
+  "$(jq -r '.pinned as $p | ["kalinewb.notch-menu", "kalinewb.notch-osd", "kalinewb.notch-notifications", "graveklar.face-lock", "kalinewb.face-lock"] | all(. as $i | $p | index($i) != null)' "$suite")"
 bad() { # bad <jq filter>: a broken copy of the test catalogue, then `state` against it
   jq "$1" "$sb/catalogue.json" >"$sb/bad.json"
   env "${HOOKS[@]}" NOTCH_PLUGINS_CATALOGUE="$sb/bad.json" "$SCRIPT" state | jq -r .reason; echo "${PIPESTATUS[0]}"
 }
-check "a catalogue with a denied id is refused (catalogue, exit 1)" "catalogue 1" "$(bad '.plugins[1].id = "graveklar.liquid-notifications"' | tr '\n' ' ' | sed 's/ $//')"
-check "a catalogue with an ext:: URL is refused" "catalogue 1" "$(bad '.plugins[0].url = "ext::sh -c touch% /tmp/pwned"' | tr '\n' ' ' | sed 's/ $//')"
-check "a catalogue with ../ in a status path is refused" "catalogue 1" "$(bad '.plugins[0].status[0] = "../../bin/sh"' | tr '\n' ' ' | sed 's/ $//')"
+for filter in '.plugins[1].id = "graveklar.liquid-notifications"' '.plugins[0].url = "ext::sh -c touch% /tmp/pwned"' \
+              '.plugins[0].status[0] = "../../bin/sh"' '.version = 1' '.plugins[1].pin = "8b4360e"' 'del(.plugins[1].version)' \
+              '.plugins[0].was = "kalinewb.face-lock"' '.plugins[0].was = .plugins[0].id' '.plugins[2].removeVia = "rm"' \
+              'del(.plugins[2].removeVia)'; do
+  check "a catalogue with $filter is refused (catalogue, exit 1)" "catalogue 1" "$(bad "$filter" | tr '\n' ' ' | sed 's/ $//')"
+done
 
 # ---------------------------------------------------------------------------
 echo; echo "${BOLD}B. Guards${RESET}"
 resolved=$(env PATH="$sb/stubs:/usr/share/omarchy/bin:/usr/bin" bash -c 'command -v omarchy-shell')
 check "under the stub PATH, omarchy-shell is the stub" "$sb/stubs/omarchy-shell" "$resolved"
 [[ $resolved == "$sb/stubs/omarchy-shell" ]] || { echo "${RED}the stubs aren't first on PATH: stopping before anything runs${RESET}"; finish; }
-out=$(np run install graveklar.liquid-notifications "$st" "$(head_of omarchy-face)"); rc=$?
+fpin=$(head_of omarchy-face)
+out=$(np run install graveklar.liquid-notifications "$st" "$fpin"); rc=$?
 check "run install graveklar.liquid-notifications: denied, exit 2" "2 denied" "$rc $(field .reason "$out")"
-out=$(np run install https://x/y.git "$st" "$(head_of omarchy-face)"); rc=$?
+out=$(np run install kalinewb.face-lock "$st" "$fpin"); rc=$?
+check "run install kalinewb.face-lock: denied, exit 2" "2 denied" "$rc $(field .reason "$out")"
+out=$(np run install graveklar.face "$st" "$fpin"); rc=$?
+check "run install graveklar.face (a name Face had, not a catalogue id): unknown-id, exit 2" "2 unknown-id" "$rc $(field .reason "$out")"
+out=$(np run install https://x/y.git "$st" "$fpin"); rc=$?
 check "run install <a URL>: unknown-id, exit 2" "2 unknown-id" "$rc $(field .reason "$out")"
-out=$(np run install ../x "$st" "$(head_of omarchy-face)"); rc=$?
+out=$(np run install ../x "$st" "$fpin"); rc=$?
 check "run install ../x: unknown-id, exit 2" "2 unknown-id" "$rc $(field .reason "$out")"
-out=$(env NOTCH_PLUGINS_DIR="$PD" "$SCRIPT" run install graveklar.face "$st" "$(head_of omarchy-face)"); rc=$?
+out=$(np run remove kalinewb.profiles "$st"); rc=$?
+check "run remove of a plugin with its own panel: usage, exit 2 (its panel removes it)" "2 usage" "$rc $(field .reason "$out")"
+out=$(env NOTCH_PLUGINS_DIR="$PD" "$SCRIPT" run install kalinewb.face "$st" "$fpin"); rc=$?
 check "NOTCH_PLUGINS_DIR without NOTCH_PLUGINS_OMARCHY: sandbox, exit 2" "2 sandbox" "$rc $(field .reason "$out")"
 for hook in NOTCH_PLUGINS_CATALOGUE="$sb/catalogue.json" NOTCH_PLUGINS_SHELL="$sb/stubs/omarchy-shell" \
             NOTCH_PLUGINS_TERMINAL="$sb/stubs/terminal" NOTCH_PLUGINS_SESSION_LOCKED=false; do
   out=$(env "$hook" "$SCRIPT" state); rc=$?
   check "${hook%%=*} alone: sandbox, exit 2" "2 sandbox" "$rc $(field .reason "$out")"
 done
+out=$(np state --local); rc=$?
+check "state takes no options (there is no network probe to skip)" "2 usage" "$rc $(field .reason "$out")"
 mkdir -p -m 700 "$sb/state" && mkdir -p "$st.lock" && echo $$ >"$st.lock/pid"
-out=$(np run enable graveklar.face "$st"); rc=$?
+out=$(np run enable kalinewb.face "$st"); rc=$?
 check "a job lock held by a live process: busy, exit 1" "1 busy" "$rc $(field .reason "$out")"
 rm -rf "$st.lock"; mkdir -p "$st.lock"
-out=$(np run enable graveklar.face "$st"); rc=$?
+out=$(np run enable kalinewb.face "$st"); rc=$?
 check "a lock just made, its pid not written yet: busy, never taken twice" "1 busy" "$rc $(field .reason "$out")"
 rm -rf "$st.lock"
 mkdir -p "$sb/state/update.json.lock" && echo $$ >"$sb/state/update.json.lock/pid"
-out=$(np run enable graveklar.face "$st"); rc=$?
+out=$(np run enable kalinewb.face "$st"); rc=$?
 check "the notch's own update holding its lock: busy" "1 busy" "$rc $(field .reason "$out")"
 rm -rf "$sb/state/update.json.lock"
 sleep 0.1 & dead=$!; wait $dead
 mkdir -p "$st.lock" && echo "$dead" >"$st.lock/pid"
-out=$(np run enable graveklar.face "$st"); rc=$?
+out=$(np run enable kalinewb.face "$st"); rc=$?
 check "a stale lock (dead pid) is cleared and the job proceeds (to not-installed)" "1 not-installed false" "$rc $(field .reason "$out") $(exists "$st.lock")"
 touch "$sb/locked"
-out=$(np run enable graveklar.face "$st"); rc=$?
+out=$(np run enable kalinewb.face "$st"); rc=$?
 check "a locked session: locked" "1 locked failed" "$rc $(field .reason "$out") $(jq -r .phase "$st")"
 rm -f "$sb/locked"
-out=$(env -u XDG_CONFIG_HOME HOME="$sb/xdghome" XDG_CONFIG_HOME="$sb/xdg" XDG_RUNTIME_DIR="$sb/run" PATH="$sb/xdgstubs:$PATH" "$SCRIPT" state --local)
-check "no hooks, XDG_CONFIG_HOME set: the plugins folder is still \$HOME/.config/omarchy/plugins (upstream's)" "$sb/xdghome/.config/omarchy/plugins true" \
-  "$(field '"\(.pluginsDir) \(.local)"' "$out")"
+out=$(env -u XDG_CONFIG_HOME HOME="$sb/xdghome" XDG_CONFIG_HOME="$sb/xdg" XDG_RUNTIME_DIR="$sb/run" PATH="$sb/xdgstubs:$PATH" "$SCRIPT" state)
+check "no hooks, XDG_CONFIG_HOME set: the plugins folder is still \$HOME/.config/omarchy/plugins (upstream's)" "$sb/xdghome/.config/omarchy/plugins" \
+  "$(field .pluginsDir "$out")"
 job=$(jq -r .job "$st")
 cp "$st" "$sb/not-a-job.json"
 out=$(np ack "$sb/not-a-job.json" "$job"); rc=$?
@@ -286,60 +346,77 @@ check "ack of that finished job marks it seen, and lets go of the lock" "true fa
 
 # ---------------------------------------------------------------------------
 echo; echo "${BOLD}C. The runner against the sandbox${RESET}"
+# GitHub has moved on past every pin: what lands is the pin, never HEAD.
+ppin=$(head_of omarchy-profiles)
+publish omarchy-profiles Panel.qml "Past the pin"
 s=$(np state)
-check "state: Face ID not installed, remote = its repo's HEAD" "not-installed $(head_of omarchy-face)" "$(field '"\(.state) \(.remote)"' "$(entry graveklar.face "$s")")"
-check "state: Profiles not installed, remote = its repo's HEAD" "not-installed $(head_of omarchy-profiles)" "$(field '"\(.state) \(.remote)"' "$(entry kalinewb.profiles "$s")")"
+check "state: all three not installed, each row naming its pin and version" "not-installed $fpin 2.0.0 not-installed $ppin not-installed" \
+  "$(field '"\(.state) \(.pin) \(.pinVersion)"' "$(entry kalinewb.face "$s")") $(field '"\(.state) \(.pin)"' "$(entry kalinewb.profiles "$s")") $(field .state "$(entry kalinewb.oled-corners "$s")")"
 
-out=$(np run install graveklar.face "$st" 0123456789abcdef0123456789abcdef01234567); rc=$?
-check "install with a commit GitHub doesn't have: changed, nothing installed, no clone left in scratch" "1 changed false 0" \
-  "$rc $(field .reason "$out") $(exists "$PD/graveklar.face") $(scratch_left)"
+catalogue "$sb/catalogue.json" omarchy-profiles "$fpin" "$ppin"
+out=$(np run install kalinewb.profiles "$st" 0123456789abcdef0123456789abcdef01234567); rc=$?
+check "install with a commit that isn't the pin (a stale card): changed, nothing installed, nothing in scratch" "1 changed false 0" \
+  "$rc $(field .reason "$out") $(exists "$PD/kalinewb.profiles") $(scratch_left)"
+check "…and it says why in words" "true" "$(field '.message | contains("Open it again")' "$out")"
 
-sha=$(head_of omarchy-face)
-p=$(np preview graveklar.face)
-check "preview (not installed): install, GitHub's HEAD, its manifest id, not refused, clone removed" "install $sha graveklar.face  true 0" \
-  "$(field '"\(.action) \(.remote) \(.manifestId) \(.refused) \(.ok)"' "$p") $(scratch_left)"
+chmod 000 "$sb/gh/omarchy-profiles.git"
+p=$(np preview kalinewb.profiles)
+chmod 755 "$sb/gh/omarchy-profiles.git"
+check "preview (not installed), GitHub unreadable: install, the pin, its version, ok -- no network" "install $ppin 1.0.0 true" \
+  "$(field '"\(.action) \(.remote) \(.version) \(.ok)"' "$p")"
 
 mark=$(log_mark shell.log)
-out=$(np run install graveklar.face "$st" "$sha"); rc=$?
-check "install: done; a git checkout of the pinned URL at the confirmed commit" "0 done true file://$sb/gh/omarchy-face.git $sha" \
-  "$rc $(field .phase "$out") $(exists "$PD/graveklar.face/.git") $(git -C "$PD/graveklar.face" remote get-url origin) $(git -C "$PD/graveklar.face" rev-parse HEAD)"
+out=$(np run install kalinewb.profiles "$st" "$ppin"); rc=$?
+check "a pinned install lands with HEAD = the pin (not GitHub's HEAD), detached, origin = the catalogue URL" \
+  "0 done $ppin detached file://$sb/gh/omarchy-profiles.git" \
+  "$rc $(field .phase "$out") $(head_in kalinewb.profiles) $(git -C "$PD/kalinewb.profiles" symbolic-ref -q HEAD || echo detached) $(git -C "$PD/kalinewb.profiles" remote get-url origin)"
 calls=$(log_since shell.log "$mark")
 check "…enabled with no placement, after the rescan" "true" \
-  "$(awk '/^shell\|rescanPlugins$/ { r = NR } /^shell\|enablePlugin\|graveklar\.face\|\{\}$/ { e = NR } END { print (r > 0 && e > r) ? "true" : "false" }' <<<"$calls")"
-check "…and no staging folder or scratch clone is left" "0 0" "$(find "$PD" -maxdepth 1 -name '.add.tmp.*' | wc -l) $(scratch_left)"
+  "$(awk '/^shell\|rescanPlugins$/ { r = NR } /^shell\|enablePlugin\|kalinewb\.profiles\|\{\}$/ { e = NR } END { print (r > 0 && e > r) ? "true" : "false" }' <<<"$calls")"
+check "…upstream was handed a local path, and no staging folder or scratch clone is left" "true 0 0" \
+  "$(grep '^omarchy plugin add' "$sb/calls.log" | tail -1 | grep -qF "$SCRATCH/" && echo true || echo false) $(find "$PD" -maxdepth 1 -name '.add.tmp.*' | wc -l) $(scratch_left)"
 s=$(np state)
-check "state: Face ID current, enabled, needs setup (the camera)" "current true needed" "$(field '"\(.state) \(.enabled) \(.setup)"' "$(entry graveklar.face "$s")")"
+check "state: Profiles pinned to the verified version, enabled" "current current true" "$(field '"\(.state) \(.relation) \(.enabled)"' "$(entry kalinewb.profiles "$s")")"
 
-chmod 000 "$sb/gh/omarchy-face.git"
+chmod 000 "$sb/gh/omarchy-profiles.git"
 started=$(date +%s%3N)
-s=$(np state --local)
+s=$(np state)
 took=$(( $(date +%s%3N) - started ))
-chmod 755 "$sb/gh/omarchy-face.git"
-echo "  ${DIM}state --local took ${took} ms${RESET}"
-check "state --local with GitHub unreadable: under 2 s, installed, enabled, unchecked, local" "true true true unchecked unchecked true" \
-  "$(under "$took" 2000) $(field '"\(.installed) \(.enabled) \(.relation) \(.state)"' "$(entry graveklar.face "$s")") $(field .local "$s")"
+chmod 755 "$sb/gh/omarchy-profiles.git"
+echo "  ${DIM}state took ${took} ms${RESET}"
+check "state with GitHub unreadable: under 2 s, still current (the probe never touches the network)" "true current" \
+  "$(under "$took" 2000) $(field .state "$(entry kalinewb.profiles "$s")")"
 
 mark=$(log_mark calls.log)
-out=$(np run install graveklar.face "$st" "$sha"); rc=$?
+out=$(np run install kalinewb.profiles "$st" "$ppin"); rc=$?
 check "install again: already-installed, and upstream add never ran" "1 already-installed 0" \
   "$rc $(field .reason "$out") $(log_since calls.log "$mark" | grep -c '^omarchy plugin add')"
+forget_profiles
 
-# A wrong id, caught before anything lands.
+# A wrong id at the pin, caught before the plugins folder is touched.
 evil=(env "${HOOKS[@]}" NOTCH_PLUGINS_CATALOGUE="$sb/catalogue-evil.json" "$SCRIPT")
-p=$("${evil[@]}" preview kalinewb.profiles)
-mark=$(log_mark shell.log); cmark=$(log_mark calls.log)
+mark=$(log_mark shell.log); cmark=$(log_mark calls.log); before=$(ls -A "$PD" | sort | tr '\n' ' ')
 out=$("${evil[@]}" run install kalinewb.profiles "$st" "$(head_of evil-profiles)"); rc=$?
-check "a repo whose manifest isn't the catalogue id: preview refused, run failed wrong-id naming it" "wrong-id false 1 wrong-id true" \
-  "$(field '"\(.refused) \(.ok)"' "$p") $rc $(field .reason "$out") $(field '.message | contains("evil.profiles")' "$out")"
-check "…nothing landed: no folder, no staging, upstream never ran, no rescan or enable" "false false 0 0 0" \
-  "$(exists "$PD/evil.profiles") $(exists "$PD/kalinewb.profiles") $(find "$PD" -maxdepth 1 -name '.add.tmp.*' | wc -l) $(log_since calls.log "$cmark" | grep -c '^omarchy plugin add') $(log_since shell.log "$mark" | grep -cE 'rescanPlugins|enablePlugin')"
+check "a pin whose manifest isn't the catalogue id: failed wrong-id naming it" "1 wrong-id true" \
+  "$rc $(field .reason "$out") $(field '.message | contains("evil.profiles")' "$out")"
+check "…the plugins folder untouched: upstream never ran, no rescan or enable, nothing in scratch" "$before 0 0 0" \
+  "$(ls -A "$PD" | sort | tr '\n' ' ') $(log_since calls.log "$cmark" | grep -c '^omarchy plugin add') $(log_since shell.log "$mark" | grep -cE 'rescanPlugins|enablePlugin') $(scratch_left)"
 
-# A wrong id, caught only after upstream's own clone.
+# What lands still isn't trusted: a stand-in that moves the staged clone past the pin.
+cat >"$sb/bin/omarchy-sneaky" <<EOF
+#!/bin/bash
+if [[ "\$1 \${2:-}" == "plugin add" ]]; then
+  git -C "\$3" show HEAD:manifest.json | jq '.id = "evil.profiles"' >"\$3/manifest.json"
+  git -C "\$3" -c user.name=x -c user.email=x@x.invalid commit -qam "Rename"
+fi
+exec "$sb/bin/omarchy" "\$@"
+EOF
+chmod +x "$sb/bin/omarchy-sneaky"
 sneaky=(env "${HOOKS[@]}" NOTCH_PLUGINS_CATALOGUE="$sb/catalogue-sneaky.json" NOTCH_PLUGINS_OMARCHY="$sb/bin/omarchy-sneaky" "$SCRIPT")
 mark=$(log_mark shell.log)
 out=$("${sneaky[@]}" run install kalinewb.profiles "$st" "$(head_of sneaky-profiles)"); rc=$?
 refused=$(find "$PD" -mindepth 1 -maxdepth 1 -name '.notch-refused.evil.profiles.*')
-check "GitHub renamed the id between the check and upstream's clone: failed wrong-id" "1 wrong-id" "$rc $(field .reason "$out")"
+check "the folder that landed isn't the pin's (renamed after the check): failed wrong-id" "1 wrong-id" "$rc $(field .reason "$out")"
 check "…the folder was moved aside to one .notch-refused.evil.profiles.*, named in movedTo" "false 1 true" \
   "$(exists "$PD/evil.profiles") $(grep -c . <<<"$refused") $([[ -n $refused && $(field .movedTo "$out") == "$refused" ]] && echo true || echo false)"
 check "…never enabled, and the shell's plugin list doesn't have it" "0 false" \
@@ -348,14 +425,19 @@ rm -rf "$PD"/.notch-refused.*
 
 cmark=$(log_mark calls.log)
 barc=(env "${HOOKS[@]}" NOTCH_PLUGINS_CATALOGUE="$sb/catalogue-bar.json" "$SCRIPT")
-p=$("${barc[@]}" preview kalinewb.profiles)
 out=$("${barc[@]}" run install kalinewb.profiles "$st" "$(head_of bar-profiles)"); rc=$?
-check "a repo whose manifest is a bar: preview refused, failed bar-kind, no folder, upstream never ran" "bar-kind 1 bar-kind false 0" \
-  "$(field .refused "$p") $rc $(field .reason "$out") $(exists "$PD/kalinewb.profiles") $(log_since calls.log "$cmark" | grep -c '^omarchy plugin add')"
+check "a pin whose manifest is a bar: failed bar-kind, no folder, upstream never ran" "1 bar-kind false 0" \
+  "$rc $(field .reason "$out") $(exists "$PD/kalinewb.profiles") $(log_since calls.log "$cmark" | grep -c '^omarchy plugin add')"
+
+mv "$sb/gh/omarchy-profiles.git" "$sb/gh/away.git"
+out=$(np run install kalinewb.profiles "$st" "$ppin"); rc=$?
+mv "$sb/gh/away.git" "$sb/gh/omarchy-profiles.git"
+check "GitHub can't be reached: offline, nothing installed, nothing in scratch" "1 offline false 0" \
+  "$rc $(field .reason "$out") $(exists "$PD/kalinewb.profiles") $(scratch_left)"
 
 echo 1 >"$sb/stub-rescan-exit"
 mark=$(log_mark calls.log)
-out=$(np run install kalinewb.profiles "$st" "$(head_of omarchy-profiles)"); rc=$?
+out=$(np run install kalinewb.profiles "$st" "$ppin"); rc=$?
 check "upstream add exits 1 (its rescan failed) but the plugin landed: done and enabled" "rc=1 0 done true" \
   "$(log_since calls.log "$mark" | grep -A1 '^omarchy plugin add' | grep -o 'rc=[0-9]*' | head -1) $rc $(field '"\(.phase) \(.enabled)"' "$out")"
 rm -f "$sb/stub-rescan-exit"
@@ -364,14 +446,14 @@ forget_profiles
 echo kalinewb.profiles >"$sb/stub-hide"
 mark=$(log_mark shell.log)
 started=$(date +%s%3N)
-out=$(env "${HOOKS[@]}" NOTCH_PLUGINS_DISCOVER_MS=600 "$SCRIPT" run install kalinewb.profiles "$st" "$(head_of omarchy-profiles)"); rc=$?
+out=$(env "${HOOKS[@]}" NOTCH_PLUGINS_DISCOVER_MS=600 "$SCRIPT" run install kalinewb.profiles "$st" "$ppin"); rc=$?
 waited=$(( $(date +%s%3N) - started ))
 check "the shell never sees it: after the discovery wait, done with enabled:false (never failed), no enable" "0 done false 0 1" \
   "$rc $(field '"\(.phase) \(.enabled)"' "$out") $(log_since shell.log "$mark" | grep -c enablePlugin) $((waited >= 600))"
 forget_profiles
 echo 5 >"$sb/stub-list-sleep"
 rm -f "$st"
-env "${HOOKS[@]}" NOTCH_PLUGINS_DISCOVER_MS=600 "$SCRIPT" run install kalinewb.profiles "$st" "$(head_of omarchy-profiles)" >/dev/null &
+env "${HOOKS[@]}" NOTCH_PLUGINS_DISCOVER_MS=600 "$SCRIPT" run install kalinewb.profiles "$st" "$ppin" >/dev/null &
 job=$!
 until [[ $(jq -r .step "$st" 2>/dev/null) == enabling ]] || ! kill -0 "$job" 2>/dev/null; do sleep 0.05; done
 t1=$(date +%s%3N)
@@ -381,63 +463,183 @@ rm -f "$sb/stub-list-sleep" "$sb/stub-hide"
 echo "  ${DIM}discovery with a shell that hangs 5 s per list: ${took} ms${RESET}"
 check "…a hung shell: the wait is bounded by the clock, not by polls × timeouts; the shipped wait is 10 s" "true done 10000" \
   "$(under "$took" 3500) $(jq -r .phase "$st") $(sed -n 's/.*NOTCH_PLUGINS_DISCOVER_MS:-\([0-9]*\)}.*/\1/p' "$SCRIPT" | tail -n 1)"
-forget_profiles
 
-# Update
-publish omarchy-face Helper.qml "Helper tweak"
+# Update: the notch moves the pin (a new catalogue), and the update follows it.
+grep -qx kalinewb.profiles "$sb/enabled" || echo kalinewb.profiles >>"$sb/enabled"
+publish omarchy-profiles Helper.qml "Helper tweak"
+p2=$(head_of omarchy-profiles)
+catalogue "$sb/catalogue.json" omarchy-profiles "$fpin" "$p2"
 s=$(np state)
-check "a published commit that isn't an entry point: update-available, behind 1" "update-available 1" "$(field '"\(.state) \(.behind)"' "$(entry graveklar.face "$s")")"
-p=$(np preview graveklar.face)
-check "preview: behind 1, its subject, 1 file, a restart likely, still Face ID" "true 1 Helper tweak 1 true graveklar.face " \
-  "$(field '"\(.ok) \(.behind) \(.commits[0].subject) \(.files) \(.restartLikely) \(.manifestId) \(.refused)"' "$p")"
-old=$(git -C "$PD/graveklar.face" rev-parse HEAD)
-out=$(np run update graveklar.face "$st" "$old"); rc=$?
-check "update with a stale commit: changed, HEAD unchanged" "1 changed $old" "$rc $(field .reason "$out") $(git -C "$PD/graveklar.face" rev-parse HEAD)"
-new=$(head_of omarchy-face)
-out=$(np run update graveklar.face "$st" "$new"); rc=$?
-check "update with the confirmed commit: done, to = it, restart suggested" "0 done $new true $new" \
-  "$rc $(field '"\(.phase) \(.to) \(.restartSuggested)"' "$out") $(git -C "$PD/graveklar.face" rev-parse HEAD)"
-publish omarchy-face FacePanel.qml "Entry point tweak"
-out=$(np run update graveklar.face "$st" "$(head_of omarchy-face)"); rc=$?
-check "an entry-point-only update: done, no restart suggested" "0 done false" "$rc $(field '"\(.phase) \(.restartSuggested)"' "$out")"
-publish_manifest omarchy-face '.id = "evil.face"' "Rename"
-old=$(git -C "$PD/graveklar.face" rev-parse HEAD)
-p=$(np preview graveklar.face)
+check "a moved pin, not here yet: update-available (verified update ready), nothing fetched" "update-available behind false" \
+  "$(field '"\(.state) \(.relation)"' "$(entry kalinewb.profiles "$s")") $(git -C "$PD/kalinewb.profiles" cat-file -e "$p2^{commit}" 2>/dev/null && echo true || echo false)"
+p=$(np preview kalinewb.profiles)
+check "preview fetches the pin: 2 commits behind, the newest subject, 2 files, a restart likely, still Profiles" "true 2 Helper tweak 2 true kalinewb.profiles  $p2" \
+  "$(field '"\(.ok) \(.behind) \(.commits[0].subject) \(.files) \(.restartLikely) \(.manifestId) \(.refused) \(.remote)"' "$p")"
+out=$(np run update kalinewb.profiles "$st" "$ppin"); rc=$?
+check "update with the old pin (a card from before the notch moved it): changed, HEAD unchanged" "1 changed $ppin" "$rc $(field .reason "$out") $(head_in kalinewb.profiles)"
 mark=$(log_mark calls.log)
-out=$(np run update graveklar.face "$st" "$(head_of omarchy-face)"); rc=$?
-check "a published commit renaming the manifest id: preview refused, update wrong-id, HEAD unchanged, upstream never ran" \
-  "wrong-id 1 wrong-id $old 0" "$(field .refused "$p") $rc $(field .reason "$out") $(git -C "$PD/graveklar.face" rev-parse HEAD) $(log_since calls.log "$mark" | grep -c '^omarchy plugin update')"
-publish_manifest omarchy-face '.id = "graveklar.face"' "Rename back"
+out=$(np run update kalinewb.profiles "$st" "$p2"); rc=$?
+check "moving the pin and updating gives HEAD = the new pin, detached, restart suggested" "0 done $p2 true $p2 detached" \
+  "$rc $(field '"\(.phase) \(.to) \(.restartSuggested)"' "$out") $(head_in kalinewb.profiles) $(git -C "$PD/kalinewb.profiles" symbolic-ref -q HEAD || echo detached)"
+check "…validated by upstream, never \`omarchy plugin update\`" "1 0" \
+  "$(log_since calls.log "$mark" | grep -c '^omarchy plugin validate') $(log_since calls.log "$mark" | grep -c '^omarchy plugin update')"
+out=$(np run update kalinewb.profiles "$st" "$p2"); rc=$?
+check "updating again at the pin: done, nothing moves" "0 done $p2" "$rc $(field .phase "$out") $(head_in kalinewb.profiles)"
+publish omarchy-profiles Panel.qml "Entry point tweak"
+catalogue "$sb/catalogue.json" omarchy-profiles "$fpin" "$(head_of omarchy-profiles)"
+out=$(np run update kalinewb.profiles "$st" "$(head_of omarchy-profiles)"); rc=$?
+check "an entry-point-only update: done, no restart suggested" "0 done false" "$rc $(field '"\(.phase) \(.restartSuggested)"' "$out")"
+publish_manifest omarchy-profiles '.id = "evil.profiles"' "Rename"
+catalogue "$sb/catalogue.json" omarchy-profiles "$fpin" "$(head_of omarchy-profiles)"
+old=$(head_in kalinewb.profiles)
+p=$(np preview kalinewb.profiles)
+out=$(np run update kalinewb.profiles "$st" "$(head_of omarchy-profiles)"); rc=$?
+check "a pin whose manifest renames the id: preview refused, update wrong-id, HEAD unchanged" "wrong-id 1 wrong-id $old" \
+  "$(field .refused "$p") $rc $(field .reason "$out") $(head_in kalinewb.profiles)"
+publish_manifest omarchy-profiles '.id = "kalinewb.profiles"' "Rename back"
+p3=$(head_of omarchy-profiles)
+catalogue "$sb/catalogue.json" omarchy-profiles "$fpin" "$p3"
+np run update kalinewb.profiles "$st" "$p3" >/dev/null
+
+# Ahead of, or beside, the pin: IPC can still ask, and nothing moves.
+git -C "$PD/kalinewb.profiles" -c user.name=x -c user.email=x@x.invalid commit -q --allow-empty -m "Local, on top"
+ahead=$(head_in kalinewb.profiles)
+check "a local commit on top of the pin: newer" "newer" "$(field .state "$(entry kalinewb.profiles "$(np state)")")"
+out=$(np run update kalinewb.profiles "$st" "$p3"); rc=$?
+check "IPC run update with HEAD ahead of the pin: refused, HEAD unchanged" "1 local-changes $ahead" "$rc $(field .reason "$out") $(head_in kalinewb.profiles)"
+git -C "$PD/kalinewb.profiles" checkout -q --detach "$p3~1"
+git -C "$PD/kalinewb.profiles" -c user.name=x -c user.email=x@x.invalid commit -q --allow-empty -m "Local, beside"
+beside=$(head_in kalinewb.profiles)
+check "a local commit beside the pin: local-changes (differs from the verified version)" "local-changes diverged" \
+  "$(field '"\(.state) \(.relation)"' "$(entry kalinewb.profiles "$(np state)")")"
+out=$(np run update kalinewb.profiles "$st" "$p3"); rc=$?
+check "IPC run update with HEAD diverged from the pin: refused, HEAD unchanged" "1 local-changes $beside" "$rc $(field .reason "$out") $(head_in kalinewb.profiles)"
+git -C "$PD/kalinewb.profiles" checkout -q --detach "$p3"
+
+# A global `omarchy plugin update` (upstream's fetch + ff-only) takes it past the pin.
+publish omarchy-profiles Helper.qml "Past the verified version"
+"$sb/bin/omarchy" plugin update kalinewb.profiles --yes >/dev/null 2>&1
+check "a stand-in global \`omarchy plugin update\`: past the pin, newer, and the row offers no update" "$(head_of omarchy-profiles) newer" \
+  "$(head_in kalinewb.profiles) $(field .state "$(entry kalinewb.profiles "$(np state)")")"
+git -C "$PD/kalinewb.profiles" checkout -q --detach "$p3"
+
+# Review: a floating terminal, nothing from the plugin run.
+mark=$(log_mark terminal.log)
+out=$(np review kalinewb.profiles)
+for _ in $(seq 1 20); do [[ $(log_mark terminal.log) -gt $mark ]] && break; sleep 0.05; done
+check "review on a detached checkout at the pin: update mode, the terminal logs HEAD..<pin>" "update true" \
+  "$(field .mode "$out") $(tail -n 1 "$sb/terminal.log" | grep -qF "git log --stat HEAD..$p3" && echo true || echo false)"
+publish omarchy-profiles Helper.qml "Reviewed before fetching"
+p4=$(head_of omarchy-profiles)
+catalogue "$sb/catalogue.json" omarchy-profiles "$fpin" "$p4"
+mark=$(log_mark terminal.log)
+out=$(np review kalinewb.profiles)
+for _ in $(seq 1 20); do [[ $(log_mark terminal.log) -gt $mark ]] && break; sleep 0.05; done
+cmd=$(tail -n 1 "$sb/terminal.log" | cut -d'|' -f2-)
+ran=$(env GIT_CONFIG_GLOBAL=/dev/null bash -c "$cmd" 2>&1)
+check "review with the pin absent locally: its command fetches it, and logs HEAD..<pin> without \"bad revision\"" "update true false" \
+  "$(field .mode "$out") $(grep -qF "Reviewed before fetching" <<<"$ran" && echo true || echo false) $(grep -q 'bad revision' <<<"$ran" && echo true || echo false)"
+np run update kalinewb.profiles "$st" "$p4" >/dev/null
 
 # Refusals
-publish omarchy-face Helper.qml "One more"
-echo "local" >"$PD/graveklar.face/local.txt" && git -C "$PD/graveklar.face" add local.txt && git -C "$PD/graveklar.face" commit -qm "local"
-check "a local commit: local-changes" "local-changes" "$(field .state "$(entry graveklar.face "$(np state)")")"
-mark=$(log_mark calls.log)
-out=$(np run update graveklar.face "$st" "$(head_of omarchy-face)"); rc=$?
-check "…and update refuses before upstream runs" "1 local-changes 0" "$rc $(field .reason "$out") $(log_since calls.log "$mark" | grep -c '^omarchy plugin update')"
-git -C "$PD/graveklar.face" reset -q --hard HEAD~1
-echo "// edit" >>"$PD/graveklar.face/Service.qml"
-check "a tracked edit: local-changes" "local-changes" "$(field .state "$(entry graveklar.face "$(np state)")")"
-git -C "$PD/graveklar.face" checkout -q Service.qml
+echo "// edit" >>"$PD/kalinewb.profiles/Panel.qml"
+check "a tracked edit: local-changes (local edits)" "local-changes true" "$(field '"\(.state) \(.dirty)"' "$(entry kalinewb.profiles "$(np state)")")"
+publish omarchy-profiles Helper.qml "One more"
+catalogue "$sb/catalogue.json" omarchy-profiles "$fpin" "$(head_of omarchy-profiles)"
+out=$(np run update kalinewb.profiles "$st" "$(head_of omarchy-profiles)"); rc=$?
+check "…and update refuses before anything moves" "1 local-changes $p4" "$rc $(field .reason "$out") $(head_in kalinewb.profiles)"
+git -C "$PD/kalinewb.profiles" checkout -q Panel.qml
+forget_profiles
 mkdir -p "$PD/kalinewb.profiles" && cp -r "$FIX/profiles/." "$PD/kalinewb.profiles/"
 check "a plain folder copy: other-source, and its status command never ran" "other-source unknown" \
   "$(field '"\(.state) \(.setup)"' "$(entry kalinewb.profiles "$(np state)")")"
 out=$(np run update kalinewb.profiles "$st" "$(head_of omarchy-profiles)"); rc=$?
 check "…and update refuses: not-git" "1 not-git" "$rc $(field .reason "$out")"
-rm -rf "$PD/kalinewb.profiles"
-mv "$sb/gh/omarchy-face.git" "$sb/gh/away.git"
-check "the pinned repo can't be reached: offline" "offline" "$(field .state "$(entry graveklar.face "$(np state)")")"
-mv "$sb/gh/away.git" "$sb/gh/omarchy-face.git"
-out=$(env "${HOOKS[@]}" FIXTURE_FACE_INSTALL=running "$SCRIPT" run update graveklar.face "$st" "$(head_of omarchy-face)"); rc=$?
+forget_profiles
+
+# OLED Corners: no panel of its own, so it is removed from here.
+cpin=$(head_of omarchy-oled-corners)
+out=$(np run install kalinewb.oled-corners "$st" "$cpin"); rc=$?
+check "Corners installs at its pin and is turned on" "0 done true $cpin" "$rc $(field '"\(.phase) \(.enabled)"' "$out") $(head_in kalinewb.oled-corners)"
+check "…and its row offers Remove, with no panel to hand off to" "current" "$(field .state "$(entry kalinewb.oled-corners "$(np state)")")"
+mark=$(log_mark calls.log)
+out=$(np run remove kalinewb.oled-corners "$st"); rc=$?
+check "Corners removes: done, the folder gone, by upstream's own remove" "0 done false 1" \
+  "$rc $(field .phase "$out") $(exists "$PD/kalinewb.oled-corners") $(log_since calls.log "$mark" | grep -c '^omarchy plugin remove kalinewb.oled-corners --yes')"
+out=$(np run remove kalinewb.oled-corners "$st"); rc=$?
+check "…and removing it again: not-installed" "1 not-installed" "$rc $(field .reason "$out")"
+
+# Face: kalinewb.face now, graveklar.face before. Its 2.x pin still says the old id.
+mkdir -p "$sb/home/.config/omarchy"
+printf '%s\n' '{"bar": {"id": "kalinewb.notch", "layout": {"right": [{"id": "graveklar.face"}]}}, "plugins": [{"id": "graveklar.face-lock"}]}' \
+  >"$sb/home/.config/omarchy/shell.json"
+out=$(np run install kalinewb.face "$st" "$fpin"); rc=$?
+check "Face's 2.x pin installs under the id it carries, graveklar.face, and is turned on" "0 done true true false" \
+  "$rc $(field '"\(.phase) \(.enabled)"' "$out") $(exists "$PD/graveklar.face/.git") $(exists "$PD/kalinewb.face")"
+s=$(np state)
+check "with only the old folder the row is that folder's: current, enabled, needs setup" "current graveklar.face true needed" \
+  "$(field '"\(.state) \(.folder) \(.enabled) \(.setup)"' "$(entry kalinewb.face "$s")")"
+out=$(np run install kalinewb.face "$st" "$fpin"); rc=$?
+check "…and Install refuses: renamed" "1 renamed" "$rc $(field .reason "$out")"
+mark=$(log_mark shell.log)
+out=$(np setup kalinewb.face)
+check "setup hands off to the id the panel answers to, graveklar.face" "true graveklar.face|open|setup|" "$(field .ok "$out") $(log_since shell.log "$mark" | tail -n 1)"
+out=$(env "${HOOKS[@]}" FIXTURE_FACE_INSTALL=running "$SCRIPT" run update kalinewb.face "$st" "$fpin"); rc=$?
 check "Face's own root build running: plugin-busy" "1 plugin-busy" "$rc $(field .reason "$out")"
+out=$(npc "$sb/catalogue.json" run update kalinewb.face "$st" "$fpin"); rc=$?
+check "an update at the pin with nothing to rename: done, the rename never needed" "0 done false 0" \
+  "$rc $(field '"\(.phase) \(.renamed)"' "$out") $(cat "$sb/rename.log" 2>/dev/null | grep -c .)"
+
+# The 3.0.0 pin carries the new id; the update lands it in the old folder, and
+# Setup has Face's own script finish the move.
+publish_manifest omarchy-face '.id = "kalinewb.face" | .version = "3.0.0"' "Rename Face to kalinewb.face"
+f3=$(head_of omarchy-face)
+catalogue "$sb/catalogue.json" omarchy-profiles "$f3" "$(head_of omarchy-profiles)"
+s=$(np state)
+check "the 3.0.0 pin: update-available on the old folder" "update-available graveklar.face" "$(field '"\(.state) \(.folder)"' "$(entry kalinewb.face "$s")")"
+p=$(np preview kalinewb.face)
+check "…its card says the update renames it" "true true kalinewb.face 3.0.0" "$(field '"\(.ok) \(.renames) \(.manifestId) \(.version)"' "$p")"
+out=$(env "${HOOKS[@]}" "$SCRIPT" run update kalinewb.face "$st" "$f3"); rc=$?
+check "without Setup's sandbox a sandboxed rename refuses (after the checkout), and nothing renamed" "1 sandbox false" \
+  "$rc $(field .reason "$out") $(exists "$PD/kalinewb.face")"
+git -C "$PD/graveklar.face" checkout -q --detach "$fpin"
+: >"$sb/rename.log"
+out=$(npc "$sb/catalogue.json" run update kalinewb.face "$st" "$f3"); rc=$?
+check "a was update checks out the pin in graveklar.face, then runs the stub once with --finish --wait --from <old HEAD>" \
+  "0 done true $f3 --finish --wait --from $fpin 1" \
+  "$rc $(field '"\(.phase) \(.renamed) \(.to)"' "$out") $(cat "$sb/rename.log") $(grep -c . "$sb/rename.log")"
+check "…the folder is kalinewb.face, shell.json names only the new ids, and the row follows it" "true false 0 current kalinewb.face" \
+  "$(exists "$PD/kalinewb.face/.git") $(exists "$PD/graveklar.face") $(grep -c 'graveklar\.face' "$sb/home/.config/omarchy/shell.json") $(field '"\(.relation) \(.folder)"' "$(entry kalinewb.face "$(np state)")")"
+check "…inside Setup's snapshot, whose Undo is Face's --rollback" "true" \
+  "$(jq -r '.undo[0] | (.[0] | endswith("kalinewb.face/bin/omarchy-face-rename")) and .[1] == "--rollback"' "$sb/home/.local/state/kalinewb.notch/setup/snapshots/"*-face-renamed/meta.json 2>/dev/null)"
+
+# Stranded: the pin checked out in the old folder, the rename never ran.
+"$PD/kalinewb.face/bin/omarchy-face-rename" --rollback >/dev/null
+: >"$sb/rename.log"
+out=$(npc "$sb/catalogue.json" run update kalinewb.face "$st" "$f3"); rc=$?
+check "a stranded checkout (at the pin, still graveklar.face) finishes: no checkout, one --finish, renamed" "0 true --finish --wait --from $f3 true" \
+  "$rc $(field .renamed "$out") $(cat "$sb/rename.log") $(exists "$PD/kalinewb.face")"
+: >"$sb/rename.log"
+out=$(npc "$sb/catalogue.json" run update kalinewb.face "$st" "$f3"); rc=$?
+check "a rerun is a no-op: done, nothing renamed, the stub never called" "0 done false 0" \
+  "$rc $(field '"\(.phase) \(.renamed)"' "$out") $(grep -c . "$sb/rename.log")"
+
+# A copy of Face with no .git in the old folder (Face's own install.sh): not ours to update.
+forget kalinewb.face
+mkdir -p "$PD/graveklar.face" && cp -r "$FIX/face/." "$PD/graveklar.face/"
+check "a non-git was folder reads other-source" "other-source graveklar.face" "$(field '"\(.state) \(.folder)"' "$(entry kalinewb.face "$(np state)")")"
+out=$(npc "$sb/catalogue.json" run update kalinewb.face "$st" "$f3"); rc=$?
+check "…and Update refuses: not-git" "1 not-git" "$rc $(field .reason "$out")"
+forget graveklar.face
+catalogue "$sb/catalogue.json" omarchy-profiles "$fpin" "$(head_of omarchy-profiles)"
+np run install kalinewb.face "$st" "$fpin" >/dev/null
 
 # A stopped job: the runner alone is signalled.
 stopped() { # stopped <signal>: "<exit code> <ms to exit> <phase> <reason>"
   local job t0 rc
   rm -f "$sb/hang.pid"
   # A background job of a script starts with INT ignored; give it back.
-  env --default-signal=INT "${HOOKS[@]}" NOTCH_PLUGINS_OMARCHY="$sb/bin/omarchy-hang" "$SCRIPT" run install kalinewb.profiles "$st" "$(head_of omarchy-profiles)" >/dev/null &
+  env --default-signal=INT "${HOOKS[@]}" NOTCH_PLUGINS_OMARCHY="$sb/bin/omarchy-hang" "$SCRIPT" run install kalinewb.profiles "$st" "$(jq -r '.plugins[1].pin' "$sb/catalogue.json")" >/dev/null &
   job=$!
   for _ in $(seq 1 100); do [[ -s $sb/hang.pid && -d $PD/.add.tmp.$(cat "$sb/hang.pid" 2>/dev/null) ]] && break; sleep 0.05; done
   t0=$(date +%s%3N)
@@ -458,16 +660,13 @@ check "the status file is mode 600 in a 700 folder, with no temp files, lock or 
 
 # Handoffs
 mark=$(log_mark shell.log)
-out=$(np setup graveklar.face)
+out=$(np setup kalinewb.face)
 check "setup: Face's own panel, over IPC, with exactly 4 arguments" "true graveklar.face|open|setup|" "$(field .ok "$out") $(log_since shell.log "$mark" | tail -n 1)"
 touch "$sb/stub-target-missing"
-check "a plugin whose widget isn't hosted: not-hosted" '{"ok":false,"reason":"not-hosted"}' "$(np setup graveklar.face | jq -c '{ok, reason}')"
+check "a plugin whose widget isn't hosted: not-hosted" '{"ok":false,"reason":"not-hosted"}' "$(np setup kalinewb.face | jq -c '{ok, reason}')"
 rm -f "$sb/stub-target-missing"
-np state >/dev/null
-out=$(np review graveklar.face)
-for _ in $(seq 1 20); do [[ -s $sb/terminal.log ]] && break; sleep 0.05; done
-check "review of an available update: the terminal gets exactly upstream's own update" "update 1|omarchy plugin update graveklar.face" \
-  "$(field .mode "$out") $(tail -n 1 "$sb/terminal.log")"
+out=$(np setup kalinewb.oled-corners); rc=$?
+check "a plugin with no panel has nothing to hand off to: usage, exit 2" "2 usage" "$rc $(field .reason "$out")"
 
 # ---------------------------------------------------------------------------
 echo; echo "${BOLD}D. The Plugins page${RESET}"
@@ -497,12 +696,12 @@ until_true() { # until_true <tries of 0.1 s> <jq over `plugins status`>
   return 1
 }
 pview() { jq -c --arg id "$1" '.entries[] | select(.id == $id)' <<<"$2"; }
-profiles_ready='.checkedAt > 0 and .fullCheckedAt > 0 and ((.entries[] | select(.id == "kalinewb.profiles") | .state) == "not-installed")'
+profiles_ready='.checkedAt > 0 and ((.entries[] | select(.id == "kalinewb.profiles") | .state) == "not-installed")'
 
 start
 rest_height=$(ipc geometry | jq -r .window.height)
 ipc plugins open >/dev/null
-until_true 100 '.fullCheckedAt > 0' ; sleep 1.2
+until_true 100 '.checkedAt > 0' ; sleep 1.2
 g=$(ipc geometry); s=$(status)
 echo "  ${DIM}$(jq -c '{state, view, target, bar: {width: .bar.width, height: .bar.height}, plugins: (.plugins | {open, size, content, host})}' <<<"$g")${RESET}"
 check "plugins open: the notch expands into the plugins view" "expanded plugins true" "$(field '"\(.state) \(.view) \(.plugins.open)"' "$g")"
@@ -520,7 +719,7 @@ print(len(items)>0, len(bad))' "$(ipc design)"; }
 check "every drawn rounded item on the page has the notch's radius" "True 0" "$(audit)"
 check "the page's text is Apple white on the notch's black" "#FFFFFF #000000" "$(field '"\(.plugins.foreground) \(.plugins.surface)"' "$g")"
 runner=$(np state | jq -r '[.entries[].state] | join(" ")')
-check "plugins status: two entries plus the notch, in the runner's states" "2 self $runner" \
+check "plugins status: three entries plus the notch, in the runner's states" "3 self $runner" \
   "$(field '"\(.entries | length) \(.self.state) \([.entries[].state] | join(" "))"' "$s")"
 
 check "confirm with no card: no-such-button, and nothing ran" "no-such-button false" "$(ipc pluginsPress confirm) $(exists "$job_file")"
@@ -528,7 +727,7 @@ ipc pluginsPress install:kalinewb.profiles >/dev/null
 until_true 100 '.confirm.ready'
 s=$(status)
 check "Install… opens the card: install, the pinned URL" "install file://$sb/gh/omarchy-profiles.git true" "$(field '"\(.confirm.action) \(.confirm.url) \(.open)"' "$s")"
-check "…with the exact commit GitHub has, and nothing ran" "$(head_of omarchy-profiles) false" "$(field .confirm.sha "$s") $(exists "$job_file")"
+check "…with the catalogue's pin (not GitHub's HEAD), and nothing ran" "$(jq -r '.plugins[1].pin' "$sb/catalogue.json") false" "$(field .confirm.sha "$s") $(exists "$job_file")"
 for _ in $(seq 1 30); do [[ $(ipc geometry | jq -r '.plugins.motion | length >= 50') == true ]] && break; sleep 0.1; done
 g=$(ipc geometry)
 echo "  ${DIM}card open: $(jq -c '.plugins | {listHeight, heldHeight, layers, samples: (.motion | length), heights: [.motion[] | .drawn] | unique | .[:6]}' <<<"$g")${RESET}"
@@ -602,8 +801,8 @@ launch
 t0=$(date +%s%3N)
 until_true 40 '.notice == "done"'
 took=$(( $(date +%s%3N) - t0 ))
-echo "  ${DIM}notice after $took ms; $(status | jq -c '{local, checking, fullCheckedAt}')${RESET}"
-check "GitHub unreadable: a new notch shows done within 2 s of answering (the local probe decides)" "done true" \
+echo "  ${DIM}notice after $took ms; $(status | jq -c '{checking, checkedAt}')${RESET}"
+check "GitHub unreadable: a new notch shows done within 2 s of answering (the probe reads the disk alone)" "done true" \
   "$(status | jq -r .notice) $(under "$took" 2000)"
 ipc pluginsPress notice:dismiss >/dev/null
 stop
@@ -645,9 +844,9 @@ kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null; rm -rf "$job_file.lock"
 
 mark=$(log_mark shell.log)
 ipc plugins open >/dev/null; sleep 0.9
-ipc pluginsPress setup:graveklar.face >/dev/null
+ipc pluginsPress setup:kalinewb.face >/dev/null
 for _ in $(seq 1 30); do log_since shell.log "$mark" | grep -q '^graveklar.face|open|setup|$' && break; sleep 0.1; done
-check "Open setup hands off to Face's own panel, and the page gets out of its way" "1 false" \
+check "Open setup hands off to Face's own panel (under the id it is installed as), and the page gets out of its way" "1 false" \
   "$(log_since shell.log "$mark" | grep -cx 'graveklar.face|open|setup|') $(ipc geometry | jq -r .plugins.open)"
 
 ipc plugins open >/dev/null; sleep 0.9
@@ -680,15 +879,36 @@ check "stayOpen: a collapse under the page doesn't flip its view (the showPinned
   "$(ipc geometry | jq -r '"\(.view) \(.plugins.open)"')"
 stop
 
-# A repository that isn't the plugin any more: the card refuses.
+# A pin that isn't the plugin: the card can't know without the network, so
+# the job refuses it, and nothing lands.
 forget_profiles
 start NOTCH_PLUGINS_CATALOGUE="$sb/catalogue-evil.json"
 ipc plugins open >/dev/null
-until_true 100 '.fullCheckedAt > 0'
+until_true 100 '.checkedAt > 0'
 ipc pluginsPress install:kalinewb.profiles >/dev/null
-until_true 100 '.preview.id != null'
-check "the card for a repository whose id changed: refused wrong-id, no Install button, nothing ran" "wrong-id false no-such-button" \
-  "$(status | jq -r '"\(.confirm.refused) \(.confirm.ready)"') $(ipc pluginsPress confirm)"
+until_true 100 '.confirm.ready'
+ipc pluginsPress confirm >/dev/null
+until_true 150 '.job.phase == "failed"'
+check "installing a pin whose id isn't the plugin's: the job fails wrong-id and nothing lands" "failed wrong-id false" \
+  "$(status | jq -r '"\(.job.phase) \(.job.reason)"') $(exists "$PD/evil.profiles")"
+ipc pluginsPress notice:dismiss >/dev/null
+stop
+
+# OLED Corners has no panel: Remove… opens a card here, no preview.
+np run install kalinewb.oled-corners "$st" "$(jq -r '.plugins[2].pin' "$sb/catalogue.json")" >/dev/null
+start
+ipc plugins open >/dev/null
+until_true 100 '(.entries[] | select(.id == "kalinewb.oled-corners") | .state) == "current"'
+mark=$(log_mark shell.log)
+ipc pluginsPress remove:kalinewb.oled-corners >/dev/null
+until_true 50 '.confirm.ready'
+check "Corners' Remove… opens the card, ready at once, with no handoff" "remove true 0" \
+  "$(status | jq -r '"\(.confirm.action) \(.confirm.ready)"') $(log_since shell.log "$mark" | grep -c '^kalinewb.oled-corners|')"
+ipc pluginsPress confirm >/dev/null
+until_true 150 '.job.phase == "done"'
+until_true 100 '(.entries[] | select(.id == "kalinewb.oled-corners") | .state) == "not-installed"'
+check "…and confirming removes it: done, the folder gone, the row back to Install…" "done remove false not-installed" \
+  "$(status | jq -r '"\(.job.phase) \(.job.action)"') $(exists "$PD/kalinewb.oled-corners") $(status | jq -r '.entries[] | select(.id == "kalinewb.oled-corners") | .state')"
 stop
 
 # The notch's own update waits while a plugin job runs (and its buttons say so).
@@ -731,7 +951,7 @@ sleep 1
 ipc plugins open >/dev/null; sleep 0.5
 ipc plugins refresh >/dev/null; sleep 2
 check "NOTCH_FORCE_PLUGINS=1 without hooks: presses refused, and a refresh never probes" "refused true false 0 false" \
-  "$(ipc pluginsPress install:graveklar.face) $(status | jq -r '"\(.enabled) \(.canAct) \(.checkedAt) \(.checking)"')"
+  "$(ipc pluginsPress install:kalinewb.face) $(status | jq -r '"\(.enabled) \(.canAct) \(.checkedAt) \(.checking)"')"
 check "no IPC verb installs: plugins install is an unknown action" '{"error":"unknown action"}' "$(ipc plugins install)"
 stop
 

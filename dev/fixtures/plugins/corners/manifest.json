@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "kalinewb.oled-corners",
+  "name": "OLED Corners",
+  "version": "1.0.0",
+  "author": "test",
+  "kinds": ["service"],
+  "entryPoints": { "service": "Corners.qml" }
+}

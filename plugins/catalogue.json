@@ -1,16 +1,17 @@
 {
-  "version": 1,
+  "version": 2,
   "self": { "id": "kalinewb.notch", "name": "Notch" },
-  "deny": ["graveklar.liquid-notifications", "graveklar.face-lock"],
+  "deny": ["graveklar.liquid-notifications", "graveklar.face-lock", "kalinewb.face-lock"],
   "plugins": [
-    { "id": "graveklar.face", "name": "Face ID",
+    { "id": "kalinewb.face", "was": "graveklar.face", "name": "Face ID",
       "url": "https://github.com/Kalinewb/omarchy-face.git",
       "kinds": ["bar-widget", "service"],
       "status": ["bin/omarchy-face-status", "--json"], "statusFormat": "face",
-      "setup":  ["graveklar.face", "open", "setup", ""],
-      "remove": ["graveklar.face", "open", "remove", ""],
+      "setup":  ["kalinewb.face", "open", "setup", ""],
+      "remove": ["kalinewb.face", "open", "remove", ""],
       "removeHint": "Settings → Remove Face ID from this machine",
-      "busyWhen": "face-install-running", "panelOpenCall": ["graveklar.face", "state"] },
+      "busyWhen": "face-install-running", "panelOpenCall": ["kalinewb.face", "state"],
+      "pin": "7632e83a205ca2b265fba5f2b7b72e848c068a6b", "version": "2.2.0" },
     { "id": "kalinewb.profiles", "name": "Profiles",
       "url": "https://github.com/Kalinewb/omarchy-profiles.git",
       "kinds": ["bar-widget"],
@@ -18,6 +19,11 @@
       "setup":  ["kalinewb.profiles", "open"],
       "remove": ["kalinewb.profiles", "open"],
       "removeHint": "Manage → Uninstall Profiles from this machine",
-      "busyWhen": "profiles-switch-pending" }
+      "busyWhen": "profiles-switch-pending",
+      "pin": "8b4360eae8ab9cdf438e0296e799155961a03016", "version": "1.4.0" },
+    { "id": "kalinewb.oled-corners", "name": "OLED Corners",
+      "url": "https://github.com/Kalinewb/omarchy-oled-corners.git",
+      "kinds": ["service"], "removeVia": "omarchy",
+      "pin": "e2e904430d9f71650bc909ec4fdb1b276128deca", "version": "1.0.0" }
   ]
 }

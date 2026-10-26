@@ -92,14 +92,14 @@ for r in ${RADII:-10 8 3 16}; do
   for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc plugins status | jq -r '.checkedAt > 0') == true ]] && break; done
   sleep 1.1
   page=$(ipc design | jq -c .plugins)
-  ipc pluginsPress install:graveklar.face >/dev/null
+  ipc pluginsPress install:kalinewb.face >/dev/null
   # Wait for the thing the check below asserts -- `geometry.plugins.card` --
   # and not for `preview.id`. The preview is set as soon as the press is
   # accepted, while the card is still opening, so waiting on the preview and
   # then sleeping a fixed 0.4 s made this race: whichever radius block lost it
   # reported `carded false` and failed on a card whose radii were fine.
-  # The card opens only once GitHub has answered with the commit, so this
-  # waits on the card itself and waits longer than a round trip. `carded` is
+  # The card opens once the preview has answered with the pin, so this
+  # waits on the card itself, and longer than a round trip. `carded` is
   # then read from the sample the audit is taken with -- reading it afterwards
   # was its own race: a card that opened, was audited, and had closed again by
   # the next IPC call failed a radius check for a reason that had nothing to do

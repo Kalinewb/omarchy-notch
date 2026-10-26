@@ -10,8 +10,8 @@ import "PluginsModel.js" as PluginsModel
 // layout as the update notice (NotchUpdate.qml), on the notch's colour, text
 // colours and radius.
 //
-//   running   "Installing Face ID…"
-//   done      "Face ID installed"   2.0.4   [Open setup] [Enable] [Restart shell]; clears after
+//   running   "Installing Face ID…" (or updating, turning on, removing)
+//   done      "Face ID installed"   2.2.0   [Open setup] [Enable] [Restart shell]; clears after
 //             a few seconds when it offers none of them
 //   failed    "Couldn't install Face ID"  the reason   [Dismiss]
 //
@@ -51,19 +51,22 @@ Item {
   readonly property bool stopped: job.phase === "running"
 
   readonly property string title: notice === "running"
-      ? (action === "update" ? "Updating " : action === "enable" ? "Turning on " : "Installing ") + name + "…"
+      ? ({ update: "Updating ", enable: "Turning on ", remove: "Removing " }[action] || "Installing ") + name + "…"
     : notice === "done"
-      ? name + (action === "update" ? " updated" : action === "enable" ? " turned on" : " installed")
+      ? name + ({ update: " updated", enable: " turned on", remove: " removed" }[action] || " installed")
     : notice === "failed"
-      ? "Couldn't " + (action === "update" ? "update " : action === "enable" ? "turn on " : "install ") + name
+      ? "Couldn't " + ({ update: "update ", enable: "turn on ", remove: "remove " }[action] || "install ") + name
     : ""
-  readonly property string detail: notice === "done" ? (job.version ? String(job.version) : shortSha(job.to)) : ""
+  readonly property string detail: notice === "done" && action !== "remove" ? (job.version ? String(job.version) : shortSha(job.to)) : ""
   readonly property string line: {
     if (notice === "running") {
       if (job.phase !== "running") return "Checking how it went…"
       switch (job.step) {
-        case "installing": return "Downloading from GitHub…"
-        case "updating": return "Fetching the update…"
+        case "downloading": return "Downloading the verified version…"
+        case "installing": return "Adding it to your plugins…"
+        case "updating": return "Fetching the verified version…"
+        case "renaming": return "Finishing the rename…"
+        case "removing": return "Removing it…"
         case "verifying": return "Checking what arrived…"
         case "enabling": return "Turning it on…"
         default: return "Checking GitHub…"
@@ -73,7 +76,9 @@ Item {
       if (setupDue) return name + " needs setting up in its own panel."
       if (canEnable) return "It's installed but turned off."
       if (job.restartSuggested === true) return "Restart the shell to load every file."
-      return job.to ? "Now at commit " + shortSha(job.to) + "." : ""
+      if (action === "remove") return "You can install it again from Plugins."
+      if (job.renamed === true) return "Renamed. The shell restarts to load it."
+      return job.to ? "Pinned to the verified version, " + shortSha(job.to) + "." : ""
     }
     if (notice === "failed") {
       if (stopped) return PluginsModel.reasonWords("stopped", name)

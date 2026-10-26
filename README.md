@@ -38,43 +38,60 @@ a sandbox git remote.
 
 ### Plugins
 
-Setup → **Plugins** grows the notch into the Plugins page. It lists
-the plugins the notch knows how to install, **Face ID** (`graveklar.face`) and **Profiles**
-(`kalinewb.profiles`), with what each is doing: not installed, up to date, an update available
-(with the number of changes), installed but turned off, local edits, installed from somewhere
-else, or offline. Each row has its buttons: Install…, Update…, Enable, Open setup, Remove…,
-Review in terminal. The notch itself is listed too, pointing at Settings → Updates. Up/Down pick a
-row, Enter presses its main button, Escape closes.
+Setup → **Plugins** grows the notch into the Plugins page. It lists the plugins the notch installs,
+updates and removes, **Face ID** (`kalinewb.face`, once `graveklar.face`), **Profiles**
+(`kalinewb.profiles`) and **OLED Corners** (`kalinewb.oled-corners`), each at the commit the
+Omarchy plugin marketplace verified, with what each is doing: not installed, pinned to the
+verified version, a verified update ready, newer than the verified version, installed but turned
+off, local edits, or installed from somewhere else. Each row has its buttons: Install…, Update to
+<version>…, Enable, Open setup, Remove…, Review in terminal. The notch itself is listed too, with
+its own update. Up/Down pick a row, Enter presses its main button, Escape closes.
 
-Only the entries in `plugins/catalogue.json` can be installed, each from its pinned GitHub URL;
-`graveklar.liquid-notifications` and `graveklar.face-lock` are refused. Install… and Update… never
-run straight away: the page turns into a card that says what will happen (the URL and commit, or
-the commits, files and lines an update brings, and whether it closes the plugin's open panel),
-and its button stays on "Checking…" until GitHub has answered with the exact commit and that
-commit's manifest id and kinds. A repository that no longer names the plugin's id, or has become a
-bar, is refused on the card. That commit is what gets installed; if GitHub moves in between, the
-job refuses. Before anything lands in the plugins folder the job checks the commit, id and kinds
-again (a shallow clone with no work tree for an install, the fetched commit for an update). Upstream
-then clones once more, so the result is verified too (the right id, from the pinned URL, at that
-commit, not a bar); a folder that fails that is moved aside to
-`plugins/.notch-refused.<name>.<ms>`, which Omarchy ignores, and the notice names it for deleting.
-Install turns the plugin on only once it is verified. Setup and
-removal happen in each plugin's own panel (Face ID: Settings → Remove; Profiles: Manage →
-Uninstall); nothing here asks for your password.
+**Pinned, never HEAD.** `plugins/catalogue.json` names each plugin's GitHub URL and the full commit
+its marketplace listing verified, and only those three can be installed
+(`graveklar.liquid-notifications` and both Face lock clones are refused). The page reads the plugins
+folder alone, with no network: a row is "pinned" when the checkout is at that commit, "verified
+update ready" when the notch has moved the pin on, and "newer than the verified version" when it
+has been moved past it some other way (a global `omarchy plugin update`), which the notch leaves
+alone rather than nag or downgrade. So the suite updates when the notch does: a notch update can
+bring new pins, and each plugin then moves to its new pin on Update, and never past it.
 
-A job runs as `bin/notch-plugins run` in its own `systemd-run --user` unit, because installing or
-updating a plugin reloads every plugin and destroys the notch, usually more than once (the folder
-move, upstream's own rescan, the enable), and every rebuilt notch reads the same status. It runs `omarchy plugin add <url>
---yes` (then `omarchy plugin enable`) or `omarchy plugin update <id> --yes`, decides the outcome from
-the disk rather than the exit code, and writes its progress to
+Install… and Update… never run straight away: the page turns into a card that says what will
+happen (the repository and the verified version and commit, or the commits, files and lines an
+update brings, whether it closes the plugin's open panel, and for Face ID's 3.0 that it renames it
+and restarts the shell). An install clones the repository into a scratch folder outside the
+plugins folder, checks the pin out there, reads the manifest at the pin with `git show` (nothing in
+the clone is ever run), and hands that folder to `omarchy plugin add` as a local path; an update
+fetches the pin, refuses anything but moving forward to it, checks it out and validates it. A pin
+whose manifest isn't the plugin, or is a bar, is refused before the plugins folder is touched, and
+what lands is verified again (a folder that fails is moved aside to
+`plugins/.notch-refused.<name>.<ms>`, which Omarchy ignores). A card left open across a notch
+update that moved the pin refuses: "The notch was updated while this card was open. Open it
+again." Setup and removal of Face ID and Profiles happen in their own panels (Face ID: Settings →
+Remove; Profiles: Manage → Uninstall); OLED Corners has no panel, so its Remove… asks here and
+hands it to `omarchy plugin remove`. Nothing here asks for your password.
+
+A job runs as `bin/notch-plugins run` in its own `systemd-run --user` unit, because changing a
+plugin reloads every plugin and destroys the notch, usually more than once (the folder move,
+upstream's own rescan, the enable), and every rebuilt notch reads the same status. It decides the
+outcome from the disk rather than an exit code, and writes its progress to
 `$XDG_RUNTIME_DIR/kalinewb.notch/plugins-job.json`. The rebuilt notch re-reads the disk and pops
-down a notice as soon as a local probe (no network) has confirmed the result: "Face ID installed"
-(with Open setup, Enable or Restart shell when there is something to do, otherwise it clears after
-5 seconds), or why it failed until you dismiss it. A stopped job (TERM or INT) stops upstream's
-whole process group, removes its staging folder and says so at once. One
-job runs at a time, never alongside the notch's own update, and never while the session is locked.
-Nothing is checked at startup: the page checks when it opens, on Refresh (not while a job runs),
-and after a job.
+down a notice: "Face ID installed" (with Open setup, Enable or Restart shell when there is
+something to do, otherwise it clears after 5 seconds), or why it failed until you dismiss it. A
+stopped job (TERM or INT) stops upstream's whole process group, removes its staging folder and says
+so at once. One job runs at a time, never alongside the notch's own update, and never while the
+session is locked. Nothing is checked at startup: the page checks when it opens, on Refresh (not
+while a job runs), and after a job.
+
+**Face ID's new name.** Face ID was `graveklar.face` and is `kalinewb.face` from 3.0.0. Its old
+folder counts as Face ID until the new one exists. An update that brings the new name runs Face's
+own `bin/omarchy-face-rename --finish` through Setup (below), inside the notch's snapshot, so Undo
+puts the old name back; Face ID's Setup then asks for your password once, to update its system
+files. A Face ID installed by its own `./install.sh` is a copy, not a checkout: the notch shows it
+as installed from somewhere else and leaves its updates to that script.
+
+**Without the notch** each plugin installs from its own README with `omarchy plugin add <url>`.
+That installs the repository's current HEAD, not the commit the marketplace verified.
 
 Over IPC: `notch plugins open|open:<id>|close|status|refresh`. No IPC call installs, updates, enables, sets up
 or removes anything. `dev/plugins.sh` tests the lot against sandbox git remotes and a sandbox
@@ -83,8 +100,9 @@ plugins folder through these hooks, which a test notch passes on: `NOTCH_PLUGINS
 `NOTCH_PLUGINS_TERMINAL`, `NOTCH_PLUGINS_SESSION_LOCKED`, `NOTCH_PLUGINS_SCRATCH` (any of these
 without both `NOTCH_PLUGINS_DIR` and `NOTCH_PLUGINS_OMARCHY` refuses every command),
 `NOTCH_PLUGINS_STATE_DIR` (only in a sandbox), `NOTCH_PLUGINS_DISCOVER_MS`, `NOTCH_PLUGINS_DONE_MS`,
-`NOTCH_PLUGINS_DETACH` and `NOTCH_PLUGINS_RESTART`. A test notch never checks or acts unless
-`NOTCH_FORCE_PLUGINS=1` and the sandbox hooks are set.
+`NOTCH_PLUGINS_DETACH` and `NOTCH_PLUGINS_RESTART`. A sandboxed update that finishes a rename also
+needs `NOTCH_SETUP_SANDBOX`, and runs Setup as a test, so Setup's own guard holds too. A test notch
+never checks or acts unless `NOTCH_FORCE_PLUGINS=1` and the sandbox hooks are set.
 
 **Developing:** commit in this repo, then run `./install.sh`. It fast-forwards the live
 checkout to your committed HEAD and restarts the shell, without changing where the checkout

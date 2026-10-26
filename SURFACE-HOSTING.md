@@ -528,28 +528,79 @@ sides watch, or — for the host specifically — `surfaceHost` (§3) and
 
 ## 13. The catalogue: what the notch can install
 
-Setup → Plugins installs from `plugins/catalogue.json` and nothing else. An id
-that is not in it cannot be installed from the notch, and two are refused by
-name. That is a deliberately short list, not an oversight, and the rules matter
-more than the membership:
+Setup → Plugins installs from `plugins/catalogue.json` and nothing else: Face
+ID, Profiles and OLED Corners. An id that is not in it cannot be installed from
+the notch, and three are refused by name. That is a deliberately short list, not
+an oversight, and the rules matter more than the membership:
 
-- **Pinned URL.** Every entry names the exact GitHub URL it may be installed
-  from. A repository that has moved is a new entry, reviewed again.
-- **Checked three times.** The card asks GitHub for the exact commit and that
-  commit's manifest id and kinds before it offers to install; the job checks the
-  commit, id and kinds again before anything lands in the plugins folder; and
-  upstream clones once more afterwards, so the result is verified too. A folder
-  that fails the last check is moved aside to `plugins/.notch-refused.<name>.<ms>`,
-  which Omarchy ignores, and the notice names it for deleting.
+- **Pinned URL and commit.** Every entry names the exact GitHub URL it may be
+  installed from and the full commit the plugin's marketplace listing verified
+  (`pin`), with that commit's `version`. A repository that has moved is a new
+  entry, reviewed again; a new verified commit is a new pin, shipped in a notch
+  update. The notch installs and updates to the pin and never past it, and
+  leaves a plugin that has been moved past it alone.
+- **Nothing in a clone runs.** An install clones into a scratch folder outside
+  the plugins folder, checks the pin out there, reads the manifest at the pin
+  with `git show`, and hands the folder to `omarchy plugin add` as a local
+  path. The manifest's id and kinds are checked before the plugins folder is
+  touched, and what lands is checked again (the id, the commit, not a bar); a
+  folder that fails is moved aside to `plugins/.notch-refused.<name>.<ms>`,
+  which Omarchy ignores, and the notice names it.
+- **A renamed plugin keeps its old name for a while.** An entry may carry
+  `was`, the id the plugin had before; its old folder counts as the plugin
+  until the new one exists, and the plugin's own rename script finishes the
+  move, called through Setup so it has a snapshot and an Undo.
 - **A bar is refused.** A plugin whose kinds have become `bar` would replace the
   notch itself.
-- **Nothing here asks for your password.** Setup and removal happen in each
-  plugin's own panel. A plugin whose install needs root does not fit the page as
-  it stands — that is an open question, not a gap to route around.
+- **Nothing here asks for your password.** Setup, and removal of a plugin with
+  a panel of its own, happen in that panel. A plugin with no panel
+  (`"removeVia": "omarchy"`) is removed with `omarchy plugin remove` after a
+  card here.
 - **No IPC call installs anything.** `notch plugins open|close|status|refresh`
   is the whole surface; there is no verb that installs, updates, enables, sets
   up or removes.
 
 If you want a plugin listed, the honest answer today is that the list is
-maintained by hand, in this repository, by people who have read the plugin. What
-a general answer would need is written up in INTEGRATION-SCOPE.md §3.
+maintained by hand, in this repository, by people who have read the plugin and
+can point at its verified commit. A general answer is an open question.
+
+## Suite pins
+
+A profile switch (Profiles, `kalinewb.profiles`) rewrites which plugins are on
+and what the bar is. The notch tells it what must survive any switch in one
+static file at its root, `suite.json`, which lands at
+`~/.config/omarchy/plugins/kalinewb.notch/suite.json` and goes away with the
+notch:
+
+```json
+{ "version": 1, "bar": "kalinewb.notch",
+  "pinned": ["graveklar.face", "graveklar.face-lock", "kalinewb.face", "kalinewb.face-lock",
+             "kalinewb.notch", "kalinewb.notch-menu", "kalinewb.notch-notifications",
+             "kalinewb.notch-osd", "kalinewb.oled-corners", "kalinewb.profiles"] }
+```
+
+It is data, not code: nothing computes it at runtime and nothing in it runs.
+`pinned` is the notch, its companions, the catalogue's plugins and the names
+they had (both Face pairs stay through the rename; an id that isn't installed
+is ignored). `bar` is the bar a profile must not swap out while it is the live
+one. `dev/plugins.sh` keeps it in step with the catalogue.
+
+What a reader (Profiles 1.4.0) does with it:
+
+- **Where.** Omarchy's fixed `$HOME/.config/omarchy/plugins`, never
+  `XDG_CONFIG_HOME`. The file counts if it parses and `version` is 1 or more;
+  only `bar` and `pinned` are read, and anything else is ignored, so a newer
+  file never makes an older reader drop a pin. A missing or unreadable file
+  means exactly what it meant before the notch had one.
+- **Pinned.** The reader's own pinned list plus `pinned`. No profile operation
+  (apply, a clean profile, disable, disable all) turns a pinned id off.
+- **No re-bar.** While the live bar is `bar` and a profile saved a different
+  one, the live bar is kept.
+- **Clones, with or without this file.** Every installed clone (`clonedFrom`)
+  the profile's result uses is kept on, and its source kept off unless you
+  pinned the source: so no switch leaves two lock screens on, or a menu with no
+  stand-in. This rule needs no `suite.json`; it covers the user's own clones
+  and Face ID's lock clone the same way.
+
+Profiles shows a suite plugin, and a clone in use, as shared: its switch is
+locked and says why.

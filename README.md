@@ -102,12 +102,14 @@ settings into the Setup page: a list of things about this machine that stop the 
 way you want, each in plain words, with a **Fix** button where the notch can safely put it right.
 `omarchy-shell notch view setup` opens it directly.
 
-It checks twenty-one things — whether the bar is hidden, whether the notch is the active bar and
-loaded, Hyprland config errors, the menu, OSD and notifications companions and menu keys that go
-around the menu, keybind clashes and leftover notch binds, widgets in the layout that aren't
-installed or drew nothing, settings naming plugins that are gone, Face ID and Profiles, stray test
-shells, old `.bak` files, Omarchy files that moved upstream, layer rules that fight the notch's
-animation, and whether the notch can update itself.
+It checks twenty-three things — whether the bar is hidden, whether the notch is the active bar and
+loaded, Hyprland config errors, the menu, OSD and notifications companions (and whether Omarchy
+would bring its own back if one were removed) and menu keys that go around the menu, keybind
+clashes and leftover notch binds, widgets in the layout that aren't installed or drew nothing,
+settings naming plugins that are gone, Face ID, Profiles and Face ID's rename, stray test shells,
+old `.bak` files and backup folders, Omarchy files that moved upstream, layer rules that fight the
+notch's animation, OLED Corners popping in when the screen changes, and whether the notch can
+update itself.
 
 **Nothing is done behind your back.** Fix unfolds a confirmation that names the files it will
 change. Before it changes them they are copied into

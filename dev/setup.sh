@@ -50,20 +50,29 @@ BIN="$sb/bin"
 CALLS="$sb/calls"
 
 mkdir -p "$HYPR_SB" "$CONFIG_SB/omarchy/plugins" "$TOGGLES_SB/hypr" "$STATE_SB" "$(dirname "$STATUS_SB")" \
-         "$OMARCHY_SB/shell" "$NOTCH_SB/bin" "$NOTCH_SB/dev/upstream" "$BIN" "$sb/fixtures"
+         "$OMARCHY_SB/shell" "$NOTCH_SB/bin" "$NOTCH_SB/plugins" "$NOTCH_SB/dev/upstream" "$BIN" "$sb/fixtures"
 cp -r "$SHELL_PATH/default" "$OMARCHY_SB/default"
 cp "$REPO/manifest.json" "$NOTCH_SB/manifest.json"
 jq '.version = "9.9.9-fixture"' "$NOTCH_SB/manifest.json" >"$NOTCH_SB/manifest.new" && mv "$NOTCH_SB/manifest.new" "$NOTCH_SB/manifest.json"
 cp "$REPO/bin/notch-setup" "$NOTCH_SB/bin/notch-setup"
 cp "$REPO/bin/notch-setup-binds.lua" "$NOTCH_SB/bin/notch-setup-binds.lua"
+cp "$REPO/plugins/catalogue.json" "$NOTCH_SB/plugins/catalogue.json"
+# (Until the catalogue lists OLED Corners itself, the sandbox copy does.)
+jq '.plugins += [{"id": "kalinewb.oled-corners"}]' "$NOTCH_SB/plugins/catalogue.json" >"$NOTCH_SB/plugins/c.new" && mv "$NOTCH_SB/plugins/c.new" "$NOTCH_SB/plugins/catalogue.json"
+PLUGINS_SB="$CONFIG_SB/omarchy/plugins"
 
 # The user's Hyprland config, shaped like the real one.
 cat >"$HYPR_SB/hyprland.lua" <<'LUA'
 dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")
 require("default.hypr.omarchy")
 require("hypr.bindings")
+require("hypr.looknfeel")
 require("default.hypr.toggles")
 LUA
+cat >"$HYPR_SB/looknfeel.lua" <<'LUA'
+-- The user's look and feel.
+LUA
+chmod 644 "$HYPR_SB/looknfeel.lua"
 cat >"$HYPR_SB/bindings.lua" <<'LUA'
 -- The user's own overrides.
 hl.unbind("SUPER + TAB")
@@ -110,6 +119,11 @@ esac
 exit 0'
 recorder omarchy-shell '[[ -n ${SB_SLOW:-} && $* == *$SB_SLOW* ]] && sleep 3
 [[ $* == *reloadConfig* ]] && { [[ ${SB_RELOAD_FAILS:-} == 1 ]] || echo ok; }
+# The shell writes a notch setting the way Omarchy writes shell.json.
+if [[ $1 == notch && $2 == set ]] && jq -e . >/dev/null 2>&1 <<<"$4"; then
+  f="'"$CONFIG_SB"'/omarchy/shell.json"
+  jq -S --arg k "$3" --argjson v "$4" ".bar.notch[\$k] = \$v" "$f" >"$f.new" && mv "$f.new" "$f"
+fi
 exit 0'
 recorder omarchy 'case "$*" in
   "plugin list --json") cat "'"$sb"'/fixtures/plugins.json" ;;
@@ -134,11 +148,13 @@ env_common=(
   NOTCH_SETUP_TOGGLE_BAR="$BIN/omarchy-toggle-bar" NOTCH_SETUP_QS="$BIN/qs"
   NOTCH_SETUP_KILL="$BIN/fakekill" NOTCH_SETUP_SESSION_LOCKED="$BIN/session-locked"
   NOTCH_SETUP_RESTART_SHELL="$BIN/restart-shell" NOTCH_SETUP_PLUGINS_STATE="$BIN/plugins-state"
+  FIXTURE_RENAME_LOG="$sb/rename.log"
 )
 setup() { env "${env_common[@]}" "$@"; }
 run_setup() { setup "$SCRIPT" "$@"; }
 calls() { cat "$CALLS" 2>/dev/null; }
 reset_calls() { : >"$CALLS"; }
+exists_dir() { [[ -d $1 ]] && echo true || echo false; }
 tree_hash() { find "$1" -type f -print0 2>/dev/null | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1; }
 
 echo "${BOLD}bin/notch-setup${RESET}  ${DIM}sandbox $sb${RESET}"
@@ -148,8 +164,8 @@ echo "${BOLD}bin/notch-setup${RESET}  ${DIM}sandbox $sb${RESET}"
 reset_calls
 report=$(run_setup detect --json)
 ids=$(jq -r '[.points[].id] | join(" ")' <<<"$report")
-expected_ids="bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion osd-companion notifications-companion menu-keys-bypass notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids plugin-face plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift layer-rules notch-not-git"
-check "1. detect reports the 21 points in order, schema 1" "1 $expected_ids" "$(jq -r .schema <<<"$report") $ids"
+expected_ids="bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion osd-companion notifications-companion menu-keys-bypass notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids plugin-face face-renamed plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift layer-rules oled-corners-still notch-not-git"
+check "1. detect reports the 23 points in order, schema 1" "1 23 $expected_ids" "$(jq -r .schema <<<"$report") $(jq '.points | length' <<<"$report") $ids"
 check "1b. a healthy fixture needs no attention" "0" "$(jq '.counts.fix + .counts.action + .counts.warn' <<<"$report")"
 
 before=$(tree_hash "$HOME_SB"); before_count=$(find "$HOME_SB" -type f | wc -l)
@@ -339,6 +355,112 @@ echo "changed upstream" >"$OMARCHY_SB/shell/$first_file"
 p=$(run_setup detect --json --only upstream-drift | jq -c '.points[0]')
 check "26. a changed upstream file is listed, and the version mismatch is in the detail" "info $first_file 1" \
   "$(jq -r .severity <<<"$p") $(jq -r '.items[0].arg' <<<"$p") $(jq -r '[.detail[] | select(test("this machine runs"))] | length' <<<"$p")"
+
+# --- the suite's points -------------------------------------------------------------------
+
+shell_set() { jq -S "$1" "$CONFIG_SB/omarchy/shell.json" >"$sb/t" && mv "$sb/t" "$CONFIG_SB/omarchy/shell.json"; }
+plugins_add() { jq "$1" "$sb/fixtures/plugins.json" >"$sb/t" && mv "$sb/t" "$sb/fixtures/plugins.json"; }
+latest() { run_setup snapshots --json | jq -r --arg p "$1" '[.[] | select(.point == $p)][0].name'; }
+# Omarchy writes shell.json with jq -S; so do the fixes, so a file in that
+# format comes back byte for byte.
+shell_set .
+
+# settings-stale-ids: a hosted panel and an Omarchy stand-in note that name
+# nothing installed; the notch's catalogue ids, and Face's old name, are kept.
+shell_set '.bar.notch.hostedPanels = ["omarchy.clock", "ghost.panel", "kalinewb.profiles", "graveklar.face", "kalinewb.oled-corners"]
+           | .cloneSourceRestores = ["omarchy.clock", "graveklar.notch-menu"]'
+pre=$(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)
+p=$(run_setup detect --json --only settings-stale-ids | jq -c '.points[0]')
+check "60. a stale hostedPanels id and a stale cloneSourceRestores entry are a fix" "fix hostedPanels:ghost.panel cloneSourceRestores:graveklar.notch-menu" \
+  "$(jq -r .severity <<<"$p") $(jq -r '[.items[] | "\(.arg):\(.id)"] | join(" ")' <<<"$p")"
+check "61. catalogue ids and the names they had are never stale (Profiles, Corners, graveklar.face)" "0" \
+  "$(jq '[.items[].id | select(. == "kalinewb.profiles" or . == "graveklar.face" or . == "kalinewb.oled-corners")] | length' <<<"$p")"
+reset_calls
+rc=0; run_setup fix settings-stale-ids >/dev/null 2>&1 || rc=$?
+snap=$(latest settings-stale-ids)
+check "62. the fix drops both, keeps the rest, and the point is clear" "0 omarchy.clock,kalinewb.profiles,graveklar.face,kalinewb.oled-corners omarchy.clock ok verified" \
+  "$rc $(jq -r '.bar.notch.hostedPanels | join(",")' "$CONFIG_SB/omarchy/shell.json") $(jq -r '.cloneSourceRestores | join(",")' "$CONFIG_SB/omarchy/shell.json") $(run_setup detect --json --only settings-stale-ids | jq -r '.points[0].severity') $(jq -r .state "$STATE_SB/snapshots/$snap/meta.json")"
+rc=0; run_setup restore "$snap" >/dev/null 2>&1 || rc=$?
+check "63. Undo puts shell.json back byte for byte, through the undo entries" "0 $pre restored 2" \
+  "$rc $(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1) $(jq -r .state "$STATE_SB/snapshots/$snap/meta.json") $(jq '.undo | length' "$STATE_SB/snapshots/$snap/meta.json")"
+shell_set 'del(.cloneSourceRestores) | .bar.notch.hostedPanels = []'
+
+# The restore flag: an enabled menu companion Omarchy hasn't noted as omarchy.menu's stand-in.
+shell_set '.bar.notch.replaceMenu = true'
+plugins_add 'map(select(.id != "kalinewb.notch-menu")) + [{"id": "kalinewb.notch-menu", "enabled": true, "active": true, "kinds": ["menu"]}]'
+pre=$(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)
+p=$(run_setup detect --json --only menu-replace-companion | jq -c '.points[0]')
+check "64. the menu companion without Omarchy's restore flag is a fix, in plain words" "fix Removing the menu companion would leave no menu" \
+  "$(jq -r '"\(.severity) \(.title)"' <<<"$p")"
+reset_calls
+rc=0; run_setup fix menu-replace-companion >/dev/null 2>&1 || rc=$?
+snap=$(latest menu-replace-companion)
+check "65. the fix adds the flag (and enables nothing), and the point is clear" "0 kalinewb.notch-menu 0 ok" \
+  "$rc $(jq -r '.cloneSourceRestores | join(",")' "$CONFIG_SB/omarchy/shell.json") $(calls | grep -c '^omarchy plugin enable kalinewb.notch-menu') $(run_setup detect --json --only menu-replace-companion | jq -r '.points[0].severity')"
+rc=0; run_setup restore "$snap" >/dev/null 2>&1 || rc=$?
+check "66. Undo takes the flag out again, byte for byte" "0 $pre false" \
+  "$rc $(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1) $(jq 'has("cloneSourceRestores")' "$CONFIG_SB/omarchy/shell.json")"
+
+# Old backups: plugin folders the plugins folder keeps, moved and moved back.
+mkdir -p "$PLUGINS_SB/.kalinewb.notch-menu.bak.20261022185832" "$PLUGINS_SB/.notch-refused.evil.profiles.1700000000000"
+echo '{"id": "kalinewb.notch-menu"}' >"$PLUGINS_SB/.kalinewb.notch-menu.bak.20261022185832/manifest.json"
+echo 'x' >"$PLUGINS_SB/.notch-refused.evil.profiles.1700000000000/Panel.qml"
+tree_before=$(cd "$PLUGINS_SB" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum)
+p=$(run_setup detect --json --only stray-backups | jq -c '.points[0]')
+check "67. .bak and .notch-refused folders in the plugins folder are old backups, and the fix says it reloads the notch" "fix 2 true" \
+  "$(jq -r .severity <<<"$p") $(jq '[.items[].arg | select(contains("/plugins/."))] | length' <<<"$p") $(jq -r .fix.destroysNotch <<<"$p")"
+rc=0; run_setup fix stray-backups >/dev/null 2>&1 || rc=$?
+snap=$(latest stray-backups)
+check "68. the fix moves both folders into the snapshot (nothing deleted)" "0 0 2" \
+  "$rc $(find "$PLUGINS_SB" -mindepth 1 -maxdepth 1 -name '.*' | wc -l) $(find "$STATE_SB/snapshots/$snap/files" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+rc=0; run_setup restore "$snap" >/dev/null 2>&1 || rc=$?
+check "69. Undo moves them back, every file as it was" "0 $tree_before" \
+  "$rc $(cd "$PLUGINS_SB" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum)"
+rm -rf "$PLUGINS_SB"/.kalinewb.notch-menu.bak.* "$PLUGINS_SB"/.notch-refused.*
+
+# OLED Corners: a no_anim layer rule, Omarchy's syntax, in looknfeel.lua.
+check "70. without OLED Corners there is nothing to keep still" "ok" "$(run_setup detect --json --only oled-corners-still | jq -r '.points[0].severity')"
+plugins_add '. + [{"id": "kalinewb.oled-corners", "enabled": true, "active": true, "kinds": ["service"]}]'
+layer_before=$(run_setup detect --json --only layer-rules | jq -c '.points[0]')
+pre=$(sha256sum "$HYPR_SB/looknfeel.lua" | cut -d' ' -f1)
+check "71. with it, they pop in: a fix that writes a block to looknfeel.lua" "fix OLED Corners pop in when the screen changes block looknfeel.lua" \
+  "$(run_setup detect --json --only oled-corners-still | jq -r '.points[0] | "\(.severity) \(.title) \(.fix.kind) \(.fix.files[0] | split("/") | last)"')"
+reset_calls
+rc=0; run_setup fix oled-corners-still >/dev/null 2>&1 || rc=$?
+check "72. the block is added once, parses, Hyprland reloads, and the point is clear" "0 1 1 0 1 ok" \
+  "$rc $(grep -c -- '-- >>> kalinewb.notch setup: oled-corners-still' "$HYPR_SB/looknfeel.lua") $(grep -cF 'hl.layer_rule({ match = { namespace = "omarchy-oled-corners" }, no_anim = true, animation = "none" })' "$HYPR_SB/looknfeel.lua") $(F="$HYPR_SB/looknfeel.lua" lua -e 'assert(loadfile(os.getenv("F")))' >/dev/null 2>&1; echo $?) $(calls | grep -c '^hyprctl reload') $(run_setup detect --json --only oled-corners-still | jq -r '.points[0].severity')"
+check "73. layer-rules is unchanged by it" "$layer_before" "$(run_setup detect --json --only layer-rules | jq -c '.points[0]')"
+rc=0; run_setup restore "$(latest oled-corners-still)" >/dev/null 2>&1 || rc=$?
+check "74. Undo takes the block out, byte for byte" "0 $pre fix" \
+  "$rc $(sha256sum "$HYPR_SB/looknfeel.lua" | cut -d' ' -f1) $(run_setup detect --json --only oled-corners-still | jq -r '.points[0].severity')"
+plugins_add 'map(select(.id != "kalinewb.oled-corners"))'
+
+# Face's rename: Setup runs Face's own script, and Undo its --rollback.
+check "75. no Face at all: nothing to rename" "ok" "$(run_setup detect --json --only face-renamed | jq -r '.points[0].severity')"
+mkdir -p "$PLUGINS_SB/graveklar.face" && cp -r "$REPO/dev/fixtures/plugins/face/." "$PLUGINS_SB/graveklar.face/"
+check "76. a 2.x Face under its old name: info, nothing to do yet" "info" "$(run_setup detect --json --only face-renamed | jq -r '.points[0].severity')"
+jq '.id = "kalinewb.face" | .version = "3.0.0"' "$PLUGINS_SB/graveklar.face/manifest.json" >"$sb/t" && mv "$sb/t" "$PLUGINS_SB/graveklar.face/manifest.json"
+shell_set '.bar.layout.right += [{"id": "graveklar.face"}] | .plugins = [{"id": "graveklar.face-lock"}]'
+pre=$(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)
+p=$(run_setup detect --json --only face-renamed | jq -c '.points[0]')
+check "77. a 3.x Face in the old folder, with settings naming the old ids: a fix, in plain words" "fix Face ID was renamed, but your settings still use the old name true" \
+  "$(jq -r '"\(.severity) \(.title) \(.fix.destroysNotch)"' <<<"$p")"
+: >"$sb/rename.log"
+rc=0; run_setup fix face-renamed --arg 0123456789abcdef0123456789abcdef01234567 >/dev/null 2>&1 || rc=$?
+snap=$(latest face-renamed)
+check "78. Fix calls Face's script once, --finish --wait --from <arg>; the folder and settings move; the point is clear" \
+  "0 --finish --wait --from 0123456789abcdef0123456789abcdef01234567 1 true 0 ok" \
+  "$rc $(cat "$sb/rename.log") $(grep -c . "$sb/rename.log") $(exists_dir "$PLUGINS_SB/kalinewb.face") $(grep -c 'graveklar\.face' "$CONFIG_SB/omarchy/shell.json") $(run_setup detect --json --only face-renamed | jq -r '.points[0].severity')"
+rc=0; run_setup restore "$snap" >/dev/null 2>&1 || rc=$?
+check "79. Undo calls its --rollback: the old folder and shell.json are back, byte for byte" "0 --rollback true false $pre" \
+  "$rc $(tail -n 1 "$sb/rename.log") $(exists_dir "$PLUGINS_SB/graveklar.face") $(exists_dir "$PLUGINS_SB/kalinewb.face") $(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)"
+mkdir -p "$PLUGINS_SB/kalinewb.face" && cp -r "$PLUGINS_SB/graveklar.face/." "$PLUGINS_SB/kalinewb.face/"
+jq '.id = "graveklar.face" | .version = "2.2.0"' "$PLUGINS_SB/graveklar.face/manifest.json" >"$sb/t" && mv "$sb/t" "$PLUGINS_SB/graveklar.face/manifest.json"
+shell_set 'del(.plugins) | .bar.layout.right = [{"id": "omarchy.clock"}]'
+check "80. two Face folders, even with every setting renamed: a fix" "fix" "$(run_setup detect --json --only face-renamed | jq -r '.points[0].severity')"
+rm -rf "$PLUGINS_SB/graveklar.face"
+check "81. kalinewb.face alone, settings renamed: done" "ok" "$(run_setup detect --json --only face-renamed | jq -r '.points[0].severity')"
+rm -rf "$PLUGINS_SB/kalinewb.face"
 
 # --- safety ------------------------------------------------------------------------------
 

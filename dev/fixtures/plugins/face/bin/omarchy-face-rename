@@ -1,0 +1,31 @@
+#!/bin/bash
+# dev/plugins.sh and dev/setup.sh fixture: Face's rename script, as the notch's
+# Setup calls it. Every call is appended to $FIXTURE_RENAME_LOG. --finish moves
+# a Face whose manifest says kalinewb.face out of the old folder (an old folder
+# beside the new one goes into the snapshot) and maps shell.json; --rollback
+# puts both back. FIXTURE_RENAME_FAIL=1 makes --finish fail.
+plugins=$(cd -- "$(dirname -- "$0")/../.." && pwd)
+config=$(dirname -- "$plugins")
+snap="$config/.fixture-face-rename"
+echo "$*" >>"${FIXTURE_RENAME_LOG:-/dev/null}"
+case ${1:-} in
+  --finish)
+    [[ ${FIXTURE_RENAME_FAIL:-} == 1 ]] && { echo '{"error":"fixture"}'; exit 1; }
+    rm -rf "$snap" && mkdir -p "$snap"
+    [[ -f $config/shell.json ]] && cp -p "$config/shell.json" "$snap/shell.json"
+    if [[ -d $plugins/graveklar.face && -d $plugins/kalinewb.face ]]; then mv -T "$plugins/graveklar.face" "$snap/graveklar.face"; echo beside >"$snap/case"
+    elif [[ -d $plugins/graveklar.face ]]; then mv -T "$plugins/graveklar.face" "$plugins/kalinewb.face"; echo move >"$snap/case"
+    else echo map >"$snap/case"; fi
+    [[ -f $config/shell.json ]] && sed -i 's/"graveklar\.face/"kalinewb.face/g' "$config/shell.json"
+    echo "{\"ok\":true,\"state\":\"renamed\",\"case\":\"$(cat "$snap/case")\",\"restart\":\"requested\"}" ;;
+  --rollback)
+    [[ -f $snap/case ]] || { echo '{"error":"no_snapshot"}'; exit 1; }
+    [[ -f $snap/shell.json ]] && cp -p "$snap/shell.json" "$config/shell.json"
+    case $(cat "$snap/case") in
+      move) mv -T "$plugins/kalinewb.face" "$plugins/graveklar.face" ;;
+      beside) mv -T "$snap/graveklar.face" "$plugins/graveklar.face" ;;
+    esac
+    rm -rf "$snap"
+    echo '{"ok":true,"state":"rolledback","checkout":"","restart":"requested"}' ;;
+  *) echo '{"ok":true,"state":"nothing"}' ;;
+esac

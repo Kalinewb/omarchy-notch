@@ -39,6 +39,10 @@ ID="kalinewb.notch"
 COMPANION="kalinewb.notch-menu"
 OSD_COMPANION="kalinewb.notch-osd"
 NOTIFICATIONS_COMPANION="kalinewb.notch-notifications"
+# Face's id, and the one it had before (plugins/catalogue.json's `was`).
+FACE="kalinewb.face"
+FACE_WAS="graveklar.face"
+CORNERS="kalinewb.oled-corners"
 
 # --- where things are ---------------------------------------------------------------
 
@@ -181,6 +185,26 @@ json_or() { local text=$1 fallback=$2; jq -e . >/dev/null 2>&1 <<<"$text" && pri
 shell_config() { cat "$SHELL_JSON" 2>/dev/null; }
 setting() { jq -r "$1 // empty" "$SHELL_JSON" 2>/dev/null; }
 
+# commit_shell <jq program> [jq options...]: what Omarchy's own
+# `omarchy-shell-config commit` does -- one jq over shell.json, keys sorted,
+# written atomically, then the shell told to read it again -- for the keys the
+# shell has no IPC for (cloneSourceRestores). Here, so the paths and the shell
+# it tells can be the sandbox's.
+commit_shell() {
+  local program=$1; shift
+  local tmp; tmp=$(mktemp "$SHELL_JSON.XXXXXX") || return 1
+  if ! jq -S -e "$@" "$program" "$SHELL_JSON" >"$tmp" 2>/dev/null; then rm -f "$tmp"; return 1; fi
+  chmod --reference="$SHELL_JSON" "$tmp" 2>/dev/null
+  mv -f "$tmp" "$SHELL_JSON" || { rm -f "$tmp"; return 1; }
+  "${OMARCHY_SHELL[@]}" shell reloadConfig >/dev/null 2>&1
+  return 0
+}
+
+# restore_noted <companion id>: Omarchy has noted the companion as a stand-in
+# for one of its own, so removing it brings that one back
+# (PluginRegistry.qml, cloneShouldRestoreSource).
+restore_noted() { jq -e --arg id "$1" '(.cloneSourceRestores // []) | index($id) != null' "$SHELL_JSON" >/dev/null 2>&1; }
+
 PLUGIN_LIST_CACHE=""
 plugin_list() {
   [[ -n $PLUGIN_LIST_CACHE ]] && { printf '%s' "$PLUGIN_LIST_CACHE"; return; }
@@ -313,8 +337,15 @@ detect_osd_companion() {
     # A panel plugin's entry point is created when it is first called, so
     # "inactive" out here means "nothing has pressed a volume key yet", not
     # "broken". Installed and enabled is the whole of what Setup can tell.
-    active|inactive) point osd-companion ok "The OSD shows in the notch" \
-      "The OSD companion is installed and enabled." ;;
+    active|inactive)
+      if ! restore_noted "$OSD_COMPANION"; then
+        point osd-companion fix "Removing the OSD companion would leave no OSD" \
+          "Omarchy brings omarchy.osd back only for a companion it has noted, and it hasn't noted this one." \
+          "$(strings "Fix adds $OSD_COMPANION to Omarchy's cloneSourceRestores in shell.json." "Undo takes it out again.")" \
+          '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
+      else
+        point osd-companion ok "The OSD shows in the notch" "The OSD companion is installed and enabled."
+      fi ;;
     disabled)
       point osd-companion fix "The OSD companion is switched off" \
         "\"Show the OSD in the notch\" is on, but $OSD_COMPANION is disabled, so volume and brightness still show Omarchy's own card." \
@@ -362,6 +393,13 @@ detect_menu_replace_companion() {
   local state; state=$(companion_state)
   if [[ $want != true ]]; then
     point menu-replace-companion ok "Omarchy's own menu is in use" "\"Replace the Omarchy menu\" is off."
+    return
+  fi
+  if [[ $state == active || $state == inactive ]] && ! restore_noted "$COMPANION"; then
+    point menu-replace-companion fix "Removing the menu companion would leave no menu" \
+      "Omarchy brings omarchy.menu back only for a companion it has noted, and it hasn't noted this one." \
+      "$(strings "Fix adds $COMPANION to Omarchy's cloneSourceRestores in shell.json." "Undo takes it out again.")" \
+      '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
     return
   fi
   case $state in
@@ -548,26 +586,34 @@ detect_layout_empty_widget() {
     "Empty bar widgets can only be seen from inside the running notch. Open the Setup page for this one."
 }
 
+# The notch's own settings that name plugins, and Omarchy's list of stand-ins
+# whose source comes back when they go (cloneSourceRestores). The notch's
+# catalogue ids, and the names they had, are never stale: a plugin the Plugins
+# page installs keeps its hover and hosted entries until it is installed.
 detect_settings_stale_ids() {
   local list; list=$(plugin_list)
   local known; known=$(jq -c '[.[].id]' <<<"$list")
   local layout; layout=$(layout_ids | jq -R . | jq -sc .)
-  local items; items=$(jq -nc --argjson config "$(json_or "$(shell_config)" '{}')" --argjson known "$known" --argjson layout "$layout" '
+  local listed; listed=$(jq -c '[.plugins[]? | .id, (.was // empty)]' "$NOTCH_DIR/plugins/catalogue.json" 2>/dev/null)
+  local items; items=$(jq -nc --argjson config "$(json_or "$(shell_config)" '{}')" --argjson known "$known" --argjson layout "$layout" \
+    --argjson listed "${listed:-[]}" '
     ($config.bar.notch // {}) as $n
-    | ($known + $layout | unique) as $ok
+    | ($known + $layout + $listed | unique) as $ok
     | [ ({key: "hoverPlugin", ids: (if ($n.hoverPlugin // "") == "" then [] else [$n.hoverPlugin] end)},
          {key: "openPlugin", ids: (if ($n.openPlugin // "") == "" then [] else [$n.openPlugin] end)},
          {key: "hoverPlugins", ids: ($n.hoverPlugins // [])},
-         {key: "hiddenPlugins", ids: ($n.hiddenPlugins // [])})
-        | . as $entry | $entry.ids[] | select($ok | index(.) | not)
+         {key: "hiddenPlugins", ids: ($n.hiddenPlugins // [])},
+         {key: "hostedPanels", ids: ($n.hostedPanels // [])},
+         {key: "cloneSourceRestores", ids: ($config.cloneSourceRestores // [])})
+        | . as $entry | $entry.ids[] | select(type == "string") | . as $id | select(($ok | index($id)) == null)
         | {arg: $entry.key, id: ., summary: "\($entry.key) still names \(.)"} ]')
   local count; count=$(jq 'length' <<<"$items")
   if (( count == 0 )); then
     point settings-stale-ids ok "The notch's settings are current" "Every plugin the settings name is installed."
   else
     point settings-stale-ids fix "The notch's settings name a missing plugin" \
-      "$(jq -r '[.[].id] | unique | join(", ")' <<<"$items") was removed but is still in the settings." \
-      "$(strings "Fix rewrites the setting without those ids. Undo puts the old value back.")" \
+      "Not installed, but still named: $(jq -r '[.[].id] | unique | join(", ")' <<<"$items")." \
+      "$(strings "Fix rewrites each setting without those ids (Omarchy's cloneSourceRestores the way Omarchy writes it). Undo puts the old values back.")" \
       "$items" "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
   fi
 }
@@ -587,6 +633,8 @@ detect_plugin() { # detect_plugin <point id> <plugin id> <name> <setup argv>
   fi
   local entry; entry=$(jq -c --arg id "$plugin" '(.entries // .plugins // []) | map(select(.id == $id)) | .[0] // null' <<<"$state")
   [[ $entry == null ]] && { point "$pid" info "$name isn't listed" "The notch's plugin catalogue doesn't know it."; return; }
+  # Its panel answers to the id it is installed under (a renamed plugin's old one).
+  setup_argv=$(jq -c --arg id "$(jq -r '.folder // ""' <<<"$entry")" 'if $id != "" then .[1] = $id else . end' <<<"$setup_argv")
   local installed enabled update setup
   installed=$(jq -r '.installed // false' <<<"$entry")
   enabled=$(jq -r '.enabled // false' <<<"$entry")
@@ -602,7 +650,7 @@ detect_plugin() { # detect_plugin <point id> <plugin id> <name> <setup argv>
     point "$pid" action "$name is switched off" "It is installed but not enabled." '[]' '[]' null \
       '{"label": "Open Plugins", "view": "plugins"}'
   elif [[ $update == available ]]; then
-    point "$pid" action "$name has an update" "A newer version is on its origin." '[]' '[]' null \
+    point "$pid" action "$name has an update" "A verified update is ready on the Plugins page." '[]' '[]' null \
       '{"label": "Open Plugins", "view": "plugins"}'
   else
     point "$pid" ok "$name is set up" "Installed and enabled."
@@ -655,9 +703,14 @@ detect_stray_instances() {
   fi
 }
 
+# Backup files beside the config, and the folders the plugins folder keeps:
+# `omarchy plugin remove` backs a plugin up as .<id>.bak.<time>, and the notch's
+# installer moves a refused folder to .notch-refused.<name>.<ms>. Omarchy skips
+# dot folders, so they only take up room.
 stray_backup_files() {
   find "$HYPR" -maxdepth 1 -type f -regextype posix-extended -regex '.*\.bak\.[0-9]+' 2>/dev/null
   find "$CONFIG/omarchy" -maxdepth 1 -type f -regextype posix-extended -regex '.*shell\.json\.bak\.[0-9]+' 2>/dev/null
+  find "$PLUGINS" -mindepth 1 -maxdepth 1 -type d \( -name '.*.bak.*' -o -name '.notch-refused.*' \) 2>/dev/null | sort
 }
 
 detect_stray_backups() {
@@ -672,10 +725,13 @@ detect_stray_backups() {
       [[ -z $file ]] && continue
       items=$(jq -c --arg f "$file" '. + [{arg: $f, summary: $f}]' <<<"$items")
     done <<<"$files"
+    # Moving a folder out of the plugins folder reloads every plugin.
+    local reloads=false
+    grep -qF "$PLUGINS/" <<<"$files" && reloads=true
     point stray-backups fix "Old backup files in your config" \
-      "$count file(s) like bindings.lua.bak.1789067221 are sitting next to your config." \
-      "$(strings "Some may be Omarchy's own: \`omarchy-refresh-config\` makes the same kind of file." "Fix moves them into a snapshot, so nothing is deleted and Restore puts them back.")" \
-      "$items" "$(fixspec archive "Fix" "$(printf '%s\n' "$files" | jq -R . | jq -sc .)" '[]' low false)"
+      "$count old backup(s) are sitting in your config: files like bindings.lua.bak.1789067221, and plugin folders like .kalinewb.notch-menu.bak.20261022185832." \
+      "$(strings "Some may be Omarchy's own: \`omarchy-refresh-config\` and \`omarchy plugin remove\` make the same kind." "Fix moves them into a snapshot, so nothing is deleted until you Forget it, and Undo puts them back.")" \
+      "$items" "$(fixspec archive "Fix" "$(printf '%s\n' "$files" | jq -R . | jq -sc .)" '[]' low "$reloads")"
   fi
 }
 
@@ -743,10 +799,72 @@ detect_notch_not_git() {
   fi
 }
 
+# The Face folder whose manifest carries the new id: kalinewb.face, or a 3.x
+# still in the old folder.
+renamed_face() {
+  local dir
+  for dir in "$PLUGINS/$FACE" "$PLUGINS/$FACE_WAS"; do
+    [[ $(jq -r '.id // ""' "$dir/manifest.json" 2>/dev/null) == "$FACE" ]] && { printf '%s' "$dir"; return 0; }
+  done
+  return 1
+}
+
+# shell.json or one of Profiles' saved profiles still names an old Face id.
+names_old_face() {
+  local file
+  for file in "$SHELL_JSON" "$CONFIG"/omarchy/profiles/*.json; do
+    [[ -f $file ]] && grep -qE '"graveklar\.face(-lock)?"' "$file" 2>/dev/null && return 0
+  done
+  return 1
+}
+
+# Face was renamed graveklar.face -> kalinewb.face. Face does the move itself
+# (bin/omarchy-face-rename, the one implementation); Setup only offers it, in a
+# snapshot with Undo, when something was left half done.
+detect_face_renamed() {
+  local face
+  if ! face=$(renamed_face); then
+    if [[ -d $PLUGINS/$FACE_WAS ]]; then
+      point face-renamed info "Face ID will move to its new name" \
+        "Face ID is installed as $FACE_WAS. Its 3.0 update moves it to $FACE by itself; nothing to do until then."
+    else
+      point face-renamed ok "Face ID's name is current" "No Face ID under its old name."
+    fi
+    return
+  fi
+  if [[ -d $PLUGINS/$FACE && -d $PLUGINS/$FACE_WAS ]] || [[ $face == "$PLUGINS/$FACE_WAS" ]] || names_old_face; then
+    point face-renamed fix "Face ID was renamed, but your settings still use the old name" \
+      "Face ID is $FACE now, but $( [[ -d $PLUGINS/$FACE && -d $PLUGINS/$FACE_WAS ]] && echo "a $FACE_WAS folder is still beside it" || echo "the bar or a profile still names $FACE_WAS"), so it may be missing from the bar." \
+      "$(strings "Fix runs Face's own \`omarchy-face-rename --finish\`, which moves what is left to the new name and restarts the shell." "Undo runs its \`--rollback\`, which puts everything back as it was.")" \
+      '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low true)"
+  else
+    point face-renamed ok "Face ID has its new name" "Everything names $FACE."
+  fi
+}
+
+# Hyprland animates a layer as it maps; OLED Corners' layers map again on every
+# monitor change, so without a no_anim rule they visibly pop in.
+detect_oled_corners_still() {
+  if ! jq -e --arg id "$CORNERS" 'any(.[]; .id == $id)' <<<"$(plugin_list)" >/dev/null 2>&1; then
+    point oled-corners-still ok "OLED Corners stay still" "OLED Corners isn't installed."
+    return
+  fi
+  local scan; scan=$(scan_binds) || { point oled-corners-still unknown "Couldn't read your Hyprland config" "Couldn't check."; return; }
+  if jq -se 'any(.[]; .layerRule != null and (.layerRule.namespace | test("omarchy-oled-corners"))
+                     and (.layerRule.rule | test("no_anim=true")))' <<<"$scan" >/dev/null 2>&1; then
+    point oled-corners-still ok "OLED Corners stay still" "A no_anim rule keeps Hyprland from animating them."
+  else
+    point oled-corners-still fix "OLED Corners pop in when the screen changes" \
+      "Hyprland animates the corners' layer every time a monitor changes, so they visibly fade in instead of just being there." \
+      "$(strings "Fix appends a marked block to ~/.config/hypr/looknfeel.lua with Omarchy's own no_anim rule for omarchy-oled-corners, as OLED Corners' README suggests." "Nothing in the block mentions the notch, so it keeps working without it.")" \
+      '[]' "$(fixspec block "Fix" "$(strings "$HYPR/looknfeel.lua")" "$(strings "hyprctl reload")" low false)"
+  fi
+}
+
 POINT_ORDER=(bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion osd-companion notifications-companion menu-keys-bypass
   notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids
-  plugin-face plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift
-  layer-rules notch-not-git)
+  plugin-face face-renamed plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift
+  layer-rules oled-corners-still notch-not-git)
 
 LOCAL_ONLY=0
 detect_point() {
@@ -768,7 +886,8 @@ detect_point() {
     # so it says nothing rather than listing a point whose whole content is
     # "not checked yet". The full check fills them in a moment later.
     plugin-face)
-      (( LOCAL_ONLY )) || detect_plugin plugin-face graveklar.face "Face ID" '["omarchy-shell","graveklar.face","open","setup",""]' ;;
+      (( LOCAL_ONLY )) || detect_plugin plugin-face "$FACE" "Face ID" '["omarchy-shell","kalinewb.face","open","setup",""]' ;;
+    face-renamed) detect_face_renamed ;;
     plugin-profiles)
       (( LOCAL_ONLY )) || detect_plugin plugin-profiles kalinewb.profiles "Profiles" '["omarchy-shell","kalinewb.profiles","open"]' ;;
     profiles-binds-path) detect_profiles_binds_path ;;
@@ -776,6 +895,7 @@ detect_point() {
     stray-backups) detect_stray_backups ;;
     upstream-drift) detect_upstream_drift ;;
     layer-rules) detect_layer_rules ;;
+    oled-corners-still) detect_oled_corners_still ;;
     notch-not-git) detect_notch_not_git ;;
     *) return 1 ;;
   esac
@@ -942,8 +1062,10 @@ meta_set() { # meta_set <name> [jq options...] <filter>
 
 meta_state() { meta_set "$1" --arg state "$2" '.state = $state | .history += [{state: $state, at: $now}]'; }
 
-snapshot_file() { # snapshot_file <name> <path>   -- copy one file in, recording it
-  local name=$1 path=$2
+snapshot_file() { # snapshot_file <name> <path> [move]  -- copy one file in, recording it
+  # With `move` nothing is copied: the fix moves the file (or folder) itself
+  # into the snapshot, and Undo moves it back (an archive).
+  local name=$1 path=$2 move=${3:-}
   local dir; dir=$(snapshot_path "$name") || return 1
   local index; index=$(jq '.files | length' "$dir/meta.json")
   local existed=false mode="" size=0 hash="" canon=null copy=""
@@ -954,8 +1076,10 @@ snapshot_file() { # snapshot_file <name> <path>   -- copy one file in, recording
     hash=$(sha "$path")
     [[ $path == *.json ]] && canon="\"$(canonical_sha "$path")\""
     copy="files/$index"
-    cp -p "$path" "$dir/$copy" || return 1
-    cmp -s "$path" "$dir/$copy" || return 1
+    if [[ $move != move ]]; then
+      cp -p "$path" "$dir/$copy" || return 1
+      cmp -s "$path" "$dir/$copy" || return 1
+    fi
   fi
   meta_set "$name" --arg path "$path" --arg realpath "$(realpath -m "$path" 2>/dev/null)" \
     --argjson existed "$existed" --arg mode "$mode" --argjson size "$size" --arg hash "$hash" \
@@ -1007,8 +1131,9 @@ snapshots_json() {
 files_for() { # the files a fix would change
   case $1 in
     menu-keys-bypass) echo "$HYPR/bindings.lua" ;;
+    oled-corners-still) echo "$HYPR/looknfeel.lua" ;;
     bar-off) echo "$TOGGLES/bar-off" ;;
-    menu-replace-companion|osd-companion|notifications-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo "$SHELL_JSON" ;;
+    menu-replace-companion|osd-companion|notifications-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids|face-renamed) echo "$SHELL_JSON" ;;
     stray-backups) stray_backup_files ;;
     *) : ;;
   esac
@@ -1016,9 +1141,9 @@ files_for() { # the files a fix would change
 
 kind_for() {
   case $1 in
-    menu-keys-bypass) echo block ;;
+    menu-keys-bypass|oled-corners-still) echo block ;;
     bar-off) echo flag ;;
-    menu-replace-companion|osd-companion|notifications-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids) echo ipc ;;
+    menu-replace-companion|osd-companion|notifications-companion|notch-not-bar|notch-key-collision|layout-missing-plugin|settings-stale-ids|face-renamed) echo ipc ;;
     stray-backups) echo archive ;;
     stale-notch-binds|stray-instances|layout-empty-widget) echo runtime ;;
     *) echo "" ;;
@@ -1047,6 +1172,17 @@ build_block() {
     printf 'hl.unbind("%s")\n%s\n' "$combo" "$line" >>"$out"
   done < <(jq -r '.[].arg' <<<"$items")
   echo "$BLOCK_END" >>"$out"
+}
+
+# The looknfeel.lua block that keeps OLED Corners' layer from animating, in
+# Omarchy's own syntax (default/hypr/apps/omarchy-shell.lua), written to $1.
+build_corners_block() {
+  local out=$1
+  BLOCK_BEGIN="-- >>> $ID setup: oled-corners-still ($(stamp)) -- delete this block to undo"
+  BLOCK_END="-- <<< $ID setup: oled-corners-still"
+  { [[ -f $HYPR/looknfeel.lua ]] && cat "$HYPR/looknfeel.lua"; echo; echo "$BLOCK_BEGIN"
+    echo 'hl.layer_rule({ match = { namespace = "omarchy-oled-corners" }, no_anim = true, animation = "none" })'
+    echo "$BLOCK_END"; } >"$out"
 }
 
 # Does this file compile? `lua -e '<code>' <file>` would also RUN the file, so
@@ -1093,21 +1229,38 @@ apply_fix() { # apply_fix <point> <arg> <snapshot name>
       meta_set "$name" --arg begin "${BLOCK_BEGIN%% (*}" --arg end "$BLOCK_END" '.block = {begin: $begin, end: $end}'
       install_file "$tmp" "$HYPR/bindings.lua"
       ;;
+    oled-corners-still)
+      mkdir -p "$HYPR" 2>/dev/null
+      local tmp; tmp=$(mktemp "$HYPR/.notch-setup.XXXXXX") || return 1
+      build_corners_block "$tmp" || { rm -f "$tmp"; return 1; }
+      [[ ${NOTCH_SETUP_FAIL_AT:-} == write ]] && { rm -f "$tmp"; return 1; }
+      if ! lua_parses "$tmp"; then
+        step "the candidate doesn't parse: $(lua_parse_error "$tmp")"
+        rm -f "$tmp"; return 1
+      fi
+      meta_set "$name" --arg begin "${BLOCK_BEGIN%% (*}" --arg end "$BLOCK_END" '.block = {begin: $begin, end: $end}'
+      install_file "$tmp" "$HYPR/looknfeel.lua"
+      ;;
     bar-off)
       runnable TOGGLE_BAR || return 1
       "${TOGGLE_BAR[@]}" off >/dev/null 2>&1
       meta_set "$name" '.undo = [["omarchy-toggle-bar", "on"]]'
       [[ -f $TOGGLES/bar-off ]] && return 1
       ;;
-    menu-replace-companion)
-      "${OMARCHY[@]}" plugin enable "$COMPANION" >/dev/null 2>&1
-      meta_set "$name" --arg id "$COMPANION" '.undo = [["omarchy", "plugin", "disable", $id]]'
-      ;;
-    osd-companion|notifications-companion)
-      local cid=$OSD_COMPANION
+    menu-replace-companion|osd-companion|notifications-companion)
+      local cid=$COMPANION
+      [[ $point == osd-companion ]] && cid=$OSD_COMPANION
       [[ $point == notifications-companion ]] && cid=$NOTIFICATIONS_COMPANION
-      "${OMARCHY[@]}" plugin enable "$cid" >/dev/null 2>&1
-      meta_set "$name" --arg id "$cid" '.undo = [["omarchy", "plugin", "disable", $id]]'
+      if [[ $(companion_state "$cid") == disabled ]]; then
+        "${OMARCHY[@]}" plugin enable "$cid" >/dev/null 2>&1
+        meta_set "$name" --arg id "$cid" '.undo = [["omarchy", "plugin", "disable", $id]]'
+      else
+        # Enabled, but Omarchy hasn't noted it as the source's stand-in.
+        commit_shell '.cloneSourceRestores = (((.cloneSourceRestores // []) - [$id]) + [$id])' --arg id "$cid" || return 1
+        meta_set "$name" --arg id "$cid" '.undo = [["shell-config",
+          "((.cloneSourceRestores // []) - [$id]) as $r | if $r == [] then del(.cloneSourceRestores) else .cloneSourceRestores = $r end",
+          "--arg", "id", $id]]'
+      fi
       ;;
     notch-not-bar)
       local previous; previous=$(setting .bar.id)
@@ -1140,8 +1293,18 @@ apply_fix() { # apply_fix <point> <arg> <snapshot name>
       ;;
     settings-stale-ids)
       local items; items=$(detect_point settings-stale-ids | jq -c '.items')
+      # Omarchy's own key first, written the way Omarchy writes it; the
+      # notch's keys after, over IPC, from the config the shell reloaded.
+      local restores; restores=$(jq -c '[.[] | select(.arg == "cloneSourceRestores") | .id]' <<<"$items")
+      if [[ $restores != '[]' ]]; then
+        local before; before=$(jq -c '.cloneSourceRestores // null' "$SHELL_JSON")
+        commit_shell '((.cloneSourceRestores // []) - $stale) as $r | if $r == [] then del(.cloneSourceRestores) else .cloneSourceRestores = $r end' \
+          --argjson stale "$restores" || return 1
+        meta_set "$name" --arg old "$before" '.undo += [["shell-config",
+          "if $old == null then del(.cloneSourceRestores) else .cloneSourceRestores = $old end", "--argjson", "old", $old]]'
+      fi
       local key
-      for key in $(jq -r '[.[].arg] | unique | .[]' <<<"$items"); do
+      for key in $(jq -r '[.[].arg | select(. != "cloneSourceRestores")] | unique | .[]' <<<"$items"); do
         local old; old=$(jq -c ".bar.notch.$key // null" "$SHELL_JSON")
         local stale; stale=$(jq -c --arg key "$key" '[.[] | select(.arg == $key) | .id]' <<<"$items")
         local new
@@ -1165,13 +1328,28 @@ apply_fix() { # apply_fix <point> <arg> <snapshot name>
       done
       ;;
     stray-backups)
+      # Moved, not copied and deleted: a folder too, and nothing is gone
+      # until the snapshot is forgotten.
       local dir; dir=$(snapshot_path "$name") || return 1
       local count; count=$(jq '.files | length' "$dir/meta.json")
       local i
       for (( i = 0; i < count; i++ )); do
-        local path; path=$(jq -r ".files[$i].path" "$dir/meta.json")
-        [[ -e $path ]] && rm -f "$path"
+        local path copy; path=$(jq -r ".files[$i].path" "$dir/meta.json"); copy=$(jq -r ".files[$i].copy // \"\"" "$dir/meta.json")
+        [[ -e $path && -n $copy ]] && { mv -T -- "$path" "$dir/$copy" || return 1; }
       done
+      ;;
+    face-renamed)
+      # Face's own script, the one implementation of the rename; this only
+      # wraps it in a snapshot and an Undo. It restarts the shell.
+      local face; face=$(renamed_face) || return 1
+      local -a rename=("$face/bin/omarchy-face-rename" --finish --wait)
+      [[ $arg =~ ^[0-9a-f]{7,40}$ ]] && rename+=(--from "$arg")
+      [[ -x ${rename[0]} ]] || { step "no rename script in $face"; return 1; }
+      local out; out=$("${rename[@]}" 2>/dev/null </dev/null)
+      jq -e '.ok == true and .state == "renamed"' <<<"$out" >/dev/null 2>&1 || { step "the rename said: $out"; return 1; }
+      DESTROYED=true
+      meta_set "$name" --arg undo "$PLUGINS/$FACE/bin/omarchy-face-rename" --argjson result "$out" \
+        '.undo = [[$undo, "--rollback"]] | .context.rename = $result'
       ;;
     layout-empty-widget)
       session_locked && return 1
@@ -1191,7 +1369,7 @@ apply_fix() { # apply_fix <point> <arg> <snapshot name>
 
 reload_for() { # reload_for <point>
   case $1 in
-    menu-keys-bypass)
+    menu-keys-bypass|oled-corners-still)
       runnable HYPRCTL || return 0
       "${HYPRCTL[@]}" reload >/dev/null 2>&1
       ;;
@@ -1202,7 +1380,7 @@ reload_for() { # reload_for <point>
 verify_fix() { # verify_fix <point> <arg>
   local point=$1
   [[ ${NOTCH_SETUP_FAIL_AT:-} == verify ]] && return 1
-  if [[ $point == menu-keys-bypass ]]; then
+  if [[ $(kind_for "$point") == block ]]; then
     local errors; errors=$(hypr_config_errors)
     [[ $(jq '[.[] | select(. != null and . != "")] | length' <<<"$errors") == 0 ]] || return 1
   fi
@@ -1216,6 +1394,8 @@ verify_fix() { # verify_fix <point> <arg>
     PLUGIN_LIST_CACHE=""; HYPR_BINDS_CACHE=""; SCAN_CACHE=""
     local severity; severity=$(detect_point "$point" | jq -r .severity)
     [[ $severity == ok || $severity == info ]] && return 0
+    # From a terminal a shut menu reads "couldn't tell"; the flag is what was fixed.
+    [[ $point == menu-replace-companion && $severity == unknown ]] && return 0
     (( i + 1 < tries )) && sleep 0.25
   done
   return 1
@@ -1231,7 +1411,9 @@ rollback() { # rollback <snapshot name>
     path=$(jq -r ".files[$i].path" "$dir/meta.json")
     existed=$(jq -r ".files[$i].existed" "$dir/meta.json")
     copy=$(jq -r ".files[$i].copy // \"\"" "$dir/meta.json")
-    if [[ $existed == true && -n $copy ]]; then
+    if [[ $existed == true && -n $copy && $(jq -r .kind "$dir/meta.json") == archive ]]; then
+      [[ -e $dir/$copy && ! -e $path ]] && mv -T -- "$dir/$copy" "$path" 2>/dev/null
+    elif [[ $existed == true && -n $copy ]]; then
       cp -p "$dir/$copy" "$path" 2>/dev/null
     elif [[ $existed == false ]]; then
       rm -f "$path" 2>/dev/null
@@ -1293,7 +1475,7 @@ do_fix() {
       return 2
     fi
   fi
-  if [[ $point == menu-keys-bypass ]]; then
+  if [[ $kind == block ]]; then
     local errors; errors=$(hypr_config_errors)
     if [[ $(jq '[.[] | select(. != null and . != "")] | length' <<<"$errors") != 0 ]]; then
       finish failed 2 "Hyprland already reports config errors, so a fix couldn't be verified."
@@ -1310,10 +1492,11 @@ do_fix() {
   if [[ $kind != runtime ]]; then
     name=$(new_snapshot "$point" "$arg" "$kind" "$title") || { finish failed 1 "Couldn't take a snapshot."; return 1; }
     [[ ${NOTCH_SETUP_FAIL_AT:-} == snapshot ]] && { rm -rf "$(snapshot_dir)/.$name.partial"; finish failed 1 "Couldn't take a snapshot."; return 1; }
-    local file
+    local file move=""
+    [[ $kind == archive ]] && move=move
     while read -r file; do
       [[ -z $file ]] && continue
-      snapshot_file "$name" "$file" || { rm -rf "$(snapshot_dir)/.$name.partial"; finish failed 1 "Couldn't copy $file."; return 1; }
+      snapshot_file "$name" "$file" $move || { rm -rf "$(snapshot_dir)/.$name.partial"; finish failed 1 "Couldn't copy $file."; return 1; }
     done < <(files_for "$point")
     finalise_snapshot "$name"
     write_status "$STATUS_FILE" --arg snapshot "$name" '.snapshot = $snapshot'
@@ -1367,6 +1550,8 @@ file_clean() { # file_clean <meta> <index>
 restore_files() { # restore_files <snapshot dir>
   local dir=$1
   local count; count=$(jq '.files | length' "$dir/meta.json")
+  local archive=false
+  [[ $(jq -r .kind "$dir/meta.json") == archive ]] && archive=true
   local i
   for (( i = 0; i < count; i++ )); do
     local path existed copy mode
@@ -1374,7 +1559,12 @@ restore_files() { # restore_files <snapshot dir>
     existed=$(jq -r ".files[$i].existed" "$dir/meta.json")
     copy=$(jq -r ".files[$i].copy // \"\"" "$dir/meta.json")
     mode=$(jq -r ".files[$i].mode // \"\"" "$dir/meta.json")
-    if [[ $existed == true && -n $copy ]]; then
+    if [[ $existed == true && -n $copy && $archive == true ]]; then
+      # An archive holds the thing itself: it goes back where it was.
+      [[ -e $dir/$copy ]] || continue
+      mkdir -p "$(dirname "$path")" 2>/dev/null
+      mv -T -- "$dir/$copy" "$path" || return 1
+    elif [[ $existed == true && -n $copy ]]; then
       mkdir -p "$(dirname "$path")" 2>/dev/null
       local tmp; tmp=$(mktemp "$(dirname "$path")/.notch-setup.XXXXXX") || return 1
       cp "$dir/$copy" "$tmp" || { rm -f "$tmp"; return 1; }
@@ -1475,6 +1665,7 @@ do_restore() {
       local argv; mapfile -t argv < <(jq -r '.[]' <<<"$cmd")
       local program="${argv[0]}"
       case $program in
+        shell-config) argv=(commit_shell "${argv[@]:1}") ;;
         omarchy-shell) argv=("${OMARCHY_SHELL[@]}" "${argv[@]:1}") ;;
         omarchy) argv=("${OMARCHY[@]}" "${argv[@]:1}") ;;
         omarchy-toggle-bar) argv=("${TOGGLE_BAR[@]}" "${argv[@]:1}") ;;

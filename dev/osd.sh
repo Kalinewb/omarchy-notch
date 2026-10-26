@@ -178,7 +178,7 @@ echo; echo "${BOLD}E. Installing this companion, not the other one${RESET}"
 # plugins folder, never the user's.
 mkdir -p "$root/plugins"
 comp() { NOTCH_COMPANION_ID=kalinewb.notch-osd NOTCH_COMPANION_SOURCE_ID=omarchy.osd \
-  NOTCH_COMPANION_DIR="$root/plugins" NOTCH_COMPANION_LIST="echo []" NOTCH_COMPANION_ENABLE="true" \
+  NOTCH_COMPANION_DIR="$root/plugins" NOTCH_COMPANION_LIST="echo []" NOTCH_COMPANION_ENABLE="true" NOTCH_COMPANION_REMOVE="false" \
   NOTCH_COMPANION_VALIDATE="true" NOTCH_COMPANION_STATE_DIR="$root/state" \
   NOTCH_COMPANION_DISCOVER_MS=1 "$REPO/bin/notch-companion" "$@" 2>/dev/null; }
 

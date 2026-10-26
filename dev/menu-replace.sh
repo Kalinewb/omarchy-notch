@@ -173,11 +173,17 @@ kill "$alias_pid" 2>/dev/null; wait "$alias_pid" 2>/dev/null; rm -rf "$alias_roo
 
 echo; echo "${BOLD}F. bin/notch-companion${RESET}"
 sb="$root/sandbox"; mkdir -p "$sb/plugins" "$sb/state"
+# `omarchy plugin remove` acts on the live plugins folder whatever
+# NOTCH_COMPANION_DIR says, so it is always a stand-in here.
 comp() { NOTCH_COMPANION_DIR="$sb/plugins" NOTCH_COMPANION_LIST="${LIST:-echo []}" NOTCH_COMPANION_ENABLE="true" \
-         NOTCH_COMPANION_VALIDATE="omarchy plugin validate" NOTCH_COMPANION_STATE_DIR="$sb/state" \
+         NOTCH_COMPANION_REMOVE="${REMOVE:-false}" NOTCH_COMPANION_VALIDATE="omarchy plugin validate" NOTCH_COMPANION_STATE_DIR="$sb/state" \
          NOTCH_COMPANION_DISCOVER_MS=300 "$REPO/bin/notch-companion" "$@"; }
+live_marker() { find "$HOME/.config/omarchy/plugins" -maxdepth 1 -printf '%f %T@\n' 2>/dev/null | sort; }
+live_before=$(live_marker)
 check "a hook without the sandbox folder is refused" '2 {"error":"sandbox"}' \
   "$(NOTCH_COMPANION_LIST="echo []" "$REPO/bin/notch-companion" status >"$root/out" 2>/dev/null; echo $?) $(cat "$root/out")"
+check "a sandbox folder without stand-ins for enable and remove is refused (they would act on the live folder)" '2 {"error":"sandbox"}' \
+  "$(NOTCH_COMPANION_DIR="$sb/plugins" NOTCH_COMPANION_LIST="echo []" "$REPO/bin/notch-companion" remove "$sb/state/companion.json" >"$root/out" 2>/dev/null; echo $?) $(cat "$root/out")"
 check "status before anything is installed" "false null " "$(comp status | jq -r '"\(.installed) \(.inSync) \(.conflict)"')"
 comp install "$sb/state/companion.json" >/dev/null 2>&1
 check "install copies the companion in, with the notch's version" "done true true 1.0.0" \
@@ -200,9 +206,11 @@ check "…and install refuses while it is there" "failed" "$(jq -r .phase "$sb/s
 rm -rf "$sb/plugins/someone.else"; LIST='echo []'
 check "a locked session refuses too" "failed" \
   "$(NOTCH_COMPANION_SESSION_LOCKED=true comp install "$sb/state/companion.json" >/dev/null 2>&1; jq -r .phase "$sb/state/companion.json")"
-comp remove "$sb/state/companion.json" >/dev/null 2>&1
-check "remove hands it to omarchy plugin remove" "done" "$(NOTCH_COMPANION_REMOVE="rm -rf $sb/plugins/kalinewb.notch-menu --" comp remove "$sb/state/companion.json" >/dev/null 2>&1; jq -r .phase "$sb/state/companion.json")"
+check "a remove that leaves the folder there fails, and says so" "failed true" \
+  "$(comp remove "$sb/state/companion.json" >/dev/null 2>&1; jq -r .phase "$sb/state/companion.json") $(comp status | jq -r .installed)"
+check "remove hands it to omarchy plugin remove" "done" "$(REMOVE="rm -rf $sb/plugins/kalinewb.notch-menu --" comp remove "$sb/state/companion.json" >/dev/null 2>&1; jq -r .phase "$sb/state/companion.json")"
 check "…and it is gone" "false" "$(comp status | jq -r .installed)"
+check "the live plugins folder's entries and mtimes are unchanged" "$live_before" "$(live_marker)"
 
 if grep -qE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log"; then
   check "no QML errors" "none" "$(grep -E 'TypeError|ReferenceError' "$root/qs.log" | head -1)"

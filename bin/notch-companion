@@ -26,6 +26,7 @@
 # from the notch's own folder.
 #
 # Test hooks (dev/menu-replace.sh). All of them need NOTCH_COMPANION_DIR set,
+# and NOTCH_COMPANION_DIR needs NOTCH_COMPANION_ENABLE and NOTCH_COMPANION_REMOVE,
 # or the command refuses with reason `sandbox`, so a half-set test can never
 # reach the live plugins folder:
 #   NOTCH_COMPANION_DIR             the plugins folder (default $HOME/.config/omarchy/plugins)
@@ -71,12 +72,21 @@ read -ra VALIDATE_CMD <<<"${NOTCH_COMPANION_VALIDATE:-omarchy plugin validate}"
 now_ms() { date +%s%3N; }
 
 # Any hook without NOTCH_COMPANION_DIR would mix stand-ins with the live folder.
+# And the other way round: `omarchy plugin enable` and `remove` always act on
+# the live plugins folder and shell, whatever NOTCH_COMPANION_DIR says, so a
+# sandbox needs stand-ins for both.
 check_hooks() {
   local hook
   for hook in NOTCH_COMPANION_SOURCE NOTCH_COMPANION_LIST NOTCH_COMPANION_ENABLE NOTCH_COMPANION_REMOVE \
               NOTCH_COMPANION_VALIDATE NOTCH_COMPANION_SESSION_LOCKED NOTCH_COMPANION_DISCOVER_MS; do
     if [[ -n ${!hook:-} && -z ${NOTCH_COMPANION_DIR:-} ]]; then
       echo "notch-companion: $hook needs NOTCH_COMPANION_DIR" >&2
+      return 1
+    fi
+  done
+  for hook in NOTCH_COMPANION_ENABLE NOTCH_COMPANION_REMOVE; do
+    if [[ -n ${NOTCH_COMPANION_DIR:-} && -z ${!hook:-} ]]; then
+      echo "notch-companion: NOTCH_COMPANION_DIR needs $hook" >&2
       return 1
     fi
   done

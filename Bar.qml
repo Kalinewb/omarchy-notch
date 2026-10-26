@@ -12,6 +12,7 @@ import "BarModel.js" as BarModel
 import "spring.js" as Spring
 import "contract.js" as Contract
 import "osd-model.js" as OsdModel
+import "bridge"
 import "menu"
 import "plugins"
 import "plugins/PluginsModel.js" as PluginsModel
@@ -1859,7 +1860,7 @@ Item {
   // also points NOTCH_UPDATE_DIR / _STATE_DIR / _APPLY / _RESTART at a sandbox.
   readonly property bool notchUpdateCheck: notchSetting("updateCheck", true) !== false
   // Replace the Omarchy menu: every way into Omarchy's menu opens the notch's
-  // menu instead, through the companion plugin (MenuCompanion.qml). Off means
+  // menu instead, through the companion plugin (Companion.qml). Off means
   // Omarchy's own menu window, exactly as before.
   readonly property bool notchReplaceMenu: notchSetting("replaceMenu", false) === true
   // Omarchy's volume, brightness and media overlays, shown in the notch instead
@@ -1920,25 +1921,10 @@ Item {
     // Not while a plugin job runs: both reload every plugin.
     if (!updatesEnabled || updateNotice === "updating" || pluginJobRunning) return false
     updateNoticeHeld = ""
-    var run = [updateScript, "run", updateStatusPath]
-    var argv
-    if ((Quickshell.env("NOTCH_UPDATE_DETACH") || "systemd-run") === "systemd-run") {
-      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "kalinewb-notch-update-" + Date.now()];
-      // A transient unit starts from the user manager's environment: hand it
-      // what omarchy's commands and the test hooks need.
-      var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
-                    "XDG_STATE_HOME", "NOTCH_UPDATE_DIR", "NOTCH_UPDATE_APPLY", "NOTCH_UPDATE_RESTART"]
-      for (var i = 0; i < passed.length; i++) {
-        var value = Quickshell.env(passed[i])
-        if (value) argv.push("--setenv=" + passed[i] + "=" + value)
-      }
-      argv = argv.concat(run)
-    } else {
-      argv = ["setsid", "-f"].concat(run)
-    }
     updateJob = { phase: "updating", startedAt: Date.now(), from: String((updateCheckResult || {}).local || ""), finishedAt: 0, seen: false, launched: true }
     updateClock = Date.now()
-    Quickshell.execDetached(argv)
+    detached.launch("kalinewb-notch-update", [updateScript, "run", updateStatusPath],
+                    ["NOTCH_UPDATE_DIR", "NOTCH_UPDATE_APPLY", "NOTCH_UPDATE_RESTART"], "NOTCH_UPDATE_DETACH")
     updateStatusPoll.restart()
     return true
   }
@@ -1973,6 +1959,9 @@ Item {
   // What is stopping the notch from working the way you want, and the buttons
   // that put it right. SetupService.qml reads; bin/notch-setup changes.
   SetupService { id: setupService; bar: root }
+
+  // Every job that has to outlive this notch starts here (Detached.qml).
+  Detached { id: detached }
 
   // --- the platform -----------------------------------------------------------
   //
@@ -2041,7 +2030,7 @@ Item {
   readonly property bool notchNotifications: notchSetting("notifications", true) !== false
   // Omarchy's own toast stays off screen while the notch shows the same
   // notification. The notch installs the companion plugin that does the hiding
-  // by itself (NotificationsCompanion.qml); Setup reports it if that fails.
+  // by itself (Companion.qml); Setup reports it if that fails.
   readonly property bool notchSuppressNativeToast: notchNotifications && notchSetting("suppressNativeToast", false) === true
 
   NotchNotifications { id: notifications; bar: root }
@@ -2311,28 +2300,15 @@ Item {
   // can't start (a test notch, or a plugin job or notch update is running).
   function launchPluginsRun(args) {
     if (!pluginsCanAct || pluginJobRunning || updateNotice === "updating") return false
-    var run = [pluginsScript, "run"].concat(args)
-    var argv
-    if ((Quickshell.env("NOTCH_PLUGINS_DETACH") || "systemd-run") === "systemd-run") {
-      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "kalinewb-notch-plugins-" + Date.now()]
-      var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
-                    "XDG_CONFIG_HOME", "XDG_STATE_HOME", "NOTCH_PLUGINS_DIR", "NOTCH_PLUGINS_OMARCHY", "NOTCH_PLUGINS_CATALOGUE",
-                    "NOTCH_PLUGINS_SHELL", "NOTCH_PLUGINS_TERMINAL", "NOTCH_PLUGINS_SESSION_LOCKED", "NOTCH_PLUGINS_SCRATCH",
-                    "NOTCH_PLUGINS_DISCOVER_MS"]
-      for (var i = 0; i < passed.length; i++) {
-        var value = Quickshell.env(passed[i])
-        if (value) argv.push("--setenv=" + passed[i] + "=" + value)
-      }
-      argv = argv.concat(run)
-    } else {
-      argv = ["setsid", "-f"].concat(run)
-    }
     // Local until the runner writes its first status; a runner that refuses
     // before that (another job holds the lock) is caught by
     // expirePluginsLaunch().
     pluginsJob = { phase: "running", action: String(args[0]), id: String(args[1]), startedAt: Date.now(), finishedAt: 0, seen: false, launched: true }
     pluginsClock = Date.now()
-    Quickshell.execDetached(argv)
+    detached.launch("kalinewb-notch-plugins", [pluginsScript, "run"].concat(args),
+                    ["NOTCH_PLUGINS_DIR", "NOTCH_PLUGINS_OMARCHY", "NOTCH_PLUGINS_CATALOGUE", "NOTCH_PLUGINS_SHELL",
+                     "NOTCH_PLUGINS_TERMINAL", "NOTCH_PLUGINS_SESSION_LOCKED", "NOTCH_PLUGINS_SCRATCH",
+                     "NOTCH_PLUGINS_DISCOVER_MS"], "NOTCH_PLUGINS_DETACH")
     pluginsStatusPoll.restart()
     return true
   }
@@ -2559,13 +2535,69 @@ Item {
     onTriggered: root.ackPluginJob()
   }
 
-  // The menu companion: the bridge registration, its folder's state, and the
-  // jobs that install or update it.
-  MenuCompanion { id: menuCompanionHelper; bar: root }
+  // The companions (Companion.qml): each one's bridge registration, its
+  // folder's state, and the jobs that install or update it. `api` is all a
+  // companion can reach the notch through.
+  Companion {
+    id: menuCompanionHelper
+    bar: root; companionId: "kalinewb.notch-menu"; sourceId: "omarchy.menu"; label: "menu"
+    unitPrefix: "kalinewb-notch-companion"; statusName: "companion.json"; wanted: root.notchReplaceMenu
+    bridge: NotchMenuBridge
+    // Open, close and refresh the menu, and say whether it is open.
+    api: QtObject {
+      function openMenuPayload(payloadJson) { return root.openMenuPayload(payloadJson) === true }
+      function closeMenus() { root.closeMenus() }
+      function refreshMenus() { root.refreshMenus() }
+      readonly property bool anyMenuOpen: root.anyMenuOpen
+      readonly property bool notchReplaceMenu: root.notchReplaceMenu
+      readonly property bool barHidden: root.barHidden
+    }
+  }
   readonly property var menuCompanion: menuCompanionHelper
-  OsdCompanion { id: osdCompanionHelper; bar: root }
+  Companion {
+    id: osdCompanionHelper
+    bar: root; companionId: "kalinewb.notch-osd"; sourceId: "omarchy.osd"; label: "OSD"
+    unitPrefix: "kalinewb-notch-osd-companion"; statusName: "companion-osd.json"; wanted: root.notchReplaceOsd
+    bridge: NotchOsdBridge
+    // Show an OSD, hide one, and say whether the notch wants them. showOsd
+    // answers "shown" or "declined:<reason>"; the companion falls back on
+    // anything but "shown".
+    api: QtObject {
+      function showOsd(payloadJson) { return String(root.showOsd(payloadJson)) }
+      function hideOsd() { root.hideOsd() }
+      readonly property bool osdShown: root.osdShown
+      readonly property bool notchReplaceOsd: root.notchReplaceOsd
+      readonly property bool barHidden: root.barHidden
+    }
+  }
   readonly property var osdCompanion: osdCompanionHelper
-  NotificationsCompanion { id: notificationsCompanionHelper; bar: root }
+  Companion {
+    id: notificationsCompanionHelper
+    bar: root; companionId: "kalinewb.notch-notifications"; sourceId: "omarchy.notifications"; label: "notifications"
+    unitPrefix: "kalinewb-notch-notifications-companion"; statusName: "companion-notifications.json"
+    wanted: root.notchSuppressNativeToast
+    bridge: NotchNotificationsBridge
+    // Whether the notch is taking Omarchy's toasts right now, when its
+    // notification source started (anything older the notch never shows, so
+    // the companion leaves those on Omarchy's own toast), and whether it has
+    // drawn a given toast.
+    api: QtObject {
+      readonly property bool takeOver: root.notchSuppressNativeToast && !root.barHidden && !!root.notificationsSource
+        && root.notificationsSource.enabled
+      readonly property real since: root.notificationsSource ? root.notificationsSource.startedAt : 0
+
+      // Whether the notch is drawing this toast, has it in line, or drew it and
+      // the user dismissed it there. A toast still being read, waiting for one
+      // of the notch's four lines in a burst, skipped as unreadable or declined
+      // is not, so Omarchy's own stays on screen for it. The file Omarchy writes
+      // per toast is "<timestamp>-<originalId>.json"; that name is the key.
+      function shows(originalId, timestamp) {
+        var source = root.notificationsSource
+        var entry = source && source.entries ? source.entries[Number(timestamp) + "-" + Number(originalId) + ".json"] : undefined
+        return !!entry && (entry.state === "shown" || entry.state === "queued" || entry.state === "dismissed")
+      }
+    }
+  }
   readonly property var notificationsCompanion: notificationsCompanionHelper
 
   function setNotchSetting(key, value) {
@@ -2612,7 +2644,7 @@ Item {
 
   // --- the Omarchy menu, when the notch is it -----------------------------------
   //
-  // MenuCompanion.qml hands these to the companion plugin (and nothing else).
+  // The menu Companion's api hands these to the companion plugin (and nothing else).
   readonly property bool anyMenuOpen: {
     for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].menuOpen) return true
     return false
@@ -3496,7 +3528,7 @@ Item {
 
     // --- the on-screen display ------------------------------------------------
     //
-    // Omarchy's OSD, routed here by the companion (OsdCompanion.qml). It is a
+    // Omarchy's OSD, routed here by the companion (Companion.qml). It is a
     // transient like a peek -- the notch widens around one row and shrinks
     // back -- but it outranks one: an OSD answers a key the user just pressed,
     // where a peek is the notch volunteering something.

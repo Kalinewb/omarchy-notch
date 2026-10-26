@@ -1,61 +1,75 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "bridge"
 
-// Everything about the menu companion, the small plugin that lets the notch be
-// the Omarchy menu (see README, "Replace the Omarchy menu").
+// Everything about one companion: the small plugin that lets the notch be one
+// of Omarchy's own surfaces. Bar.qml has three of these, one per companion:
 //
-// Omarchy sends every menu call -- SUPER + SPACE, `omarchy menu`, the bar's
-// menu button, every select/input picker -- to whichever enabled plugin says
-// `clonedFrom: omarchy.menu`. That plugin is companion/kalinewb.notch-menu,
-// installed once into ~/.config/omarchy/plugins. Its go-between asks the notch
-// to take the request; when the notch declines (the setting is off, the bar is
-// hidden, no notch is running) it opens Omarchy's own menu instead.
+//   kalinewb.notch-menu           clonedFrom omarchy.menu: every menu call
+//                                 (SUPER + SPACE, `omarchy menu`, the bar's menu
+//                                 button, every picker) opens in the notch
+//   kalinewb.notch-osd            clonedFrom omarchy.osd: volume, brightness and
+//                                 media show in the notch
+//   kalinewb.notch-notifications  clonedFrom omarchy.notifications: Omarchy's own
+//                                 service runs unchanged, and its toast stays off
+//                                 screen while the notch shows the same one
+//
+// Omarchy routes the source's calls to whichever enabled plugin says
+// `clonedFrom: <source>`. Each companion lives in companion/<id> and is copied
+// once into ~/.config/omarchy/plugins; its go-between asks the notch first,
+// through its own bridge singleton (bridge/), and falls back to Omarchy's own
+// surface when the notch declines, so nothing is ever dropped.
 //
 // This file owns:
-//   - menuApi, the only object the companion can reach the notch through
+//   - the bridge registration: `api`, the only object the companion can reach
+//     the notch through (each instance's api is set in Bar.qml)
 //   - the companion folder's state, and the jobs that install or update it
 //
 // The jobs change the plugins folder, which reloads every plugin and destroys
-// this notch, so they run detached and report through a status file outside
-// that folder, exactly as bin/notch-update does.
+// this notch, so they run detached (Detached.qml) and report through a status
+// file outside that folder, exactly as bin/notch-update does.
 Item {
   id: companion
   visible: false
 
   // The notch's Bar.qml root.
   property var bar: null
-
-  // --- what the companion may do to the notch ----------------------------------
+  // Which companion: its plugin id, the Omarchy id it stands in for, the word
+  // for it in a sentence ("the menu companion"), its unit name and status file.
+  property string companionId: ""
+  property string sourceId: ""
+  property string label: ""
+  property string unitPrefix: ""
+  property string statusName: ""
+  // The notch setting that asks for it.
+  property bool wanted: false
+  // Its bridge singleton, and what it may reach there.
   //
-  // Not the Bar root: anything that loads bridge/Connector.qml can read
-  // NotchMenuBridge.target, and the root carries the notch's shell facade,
-  // its settings writer and its updater. This object can only open, close and
-  // refresh the menu, and say whether it is open.
-  readonly property QtObject menuApi: QtObject {
-    function openMenuPayload(payloadJson) {
-      return !!companion.bar && companion.bar.openMenuPayload(payloadJson) === true
-    }
-    function closeMenus() { if (companion.bar) companion.bar.closeMenus() }
-    function refreshMenus() { if (companion.bar) companion.bar.refreshMenus() }
-    readonly property bool anyMenuOpen: !!companion.bar && companion.bar.anyMenuOpen
-    readonly property bool notchReplaceMenu: !!companion.bar && companion.bar.notchReplaceMenu
-    readonly property bool barHidden: !!companion.bar && companion.bar.barHidden
-  }
+  // Not the Bar root: anything that loads bridge/Connector.qml can read the
+  // bridge's target, and the root carries the notch's shell facade, its
+  // settings writer and its updater. `api` only carries what that companion
+  // needs to ask.
+  property var bridge: null
+  property QtObject api: null
 
-  // The notch's own copy of the companion, and the API it speaks.
+  // The notch's own copy of the companion.
   readonly property string version: "1.0.0"
-  readonly property bool bridged: NotchMenuBridge.target === menuApi
-  readonly property string facadeRoute: NotchMenuBridge.facade ? String(NotchMenuBridge.facade.route || "") : ""
+  readonly property bool bridged: !!bridge && bridge.target === api
+  readonly property var facade: bridge ? bridge.facade : null
+  readonly property string facadeRoute: facade ? String(facade.route || "") : ""
 
   // Only a hosted notch installs or updates anything; a test notch reports and
-  // does nothing (NOTCH_FORCE_COMPANION=1 lets dev/menu-replace.sh opt in).
+  // does nothing (NOTCH_FORCE_COMPANION=1 lets a suite opt in).
   readonly property bool actionsEnabled: !!bar && ((!!bar.shell && !bar.harnessed) || Quickshell.env("NOTCH_FORCE_COMPANION") === "1")
 
   readonly property string script: String(Qt.resolvedUrl("bin/notch-companion")).replace(/^file:\/\//, "")
   readonly property string statusPath: (Quickshell.env("NOTCH_COMPANION_STATE_DIR")
-    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/kalinewb.notch")) + "/companion.json"
+    || ((Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/kalinewb.notch")) + "/" + statusName
+
+  // One script, three companions: which one is in the environment, so `status`
+  // and every job read the same folder the notch is asking about.
+  readonly property var idEnv: ["env", "NOTCH_COMPANION_ID=" + companionId, "NOTCH_COMPANION_SOURCE_ID=" + sourceId,
+                                "NOTCH_COMPANION_LABEL=" + label]
 
   // The last `notch-companion status` line: what is installed, and whether it
   // matches the copy in this notch.
@@ -71,16 +85,15 @@ Item {
   //   active    there and matching
   //
   // What is on disk is the answer, not whether the go-between happens to be
-  // loaded: Omarchy creates a menu plugin's entry point when the menu is opened
-  // and drops it afterwards, so "has it registered with the bridge" says
-  // "absent" for a perfectly good companion every moment the menu is shut. A
+  // loaded: Omarchy creates a menu or panel plugin's entry point when it is
+  // first called and may drop it afterwards, so "has it registered with the
+  // bridge" says "absent" for a perfectly good companion most of the time. A
   // live facade is still worth having -- it is the only thing that can report
   // the running API and version -- so it is used when it is there.
   readonly property string companionState: {
-    var facade = NotchMenuBridge.facade
     var info = installed || {}
     if (facade) {
-      var sameApi = Number(facade.apiVersion) === NotchMenuBridge.apiVersion
+      var sameApi = Number(facade.apiVersion) === Number(bridge.apiVersion)
       var sameVersion = String(facade.version || "") === version
       if (!sameApi || !sameVersion || info.inSync === false) return "outdated"
       return "active"
@@ -98,8 +111,8 @@ Item {
     if (j.phase === "working" && now - Number(j.startedAt || 0) < 5 * 60000) return "working"
     if (j.phase === "failed" && Number(j.finishedAt || 0) > dismissedAt) return "failed"
     if (companionState !== "active") return companionState
-    if (bar && bar.notchReplaceMenu && bar.barHidden) return "hidden-bar"
-    return bar && bar.notchReplaceMenu ? "active-on" : "active-off"
+    if (wanted && bar && bar.barHidden) return "hidden-bar"
+    return wanted ? "active-on" : "active-off"
   }
 
   function dismiss() { dismissedAt = Date.now(); clock = Date.now() }
@@ -111,7 +124,7 @@ Item {
   property string keptInStep: ""
   property real keptInStepAt: 0
   function keepInStep() {
-    if (!actionsEnabled || !bar || !bar.notchReplaceMenu) { keptInStep = ""; keptInStepAt = 0; return }
+    if (!actionsEnabled || !wanted) { keptInStep = ""; keptInStepAt = 0; return }
     var state = companionState
     if (state !== "absent" && state !== "disabled" && state !== "outdated") return
     if (statusKey === "working" || keptInStep === state) return
@@ -124,43 +137,27 @@ Item {
     startJob(state === "outdated" ? "sync" : "install")
   }
   onInstalledChanged: keepInStep()
-  Connections {
-    target: companion.bar
-    // Switching it off and on again is how you ask for another try.
-    function onNotchReplaceMenuChanged() {
-      companion.keptInStep = ""
-      companion.keptInStepAt = 0
-      companion.keepInStep()
-    }
+  // Switching it off and on again is how you ask for another try.
+  onWantedChanged: {
+    keptInStep = ""
+    keptInStepAt = 0
+    keepInStep()
   }
 
   function setUp() { return startJob("install") }
   function update() { return startJob("sync") }
   function remove() { return startJob("remove") }
 
-  // Detached, in its own systemd user unit: the job reloads every plugin and
-  // takes this notch down with it (see bin/notch-update's startUpdate).
+  Detached { id: detached }
+
   function startJob(verb) {
     if (!actionsEnabled || statusKey === "working") return false
-    var run = [script, verb, statusPath]
-    var argv
-    if ((Quickshell.env("NOTCH_UPDATE_DETACH") || "systemd-run") === "systemd-run") {
-      argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "kalinewb-notch-companion-" + Date.now()]
-      var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
-                    "XDG_STATE_HOME", "NOTCH_COMPANION_DIR", "NOTCH_COMPANION_SOURCE", "NOTCH_COMPANION_LIST",
-                    "NOTCH_COMPANION_ENABLE", "NOTCH_COMPANION_REMOVE", "NOTCH_COMPANION_VALIDATE",
-                    "NOTCH_COMPANION_SESSION_LOCKED", "NOTCH_COMPANION_STATE_DIR"]
-      for (var i = 0; i < passed.length; i++) {
-        var value = Quickshell.env(passed[i])
-        if (value) argv.push("--setenv=" + passed[i] + "=" + value)
-      }
-      argv = argv.concat(run)
-    } else {
-      argv = ["setsid", "-f"].concat(run)
-    }
+    detached.launch(unitPrefix, idEnv.concat([script, verb, statusPath]),
+                    ["NOTCH_COMPANION_DIR", "NOTCH_COMPANION_SOURCE", "NOTCH_COMPANION_LIST", "NOTCH_COMPANION_ENABLE",
+                     "NOTCH_COMPANION_REMOVE", "NOTCH_COMPANION_VALIDATE", "NOTCH_COMPANION_SESSION_LOCKED",
+                     "NOTCH_COMPANION_STATE_DIR"], "NOTCH_UPDATE_DETACH")
     job = { phase: "working", verb: verb, startedAt: Date.now(), finishedAt: 0, message: "", launched: true }
     clock = Date.now()
-    Quickshell.execDetached(argv)
     statusPoll.restart()
     return true
   }
@@ -173,7 +170,7 @@ Item {
 
   Process {
     id: statusProcess
-    command: [companion.script, "status"]
+    command: companion.idEnv.concat([companion.script, "status"])
     stdout: StdioCollector {
       onStreamFinished: {
         try { companion.installed = JSON.parse(text) } catch (e) { companion.installed = {} }
@@ -207,8 +204,8 @@ Item {
   }
 
   Component.onCompleted: {
-    NotchMenuBridge.target = menuApi
+    if (bridge) bridge.target = api
     if (actionsEnabled) { jobFile.reload(); readStatus() }
   }
-  Component.onDestruction: if (NotchMenuBridge.target === menuApi) NotchMenuBridge.target = null
+  Component.onDestruction: if (bridge && bridge.target === api) bridge.target = null
 }

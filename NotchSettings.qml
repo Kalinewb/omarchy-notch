@@ -360,7 +360,7 @@ Item {
         KeyRow { label: "Keybind for the menu"; key: "menuKey"; current: root.bar ? root.bar.notchMenuKey : "" }
 
         // Just the switch. The companion plugin it needs is the notch's
-        // business (MenuCompanion.keepInStep); Setup's if that fails.
+        // business (Companion.keepInStep); Setup's if that fails.
         SettingRow {
           label: "Replace the Omarchy menu"
           Switch {

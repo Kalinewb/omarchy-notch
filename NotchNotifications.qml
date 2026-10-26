@@ -13,7 +13,7 @@ import "notifications.js" as Notifications
 // whole mechanism: a file appearing claims an activity, the file leaving
 // releases it. Omarchy's own toast still draws as well, unless "Suppress
 // Omarchy's own toast" is on: then the notifications companion
-// (NotificationsCompanion.qml) keeps it off screen while this shows it.
+// (Companion.qml) keeps it off screen while this shows it.
 Item {
   id: source
   visible: false

@@ -194,26 +194,16 @@ Item {
 
   // --- starting a job ------------------------------------------------------------------
 
-  // Built the way startUpdate() builds its argv: a transient unit when systemd
-  // is there, so the job outlives the notch that started it.
-  function detachedArgv(run) {
-    if ((Quickshell.env("NOTCH_SETUP_DETACH") || "systemd-run") !== "systemd-run") return ["setsid", "-f"].concat(run)
-    var argv = ["systemd-run", "--user", "--collect", "--quiet", "--unit", "kalinewb-notch-setup-" + Date.now()]
-    var passed = ["PATH", "HOME", "OMARCHY_PATH", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY",
-                  "XDG_RUNTIME_DIR", "XDG_STATE_HOME", "XDG_CONFIG_HOME",
-                  "NOTCH_SETUP_SANDBOX", "NOTCH_SETUP_HOME", "NOTCH_SETUP_CONFIG_DIR", "NOTCH_SETUP_TOGGLES_DIR",
-                  "NOTCH_SETUP_STATE_DIR", "NOTCH_SETUP_STATUS", "NOTCH_SETUP_OMARCHY_PATH", "NOTCH_SETUP_PLUGINS_DIR",
-                  "NOTCH_SETUP_NOTCH_DIR", "NOTCH_SETUP_HYPRCTL", "NOTCH_SETUP_OMARCHY_SHELL", "NOTCH_SETUP_OMARCHY",
-                  "NOTCH_SETUP_OMARCHY_VERSION", "NOTCH_SETUP_TOGGLE_BAR", "NOTCH_SETUP_QS", "NOTCH_SETUP_KILL",
-                  "NOTCH_SETUP_LUA", "NOTCH_SETUP_PLUGINS_STATE", "NOTCH_SETUP_SESSION_LOCKED",
-                  "NOTCH_SETUP_RESTART_SHELL", "NOTCH_SETUP_PROC", "NOTCH_SETUP_RETENTION_DAYS",
-                  "NOTCH_SETUP_RETENTION_CAP", "NOTCH_SETUP_FAIL_AT"]
-    for (var i = 0; i < passed.length; i++) {
-      var value = Quickshell.env(passed[i])
-      if (value) argv.push("--setenv=" + passed[i] + "=" + value)
-    }
-    return argv.concat(run)
-  }
+  Detached { id: detached }
+  readonly property var detachedEnv: ["NOTCH_SETUP_SANDBOX", "NOTCH_SETUP_HOME", "NOTCH_SETUP_CONFIG_DIR", "NOTCH_SETUP_TOGGLES_DIR",
+    "NOTCH_SETUP_STATE_DIR", "NOTCH_SETUP_STATUS", "NOTCH_SETUP_OMARCHY_PATH", "NOTCH_SETUP_PLUGINS_DIR",
+    "NOTCH_SETUP_NOTCH_DIR", "NOTCH_SETUP_HYPRCTL", "NOTCH_SETUP_OMARCHY_SHELL", "NOTCH_SETUP_OMARCHY",
+    "NOTCH_SETUP_OMARCHY_VERSION", "NOTCH_SETUP_TOGGLE_BAR", "NOTCH_SETUP_QS", "NOTCH_SETUP_KILL",
+    "NOTCH_SETUP_LUA", "NOTCH_SETUP_PLUGINS_STATE", "NOTCH_SETUP_SESSION_LOCKED",
+    "NOTCH_SETUP_RESTART_SHELL", "NOTCH_SETUP_PROC", "NOTCH_SETUP_RETENTION_DAYS",
+    "NOTCH_SETUP_RETENTION_CAP", "NOTCH_SETUP_FAIL_AT"]
+  // Detached (Detached.qml), so the job outlives the notch it may destroy.
+  function launch(run) { detached.launch("kalinewb-notch-setup", run, detachedEnv, "NOTCH_SETUP_DETACH") }
 
   function pointById(id) {
     for (var i = 0; i < points.length; i++) if (points[i].id === id) return points[i]
@@ -228,7 +218,7 @@ Item {
     if (point && point.fix && point.fix.destroysNotch) run.push("--reopen")
     job = { phase: "snapshotting", action: "fix", point: id, arg: String(arg || ""),
             startedAt: Date.now(), finishedAt: 0, seen: false, launched: true }
-    Quickshell.execDetached(detachedArgv(run))
+    launch(run)
     statusPoll.restart()
     return true
   }
@@ -244,7 +234,7 @@ Item {
     if (snapshot && snapshot.kind === "ipc") run.push("--reopen")
     job = { phase: "applying", action: "restore", point: (snapshot ? snapshot.point : ""), snapshot: name,
             startedAt: Date.now(), finishedAt: 0, seen: false, launched: true }
-    Quickshell.execDetached(detachedArgv(run))
+    launch(run)
     statusPoll.restart()
     return true
   }

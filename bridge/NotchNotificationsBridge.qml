@@ -9,15 +9,15 @@ import QtQuick
 // omarchy.notifications) loads bridge/Connector.qml from the notch's folder by
 // URL; both files resolve this same qmldir, so both see this one object.
 //
-// `target` is NotificationsCompanion.qml's notificationsApi: whether the notch
+// `target` is the notifications Companion's api (Bar.qml): whether the notch
 // is taking Omarchy's toasts right now, since when, and whether it has drawn a
 // given toast (`shows(originalId, timestamp)`). Nothing else.
 QtObject {
-  // Bumped when notificationsApi's shape changes. The companion treats a
+  // Bumped when that api's shape changes. The companion treats a
   // mismatch as "no notch" and leaves Omarchy's toast on screen.
   readonly property int apiVersion: 1
 
-  // NotificationsCompanion.qml's notificationsApi, while a notch is running here.
+  // The notifications Companion's api (Bar.qml), while a notch is running here.
   property var target: null
 
   // The companion's service, while one is loaded here, for the notch's report.

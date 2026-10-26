@@ -508,16 +508,16 @@ resolve through the same `qmldir`) that lets one specific companion plugin —
 reach the notch inside one shell process. Omarchy gives plugins no way to reach
 each other, so this looks like the general answer to that, and it is not:
 
-- **It is deliberately narrow.** `target` is not the notch's root. It is
-  `MenuCompanion.qml`'s `menuApi`, which can open the menu, close it, refresh it
-  and answer whether it is open. Anything that can load the connector could
+- **It is deliberately narrow.** `target` is not the notch's root. It is the
+  menu companion's `api` (`Companion.qml`, set in `Bar.qml`), which can open
+  the menu, close it, refresh it and answer whether it is open. Anything that can load the connector could
   otherwise reach the notch's shell facade and its settings.
 - **It is versioned and refused on mismatch.** `apiVersion` is bumped when
-  `menuApi`'s shape changes; the companion refuses a mismatch and uses Omarchy's
+  that `api`'s shape changes; the companion refuses a mismatch and uses Omarchy's
   own menu instead. Singleton code is cached for the life of the shell process,
   so a change needs a shell restart — `install.sh` does one.
 - **It is private.** Not because the mechanism is secret (it is thirty lines and
-  in this repository), but because a second consumer would make `menuApi` a
+  in this repository), but because a second consumer would make that `api` a
   public surface that has to keep its shape, and there is no version of that we
   have thought through.
 

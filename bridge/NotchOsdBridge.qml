@@ -11,15 +11,15 @@ import QtQuick
 //
 // `target` is deliberately not the notch's Bar root: anything that can load
 // the Connector could then reach the notch's shell facade and settings. It is
-// OsdCompanion.qml's narrow osdApi, which can only show an OSD, hide it, and
+// the OSD Companion's narrow api (Bar.qml), which can only show an OSD, hide it, and
 // answer whether the notch wants them.
 QtObject {
-  // Bumped when osdApi's shape changes. The companion refuses a mismatch and
+  // Bumped when that api's shape changes. The companion refuses a mismatch and
   // uses Omarchy's own OSD instead. Singleton code is cached for the life of
   // the shell process, so a change needs a shell restart (install.sh does one).
   readonly property int apiVersion: 1
 
-  // OsdCompanion.qml's osdApi, while a notch is running here.
+  // The OSD Companion's api (Bar.qml), while a notch is running here.
   property var target: null
 
   // The companion's go-between, while one is loaded here.

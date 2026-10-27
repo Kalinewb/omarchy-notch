@@ -3235,7 +3235,7 @@ Item {
     // page a press used to fall through to the notch's own click and do
     // nothing, which read as the strip not working; now it closes the panel,
     // the last step back.
-    readonly property bool backOffered: panelOpen && !hostedOpen && !integrationOpen
+    readonly property bool backOffered: panelOpen
     function backReport() {
       var menu = menuHost.item
       return { offered: backOffered, depth: viewStack.length, panel: panelOpen,
@@ -4929,12 +4929,9 @@ Item {
         // over somebody's control. It sits above the panel content, so the
         // press reaches it wherever the page puts its own handlers.
         //
-        // It is there only when there is somewhere to go: one step in, a press
-        // here falls through to the notch's own gestures, as before. And it
-        // stays off a panel the notch is merely drawing for someone else -- a
-        // hosted panel and an integration own their surface, their chrome and
-        // their own back button, and a strip of the notch's over their header
-        // would be the notch reaching into another plugin's UI.
+        // It is there on every page the notch grows into, including a hosted
+        // panel or an integration: the press closes it (or steps back), and
+        // the strip is only the resting notch's own footprint.
         BackStrip {
           id: backZone
           width: root.notchCompactWidth

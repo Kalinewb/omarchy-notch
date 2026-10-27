@@ -329,9 +329,8 @@ goes back one step**. The notch's own pages leave that strip clear (their title
 is on the left of that row and their buttons on the right), a chevron appears
 under the pointer, and it is there on every page of the notch's own: with a step
 behind it a press goes back to that page, and at the first page it closes the panel.
-In the menu the first press goes up one menu level. It stays off a
-panel the notch is merely drawing for someone else — a hosted panel and an
-integration own their surface and their own back button. Over IPC: `notch back`.
+In the menu the first press goes up one menu level. It is also there on a hosted panel and an
+integration, where a press closes them. Over IPC: `notch back`.
 
 **Close it here, open it here** (`stateKey`, Settings → How it opens) shuts the
 notch where it stands and opens it where it stood — the same page, the same

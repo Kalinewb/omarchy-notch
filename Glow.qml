@@ -25,6 +25,13 @@ Item {
   property real presence: 0
   // Where the glow reaches zero, px from the edge.
   property real size: 30
+  // The brightest opacity, right at the edge. 0.35 is the curve in glow.js as
+  // it stands; a lower one scales the whole curve down (same shape).
+  property real strength: GlowCurve.knots[0].a
+  // >= 1: the glow runs this many times further along the screen's top edge
+  // than it reaches down, tapering out instead of being cut off there. 1 is a
+  // plain circle about each fillet tip.
+  property real edgeTail: 1
 
   readonly property real reach: Math.max(1, size)
   // The window holding the glow is sized once, for the largest glow allowed.
@@ -48,7 +55,7 @@ Item {
     blending: true
 
     readonly property size itemSize: Qt.size(width, height)
-    readonly property real margin: root.filletRadius + root.reach + root.pad
+    readonly property real margin: root.filletRadius + root.reach * Math.max(1, root.edgeTail) + root.pad
     readonly property real barWidth: root.barWidth
     readonly property real barHeight: root.barHeight
     readonly property real bottomRadius: root.bottomRadius
@@ -56,7 +63,9 @@ Item {
     readonly property real presence: Math.max(0, Math.min(1, root.presence))
     readonly property color glowColor: root.color
     readonly property vector4d knotD: curve.d
-    readonly property vector4d knotA: curve.a
-    readonly property vector4d knotM: curve.m
+    readonly property real gain: Math.max(0, root.strength) / GlowCurve.knots[0].a
+    readonly property vector4d knotA: curve.a.times(gain)
+    readonly property vector4d knotM: curve.m.times(gain)
+    readonly property real edgeTail: Math.max(1, root.edgeTail)
   }
 }

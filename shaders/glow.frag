@@ -24,6 +24,7 @@ layout(std140, binding = 0) uniform buf {
     vec4 knotD;         // knot distances
     vec4 knotA;         // knot opacities
     vec4 knotM;         // knot slopes
+    float edgeTail;     // >= 1: how much further the glow runs along the screen's top edge than down
 };
 
 // Signed distance to the bar: x in [0, W], extending upward without end (its
@@ -63,6 +64,22 @@ float silhouette(vec2 p) {
     return min(bar, min(arcL, arcR));
 }
 
+// Distance to the nearest fillet tip (where the silhouette meets the screen
+// edge), with the along-edge part divided by edgeTail: a half-ellipse edgeTail
+// times longer along the edge than deep. Only for pixels beside the notch;
+// 1e9 anywhere else.
+float tailDistance(vec2 p) {
+    float F = filletRadius;
+    float dx = p.x < -F ? (-F - p.x) : (p.x > barWidth + F ? p.x - barWidth - F : 0.0);
+    return dx > 0.0 ? length(vec2(dx / edgeTail, p.y)) : 1.0e9;
+}
+
+// Smooth minimum (quadratic), blending the two distances over a band k.
+float smin(float a, float b, float k) {
+    float h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+
 float hermite(float d) {
     if (d <= knotD.x) return knotA.x;
     if (d >= knotD.w) return 0.0;
@@ -81,6 +98,12 @@ void main() {
     // Under the notch nothing is drawn, except a one-pixel sliver so the
     // notch's antialiased edge blends into glow rather than into background.
     float under = smoothstep(-1.5, -0.5, d);
-    float a = hermite(max(d, 0.0)) * under * presence;
+    // The curve reads a distance that is longer along the screen's top edge,
+    // so the glow tapers outward there instead of being cut off at its
+    // brightest. `under` keeps the true distance, and the clamp stops the
+    // blend dipping below zero at the tip.
+    float reachD = max(d, 0.0);
+    if (edgeTail > 1.0 && d > 0.0) reachD = max(smin(d, tailDistance(p), 0.2 * knotD.w), 0.0);
+    float a = hermite(reachD) * under * presence;
     fragColor = vec4(glowColor.rgb * a, a) * qt_Opacity;
 }

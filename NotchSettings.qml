@@ -309,6 +309,24 @@ Item {
         }
 
         SettingRow {
+          label: "Notifications"
+          enabled: root.bar ? root.bar.notchNotifications : false
+          Choice {
+            options: [{ value: "stay", label: "Stay until I act" }, { value: "close", label: "Close after" }]
+            value: root.bar && root.bar.notchNotificationStay ? "stay" : "close"
+            fontFamily: root.fontFamily
+            onChanged: function(value) { root.set("notificationStay", value === "stay") }
+          }
+        }
+
+        NumberRow {
+          visible: !(root.bar && root.bar.notchNotificationStay)
+          enabled: root.bar ? root.bar.notchNotifications : false
+          label: "Seconds"; key: "notificationSeconds"
+          value: root.bar ? root.bar.notchNotificationSeconds : 6; from: 1; to: 60; stepSize: 1
+        }
+
+        SettingRow {
           label: "Also in the widget row"
           ItemChips {
             selected: root.bar ? root.bar.notchExpandedItems : []

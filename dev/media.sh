@@ -108,6 +108,43 @@ test_ipc player org.mpris.MediaPlayer2.spotify "Playing again, but not active" t
 test_ipc retitle org.mpris.MediaPlayer2.spotify "A title change nobody is showing" >/dev/null
 sleep 0.6
 check "…and a playing, listed player changing title claims nothing (no media peek)" "false" "$(mediapeek)"
+# --- only a player that is Playing is on the notch ---------------------------------
+# A paused browser tab (a 30 s video left at the end) is not something to look at:
+# the glance shows the active player only while it plays, keeps showing it for a
+# short grace after it pauses so a brief pause does not flicker, then lets go.
+TAB=org.mpris.MediaPlayer2.firefox.instance_1_62
+TITLE="Mullvad VPN | Privacy is a universal right"
+shown() { media | jq -r '.media.glance | "\(.hasMedia) \(.key | sub("^.*\\."; ""))"'; }
+test_ipc active "" >/dev/null
+test_ipc clear >/dev/null
+test_ipc player "$TAB" "$TITLE" false >/dev/null
+test_ipc active "$TAB" >/dev/null
+sleep 0.6
+check "paused browser tab, active from the start: not on the notch" "false " "$(shown)"
+test_ipc player "$TAB" "$TITLE" true >/dev/null
+sleep 0.5
+check "…playing: on the notch" "true instance_1_62" "$(shown)"
+test_ipc player "$TAB" "$TITLE" false >/dev/null
+sleep 1.0
+check "…paused one second ago: still there (inside the grace)" "true instance_1_62" "$(shown)"
+test_ipc player "$TAB" "$TITLE" true >/dev/null
+sleep 2.0
+check "…resumed inside the grace: stays, and the old grace does not take it down later" "true instance_1_62" "$(shown)"
+test_ipc player "$TAB" "$TITLE" false >/dev/null
+sleep 3.2
+check "…paused past the grace: gone" "false " "$(shown)"
+test_ipc player "$TAB" "$TITLE" true >/dev/null
+sleep 0.5
+check "…playing again: back at once" "true instance_1_62" "$(shown)"
+test_ipc player "$TAB" "" false >/dev/null
+sleep 3.2
+check "…stopped (no track, not playing): gone" "false " "$(shown)"
+test_ipc player "$TAB" "$TITLE" true >/dev/null
+sleep 0.4
+test_ipc active "" >/dev/null
+sleep 0.5
+check "…the player going away: gone at once, no grace" "false " "$(shown)"
+
 if grep -qE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log"; then
   check "no QML errors" "none" "$(grep -E 'TypeError|ReferenceError' "$root/qs.log" | head -1)"
 fi

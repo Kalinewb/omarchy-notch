@@ -851,6 +851,7 @@ Item {
     applyBarConfig()
     Qt.callLater(applyKeybinds)
     previousBatteryMode = batteryMode
+    syncMediaPlayer()
   }
 
   // Revealing the indicators widens their section, which can slide a neighbour
@@ -1824,7 +1825,38 @@ Item {
   // different players is exactly the bug this replaces.
   readonly property var mediaService: root.shell && typeof root.shell.firstPartyServiceFor === "function"
     ? root.shell.firstPartyServiceFor("omarchy.media") : null
-  readonly property var mediaPlayer: mediaService && mediaService.activePlayer ? mediaService.activePlayer : null
+  readonly property var activeMediaPlayer: mediaService && mediaService.activePlayer ? mediaService.activePlayer : null
+
+  // What the notch itself shows is narrower than that: the active player only
+  // while it is Playing. A paused browser tab (a 30 s video left at its end)
+  // is not something to look at, and the notch used to keep it on the glance
+  // for as long as the tab lived. A pause keeps the player for this long, so a
+  // brief one does not make the glance flicker out and back; a stopped player
+  // and one that is gone are just not playing. The stock media widget in the row
+  // is omarchy.media's own and keeps showing whatever it shows.
+  readonly property int mediaPausedGraceMs: 2500
+  property var mediaPlayer: null
+  function syncMediaPlayer() {
+    var p = activeMediaPlayer
+    if (!p) { mediaPlayer = null; mediaGraceTimer.stop(); return }
+    if (p.isPlaying) { mediaPlayer = p; mediaGraceTimer.stop(); return }
+    // Not playing: the one already on the notch gets the grace, nothing else
+    // is let on.
+    if (mediaPlayer === p) { if (!mediaGraceTimer.running) mediaGraceTimer.restart(); return }
+    mediaPlayer = null
+    mediaGraceTimer.stop()
+  }
+  onActiveMediaPlayerChanged: syncMediaPlayer()
+  Connections {
+    target: root.activeMediaPlayer
+    ignoreUnknownSignals: true
+    function onIsPlayingChanged() { root.syncMediaPlayer() }
+  }
+  Timer {
+    id: mediaGraceTimer
+    interval: root.mediaPausedGraceMs
+    onTriggered: if (root.activeMediaPlayer && !root.activeMediaPlayer.isPlaying) root.mediaPlayer = null
+  }
   function mediaPlayerKey(player) {
     return mediaService && player && typeof mediaService.playerKey === "function" ? String(mediaService.playerKey(player)) : ""
   }

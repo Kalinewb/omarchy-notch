@@ -309,24 +309,6 @@ Item {
         }
 
         SettingRow {
-          label: "Notifications"
-          enabled: root.bar ? root.bar.notchNotifications : false
-          Choice {
-            options: [{ value: "stay", label: "Stay until I act" }, { value: "close", label: "Close after" }]
-            value: root.bar && root.bar.notchNotificationStay ? "stay" : "close"
-            fontFamily: root.fontFamily
-            onChanged: function(value) { root.set("notificationStay", value === "stay") }
-          }
-        }
-
-        NumberRow {
-          visible: !(root.bar && root.bar.notchNotificationStay)
-          enabled: root.bar ? root.bar.notchNotifications : false
-          label: "Seconds"; key: "notificationSeconds"
-          value: root.bar ? root.bar.notchNotificationSeconds : 6; from: 1; to: 60; stepSize: 1
-        }
-
-        SettingRow {
           label: "Also in the widget row"
           ItemChips {
             selected: root.bar ? root.bar.notchExpandedItems : []
@@ -463,7 +445,7 @@ Item {
       // -- so they sit together, ahead of the glow they used to be split by.
       Section {
         id: batterySection
-        title: "Peeks and battery"
+        title: "Peeks, notifications and battery"
         summary: !root.bar ? "" : !root.bar.notchBatteryGlow ? "Glow off"
           : (root.bar.notchGlowStyle === "bottom" ? "Bottom" : "Outline") + " · " + root.bar.notchGlowScale.toFixed(2) + "× · green above " + root.bar.notchGreenAbove + " %"
 
@@ -473,6 +455,24 @@ Item {
             checked: root.bar ? root.bar.notchPeekOnTrackChange : true
             onToggled: root.set("peekOnTrackChange", !checked)
           }
+        }
+
+        SettingRow {
+          label: "Notifications"
+          enabled: root.bar ? root.bar.notchNotifications : false
+          Choice {
+            options: [{ value: "stay", label: "Stay until I act" }, { value: "close", label: "Close after" }]
+            value: root.bar && root.bar.notchNotificationStay ? "stay" : "close"
+            fontFamily: root.fontFamily
+            onChanged: function(value) { root.set("notificationStay", value === "stay") }
+          }
+        }
+
+        NumberRow {
+          visible: !(root.bar && root.bar.notchNotificationStay)
+          enabled: root.bar ? root.bar.notchNotifications : false
+          label: "Seconds"; key: "notificationSeconds"
+          value: root.bar ? root.bar.notchNotificationSeconds : 6; from: 1; to: 60; stepSize: 1
         }
 
         SettingRow {

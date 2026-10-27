@@ -210,7 +210,7 @@ summary on the resting row, the body wrapped underneath. **Suppress Omarchy's ow
   the companion, straight into Omarchy's service for that toast; without it, through the
   `notifications` IPC target Omarchy's keybinds use (`invokeLast`, `dismissOne`). Pointing at it does
   not turn the notch into its hover view, and holds its clock while the pointer is on it.
-- **How long it stays** (Settings → What it shows → Notifications): **Stay until I act**, or **Close
+- **How long it stays** (Settings → Peeks, notifications and battery → Notifications): **Stay until I act**, or **Close
   after** a number of seconds (1 to 60, 6 by default). The notch's copy keeps its own time, so it
   outlives Omarchy's own toast when that ends first; one whose toast has ended can still be opened
   (its action runs, or its app is focused) or dismissed.

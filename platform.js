@@ -102,7 +102,12 @@ function clip(text, max) {
 // A claim may only carry a key of its own owner's: `owner`, or `owner.`
 // something. Nothing here trusts the caller's own idea of who it is; the caller
 // is decided before this runs.
-function validClaim(owner, obj, fromIpc) {
+//
+// `internal` is the notch's own owner (its notifications): a transient with no
+// ttl is then one that never expires by the clock, because that owner keeps its
+// own time (NotchNotifications.qml). A plugin's transient is still held to
+// TTL_MIN..TTL_MAX, and a missing ttl is still TTL_DEFAULT.
+function validClaim(owner, obj, fromIpc, internal) {
   function bad(reason) { return { ok: false, claim: null, reason: reason } }
   if (!owner) return bad("unknown-owner")
   if (!obj || typeof obj !== "object") return bad("bad-payload")
@@ -117,8 +122,11 @@ function validClaim(owner, obj, fromIpc) {
 
   var ttl = Number(obj.ttlMs)
   if (priority === "transient") {
-    if (!(ttl > 0)) ttl = TTL_DEFAULT
-    ttl = Math.max(TTL_MIN, Math.min(TTL_MAX, ttl))
+    if (internal === true && !(ttl > 0)) ttl = 0
+    else {
+      if (!(ttl > 0)) ttl = TTL_DEFAULT
+      ttl = Math.max(TTL_MIN, Math.min(TTL_MAX, ttl))
+    }
   } else if (fromIpc) {
     // An out-of-process owner can go away without saying so, so a persistent
     // claim of theirs has to be renewed rather than trusted forever.

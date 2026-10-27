@@ -1,19 +1,25 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 import "notifications.js" as Notifications
 
 // Omarchy's toasts, shown in the notch.
 //
-// A display surface and nothing else. The notch does not own
-// org.freedesktop.Notifications, never watches the bus, never calls
-// CloseNotification and never touches do-not-disturb. Omarchy writes one JSON
-// file per live toast into ~/.local/state/omarchy/notifications and moves it to
-// history/ when it expires or is dismissed, so watching that folder is the
-// whole mechanism: a file appearing claims an activity, the file leaving
-// releases it. Omarchy's own toast still draws as well, unless "Suppress
-// Omarchy's own toast" is on: then the notifications companion
-// (Companion.qml) keeps it off screen while this shows it.
+// The notch does not own org.freedesktop.Notifications, never watches the bus,
+// never calls CloseNotification and never touches do-not-disturb. Omarchy
+// writes one JSON file per live toast into ~/.local/state/omarchy/notifications
+// and moves it to history/ when it expires or is dismissed, so watching that
+// folder is how a toast is found: a file appearing claims an activity. Omarchy's
+// own toast still draws as well, unless "Suppress Omarchy's own toast" is on:
+// then the notifications companion (Companion.qml) keeps it off screen while
+// this shows it.
+//
+// The notch's copy keeps its own time: it stays until the user acts on it, or
+// closes a number of seconds after it appears (the two settings), whatever
+// Omarchy's own toast does meanwhile. Acting is Omarchy's own: a left click
+// runs the toast's default action through Omarchy's notification service and a
+// right click dismisses it there (`interact`).
 Item {
   id: source
   visible: false
@@ -36,9 +42,12 @@ Item {
   // older is something the user has already seen.
   property real startedAt: 0
 
-  // name -> { stamp, state, key, parseAttempts, warned, dismissed }
+  // name -> { stamp, state, key, parseAttempts, warned, dismissed, live, data, deadline }
   // state: reading | shown | queued | declined:<r> | waiting | dismissed
-  //        | dropped | skipped | ignored-old
+  //        | closed | dropped | skipped | ignored-old
+  // live: the file is still in Omarchy's folder (its toast has not ended).
+  // data: what was read from it, kept so the copy outlives the file.
+  // deadline: when the timed copy closes (0 until it is on screen).
   property var entries: ({})
   property var readQueue: []
   property string reading: ""
@@ -46,6 +55,15 @@ Item {
   property string watchMode: "waiting-dir"
   property int watcherRestarts: 0
   property real watcherStartedAt: 0
+  // The two settings: stay until acted on, or close after a number of seconds.
+  readonly property bool stay: !!bar && bar.notchNotificationStay
+  readonly property int lifetimeMs: Notifications.lifetimeMs(stay, bar ? bar.notchNotificationSeconds : Notifications.SECONDS_DEFAULT)
+  // The pointer is over the notch while one is showing: its clock waits.
+  readonly property bool pointerOver: {
+    var windows = bar ? bar.notchWindows : []
+    for (var i = 0; i < windows.length; i++) if (windows[i].pointerOnNotch) return true
+    return false
+  }
   property bool inotifyMissing: Quickshell.env("NOTCH_NOTIFICATIONS_WATCH") === "poll"
 
   function keyFor(name) { return "notch.notifications." + Notifications.stem(name) }
@@ -87,9 +105,24 @@ Item {
 
   function claim(name, entry) {
     if (!bar || !bar.platform) return
+    if (stay) makeRoom(name)
     var result = bar.platform.claimInternal("notch.notifications", Notifications.claimFor(name, entry))
-    setEntry(name, { state: result, key: keyFor(name) })
-    if (result.indexOf("declined") === 0) return
+    // A claim again (the toast was updated in place) starts the clock again.
+    setEntry(name, { state: result, key: keyFor(name), data: entry, deadline: 0 })
+  }
+
+  // The queue holds two lines and a third would wait ten seconds and be
+  // dropped, which for a copy that stays until it is acted on is a notification
+  // silently lost. So the newest takes the screen and the oldest one on it steps
+  // back to waiting, and comes back (newest first) when a line frees up.
+  function makeRoom(name) {
+    var shownNames = []
+    for (var n in entries) if (n !== name && entries[n].state === "shown") shownNames.push(n)
+    if (shownNames.length < 2) return
+    shownNames.sort(function(a, b) { return entries[a].stamp - entries[b].stamp })
+    var oldest = shownNames[0]
+    release(oldest)
+    setEntry(oldest, { state: "waiting", deadline: 0 })
   }
 
   function release(name) {
@@ -104,7 +137,10 @@ Item {
       if (e.state !== "waiting" || e.dismissed) continue
       if (e.stamp > bestStamp) { bestStamp = e.stamp; best = name }
     }
-    if (best !== "") queueRead(best)
+    if (best === "") return
+    // One that was on screen already has what it needs; its file may be gone.
+    if (entries[best].data) claim(best, entries[best].data)
+    else queueRead(best)
   }
 
   function changed(name) {
@@ -113,30 +149,172 @@ Item {
     var existing = entries[name]
     if (existing && existing.dismissed) return
     if (parsed.stamp < startedAt) { setEntry(name, { stamp: parsed.stamp, state: "ignored-old" }); return }
-    if (!existing) setEntry(name, { stamp: parsed.stamp, state: "reading", parseAttempts: 0, warned: false, dismissed: false })
+    if (!existing) setEntry(name, { stamp: parsed.stamp, state: "reading", parseAttempts: 0, warned: false, dismissed: false, live: true })
     if (existing && existing.state === "skipped") setEntry(name, { parseAttempts: 0, state: "reading" })
     if (!existing && claimedCount() >= Notifications.OWNER_LIMIT) { setEntry(name, { state: "waiting" }); return }
     queueRead(name)
   }
 
-  function gone(name) {
-    if (entries[name] === undefined) return
+  // The file left Omarchy's folder: its toast ended, there or here. A copy the
+  // notch is showing (or has waiting, having shown it) runs on its own clock and
+  // stays as it is -- only its link to Omarchy's toast is gone. Anything else
+  // lets go, and so does everything when `force` says the folder itself went.
+  function gone(name, force) {
+    var e = entries[name]
+    if (e === undefined) return
+    var keeps = force !== true && (e.state === "shown" || e.state === "queued" || (e.state === "waiting" && e.data))
+    if (keeps) {
+      if (e.live !== false) setEntry(name, { live: false })
+      return
+    }
     release(name)
     dropEntry(name)
     promoteWaiting()
   }
 
+  // Take the notch's copy down and remember it was taken down, so it does not
+  // come back while its file is still in the folder. `how` is the state it is
+  // left in: dismissed (the user acted) or closed (its time ran out).
+  function finish(name, how) {
+    var e = entries[name]
+    if (e === undefined) return
+    release(name)
+    if (e.live === false) dropEntry(name)
+    else setEntry(name, { dismissed: true, state: how, deadline: 0 })
+    promoteWaiting()
+  }
+
   // Nothing is written and nothing is sent to Omarchy: dismissing clears the
-  // notch's copy only, and Omarchy's own toast runs its own course.
+  // notch's copy only. `interact` is what also tells Omarchy.
   function dismiss(key) {
-    for (var name in entries) {
-      if (keyFor(name) !== key) continue
-      release(name)
-      setEntry(name, { dismissed: true, state: "dismissed" })
-      promoteWaiting()
-      return true
+    var name = nameFor(key)
+    if (name === "") return false
+    finish(name, "dismissed")
+    return true
+  }
+
+  function nameFor(key) {
+    for (var name in entries) if (keyFor(name) === key) return name
+    return ""
+  }
+
+  // --- the user acts on a copy -----------------------------------------------
+  //
+  // Left click opens, right click dismisses, the way Omarchy's own toast does,
+  // and by Omarchy's own calls rather than a copy of what they do:
+  //
+  //   - through the notifications companion, when it is loaded, straight into
+  //     Omarchy's real service: its invokePopupDefault / dismissPopup on the row
+  //     for this toast (found by the file's name: timestamp and original id);
+  //   - otherwise through Omarchy's `notifications` IPC target, the one its own
+  //     keybinds use, which acts on the newest popup (`invokeLast`, `dismissOne`)
+  //     or, for a dismissal, one named by its summary;
+  //   - a copy whose toast has already ended is no longer in Omarchy's service at
+  //     all. Opening it then does what the service would have done with the
+  //     toast's own data: run its argv the way Omarchy does, or focus its app
+  //     with Omarchy's helper.
+  //
+  // Answers which way it went: service | ipc | local | notch | no-such-notification.
+  readonly property var service: {
+    var facade = bar && bar.notificationsCompanion ? bar.notificationsCompanion.facade : null
+    var stock = facade ? facade.stockItem : null
+    return stock && stock.popupModel && typeof stock.invokePopupDefault === "function" ? stock : null
+  }
+
+  function popupIndex(name) {
+    var svc = service
+    var parsed = Notifications.parseName(name)
+    if (!svc || !parsed) return -1
+    for (var i = 0; i < svc.popupModel.count; i++) {
+      var row = svc.popupModel.get(i)
+      if (row && Number(row.originalId) === parsed.id && Number(row.timestamp) === parsed.stamp) return i
     }
-    return false
+    return -1
+  }
+
+  function newestLive() {
+    var best = "", bestStamp = -1
+    for (var name in entries) {
+      var e = entries[name]
+      if (e.live === false || e.state === "ignored-old") continue
+      if (e.stamp > bestStamp) { bestStamp = e.stamp; best = name }
+    }
+    return best
+  }
+
+  function omarchyShell(args) {
+    Quickshell.execDetached(["omarchy-shell", "-q"].concat(args))
+  }
+
+  function openLocally(data) {
+    var argv = Notifications.argvFrom(data.execArgv)
+    if (argv) { Util.execArgv(argv); return }
+    if (data.app) Quickshell.execDetached([(bar ? bar.omarchyPath : "") + "/bin/omarchy-hyprland-focus-app", String(data.app)])
+  }
+
+  function interact(key, how) {
+    var name = nameFor(key)
+    if (name === "") return "no-such-notification"
+    var e = entries[name]
+    var data = e.data || {}
+    var open = how === "open"
+    var via = "notch"
+    var index = e.live === false ? -1 : popupIndex(name)
+    if (index >= 0) {
+      if (open) service.invokePopupDefault(index)
+      else service.dismissPopup(index)
+      via = "service"
+    } else if (e.live !== false) {
+      var newest = newestLive() === name
+      if (open && newest) omarchyShell(["notifications", "invokeLast"])
+      else if (open) { openLocally(data); omarchyShell(["notifications", "dismiss", String(data.summary || "")]) }
+      else omarchyShell(newest ? ["notifications", "dismissOne"] : ["notifications", "dismiss", String(data.summary || "")])
+      via = open && !newest ? "local" : "ipc"
+    } else if (open) {
+      openLocally(data)
+      via = "local"
+    }
+    finish(name, "dismissed")
+    return via
+  }
+
+  // --- the clock ---------------------------------------------------------------
+  //
+  // A line starts its time when it is actually on screen (the queue may hold it
+  // back), waits while the pointer is over the notch, and closes when the time is
+  // up. One that the queue dropped while it waited (it holds a transient ten
+  // seconds) is marked so rather than left claiming a place.
+  property real lastTick: 0
+  function tick() {
+    var now = Date.now()
+    var dt = lastTick > 0 ? now - lastTick : 0
+    lastTick = now
+    if (!bar || !bar.platform) return
+    var activity = bar.platform.activityState
+    var onScreen = ({}), waiting = ({})
+    for (var i = 0; i < activity.visible.length; i++) onScreen[activity.visible[i].key] = true
+    for (var j = 0; j < activity.queued.length; j++) waiting[activity.queued[j].key] = true
+    var shownKey = bar.activityLine ? String(bar.activityLine.key) : ""
+    for (var name in entries) {
+      var e = entries[name]
+      if (e.state !== "shown" && e.state !== "queued") continue
+      var key = keyFor(name)
+      if (!onScreen[key] && !waiting[key]) { finish(name, "dropped"); continue }
+      if (!onScreen[key]) { if (e.deadline) setEntry(name, { deadline: 0 }); continue }
+      if (lifetimeMs <= 0) continue
+      if (!e.deadline) { setEntry(name, { deadline: now + lifetimeMs }); continue }
+      if (pointerOver && key === shownKey) { setEntry(name, { deadline: e.deadline + dt }); continue }
+      if (now >= e.deadline) finish(name, "closed")
+    }
+  }
+
+  Timer {
+    id: clock
+    interval: 200
+    repeat: true
+    running: source.enabled && source.claimedCount() > 0
+    onRunningChanged: if (!running) source.lastTick = 0
+    onTriggered: source.tick()
   }
 
   function queueRead(name) {
@@ -245,7 +423,7 @@ Item {
         }
         // The folder is gone: Omarchy's plugin is off, or it has not started
         // yet. Nothing is live, so let go rather than hold stale lines.
-        for (var name in source.entries) source.gone(name)
+        for (var name in source.entries) source.gone(name, true)
         source.watchMode = "waiting-dir"
       }
     }
@@ -347,10 +525,12 @@ Item {
     for (var name in entries) {
       var e = entries[name]
       list.push({ name: name, stamp: e.stamp, state: e.state, key: keyFor(name),
-                  attempts: Number(e.parseAttempts || 0), dismissed: e.dismissed === true })
+                  attempts: Number(e.parseAttempts || 0), dismissed: e.dismissed === true,
+                  live: e.live !== false, deadline: Number(e.deadline || 0) })
     }
     list.sort(function(a, b) { return a.stamp - b.stamp })
     return { enabled: enabled, dir: dir, watch: watchMode, startedAt: startedAt,
-             claimed: claimedCount(), entries: list }
+             claimed: claimedCount(), stay: stay, lifetimeMs: lifetimeMs, pointerOver: pointerOver,
+             service: service !== null, entries: list }
   }
 }

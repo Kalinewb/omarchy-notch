@@ -205,9 +205,15 @@ summary on the resting row, the body wrapped underneath. **Suppress Omarchy's ow
   wouldn't show anyway (one restored after a shell restart, or your notification history replayed
   on request), or one it hasn't drawn yet (in a burst, the fifth waits for a free line, and
   Omarchy's toast stays until it has one).
-- **What you give up:** clicking a toast to run its action, and its own ✕. The notch's copy is a
-  display. Omarchy's keyboard verbs still reach the real notification, because it is still
-  Omarchy's service: `omarchy-shell notifications dismissOne`, `invokeLast`, `dismissAll`.
+- **Click it like Omarchy's own.** Left click opens the notification (its default action, or its
+  app), right click dismisses it. Both are Omarchy's own calls, not a copy of what they do: through
+  the companion, straight into Omarchy's service for that toast; without it, through the
+  `notifications` IPC target Omarchy's keybinds use (`invokeLast`, `dismissOne`). Pointing at it does
+  not turn the notch into its hover view, and holds its clock while the pointer is on it.
+- **How long it stays** (Settings → What it shows → Notifications): **Stay until I act**, or **Close
+  after** a number of seconds (1 to 60, 6 by default). The notch's copy keeps its own time, so it
+  outlives Omarchy's own toast when that ends first; one whose toast has ended can still be opened
+  (its action runs, or its app is focused) or dismissed.
 - **To undo:** turn the switch off (Omarchy's toast is back at once), or
   `omarchy plugin disable kalinewb.notch-notifications`, which puts `omarchy.notifications` back
   exactly.
@@ -506,6 +512,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `replaceOsd` | `false` | Omarchy's volume, brightness and media overlays show in the notch instead of its card at the bottom of the screen. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
 | `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
 | `notifications` | `true` | Omarchy's toasts also show in the notch: the glyph and summary on the resting row, the body wrapped underneath it (up to two rows, elided after that), with the notch widening and growing down to fit. Omarchy's own toast still appears too, unless `suppressNativeToast` is on. |
+| `notificationStay`, `notificationSeconds` | `false`, `6` | How long the notch's copy of a toast stays: until you act on it (`notificationStay`), or this many seconds, 1 to 60, after it appears. Left click opens it, right click dismisses it. |
 | `suppressNativeToast` | `false` | The notch is the only place a toast shows: Omarchy's own is kept off screen by the notifications companion, which the notch installs by itself (see Notifications). Omarchy's toast comes back whenever the notch can't show one. |
 | `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |
 | `openKey`, `settingsKey`, `menuKey`, `autoHideKey`, `stateKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. `stateKey` shuts the notch where it stands and opens it where it stood. |

@@ -17,6 +17,22 @@ var POLL_MS = 2000     // reconcile interval while inotify is watching
 var POLL_ONLY_MS = 500 // …and when polling is all there is
 var OWNER_LIMIT = 4    // claimed at once; the rest wait their turn
 
+// How long the notch's copy of a toast stays: until the user acts, or this many
+// seconds after it appears. Omarchy's own toast keeps its own clock; this is the
+// notch's, so the setting is the whole of it.
+var SECONDS_DEFAULT = 6
+var SECONDS_MIN = 1
+var SECONDS_MAX = 60
+
+function seconds(value) {
+  var n = Number(value)
+  if (!isFinite(n) || value === "" || value === null || value === undefined) return SECONDS_DEFAULT
+  return Math.max(SECONDS_MIN, Math.min(SECONDS_MAX, Math.round(n)))
+}
+
+// 0 means "until I act".
+function lifetimeMs(stay, value) { return stay === true ? 0 : seconds(value) * 1000 }
+
 // "<stamp>-<id>.json". Anything else -- history/, images/, .tmp files,
 // dotfiles -- is not a live toast.
 function parseName(name) {
@@ -61,6 +77,7 @@ function entryFromText(text) {
       summary: String(parsed.summary || ""),
       body: String(parsed.body || ""),
       glyph: String(parsed.glyph || parsed.icon || ""),
+      execArgv: String(parsed.execArgv || ""),
       urgency: Number(parsed.urgency === undefined ? 1 : parsed.urgency),
       timestamp: Number(parsed.timestamp || 0)
     }
@@ -69,22 +86,35 @@ function entryFromText(text) {
 
 // What the activity queue is asked to show.
 //
-// The TTL is the transient ceiling rather than "forever": what normally ends a
-// notification is its file leaving the folder, which is Omarchy's own timeout
-// deciding, not the notch's. The TTL is the backstop for a watch event that
-// never arrives -- a line that outlives its toast by 15 s is a blemish, one
-// that never leaves is a bug. (platform.js clamps a transient to TTL_MAX
-// anyway, so 0 would have become 3.5 s and cut every toast short.)
+// No ttl: the line is the notch's copy of a toast, and the source times it
+// itself (stay until acted on, or a number of seconds -- a setting), so the
+// queue never expires it. What ends a copy is the user acting on it, that
+// time, the notification source being switched off, or Omarchy's folder going
+// away -- not Omarchy's own toast ending, which has its own, shorter clock.
 function claimFor(name, entry) {
   var e = entry || {}
   var glyph = String(e.glyph || "")
   return {
     key: "notch.notifications." + stem(name),
     priority: "transient",
-    ttlMs: 15000,
+    ttlMs: 0,
     title: stripMarkup(e.summary) || stripMarkup(e.app) || "Notification",
     detail: stripMarkup(e.body),
     glyph: glyph.length > 0 && glyph.length <= 4 ? glyph : "",
     screens: []
   }
+}
+
+// The argv a toast carries for its click (Omarchy's own toasts do): a JSON array
+// of strings whose first is not an option. The same test Omarchy's service
+// makes before it runs one (NotificationLogic.parseExecArgv).
+function argvFrom(value) {
+  var text = String(value || "")
+  if (!text) return null
+  var parsed
+  try { parsed = JSON.parse(text) } catch (e) { return null }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null
+  for (var i = 0; i < parsed.length; i++) if (typeof parsed[i] !== "string") return null
+  if (!parsed[0] || parsed[0].charAt(0) === "-") return null
+  return parsed
 }

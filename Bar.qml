@@ -11,6 +11,7 @@ import qs.Ui
 import "BarModel.js" as BarModel
 import "spring.js" as Spring
 import "contract.js" as Contract
+import "notifications.js" as Notifications
 import "osd-model.js" as OsdModel
 import "bridge"
 import "menu"
@@ -2063,6 +2064,10 @@ Item {
   // Omarchy's own toast stays off screen while the notch shows the same
   // notification. The notch installs the companion plugin that does the hiding
   // by itself (Companion.qml); Setup reports it if that fails.
+  // How long the notch's copy of a toast stays: until the user acts on it, or
+  // this many seconds after it appears (notifications.js has the bounds).
+  readonly property bool notchNotificationStay: notchSetting("notificationStay", false) === true
+  readonly property int notchNotificationSeconds: Notifications.seconds(notchSetting("notificationSeconds", Notifications.SECONDS_DEFAULT))
   readonly property bool notchSuppressNativeToast: notchNotifications && notchSetting("suppressNativeToast", false) === true
 
   NotchNotifications { id: notifications; bar: root }
@@ -2599,14 +2604,14 @@ Item {
       readonly property real since: root.notificationsSource ? root.notificationsSource.startedAt : 0
 
       // Whether the notch is drawing this toast, has it in line, or drew it and
-      // the user dismissed it there. A toast still being read, waiting for one
+      // the user dismissed it there or its time ran out. A toast still being read, waiting for one
       // of the notch's four lines in a burst, skipped as unreadable or declined
       // is not, so Omarchy's own stays on screen for it. The file Omarchy writes
       // per toast is "<timestamp>-<originalId>.json"; that name is the key.
       function shows(originalId, timestamp) {
         var source = root.notificationsSource
         var entry = source && source.entries ? source.entries[Number(timestamp) + "-" + Number(originalId) + ".json"] : undefined
-        return !!entry && (entry.state === "shown" || entry.state === "queued" || entry.state === "dismissed")
+        return !!entry && (entry.state === "shown" || entry.state === "queued" || entry.state === "dismissed" || entry.state === "closed")
       }
     }
   }
@@ -2882,6 +2887,13 @@ Item {
       return root.notificationsSource.dismiss(String(key)) ? "dismissed" : "no-such-notification"
     }
 
+    // Act on one the way a click does: "open" or "dismiss". Answers how Omarchy
+    // was reached: service, ipc, local, notch or no-such-notification.
+    function interactNotification(key: string, how: string): string {
+      if (!root.harnessed) return "refused"
+      return root.notificationsSource.interact(String(key), how === "open" ? "open" : "dismiss")
+    }
+
     // One plugin's view of the notch, for its own service or CLI to read.
     function integration(id: string): string {
       var known = root.platform.reasonFor(id) !== "unknown" || root.platform.accepted(id)
@@ -2964,6 +2976,25 @@ Item {
     // The way back, as numbers: whether the strip is offered, how many steps
     // are behind it, and the menu level it would go up first.
     function backReport(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.backReport()) : "{}" }
+    // A test notch has no pointer to move: these stand in for one, refused
+    // anywhere else. `pointer` is the pointer arriving on or leaving the notch,
+    // `press` a gesture on it (click, rightClick, ...), both going the same way
+    // the real handlers do.
+    function pointer(on: string): string {
+      if (!root.harnessed) return "refused"
+      var w = root.focusedNotchWindow()
+      if (!w) return "no notch"
+      w.testPointer = on === "true"
+      w.islandHoverChanged(w.testPointer)
+      return String(w.testPointer)
+    }
+    function press(name: string): string {
+      if (!root.harnessed) return "refused"
+      var w = root.focusedNotchWindow()
+      if (!w) return "no notch"
+      w.trigger(name)
+      return "ok"
+    }
     function geometry(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.geometryReport()) : "{}" }
   }
 
@@ -3129,6 +3160,9 @@ Item {
     // geometry with the activity's content, on the same spring and silhouette.
     readonly property var activityLine: root.activityLine
     readonly property bool activityPresent: !root.barHidden && activityLine !== null
+    // The line on the notch is one of Omarchy's toasts. Pointing at it is
+    // reaching for the toast, not for the notch's hover view.
+    readonly property bool notificationShown: activityPresent && String(activityLine.owner) === "notch.notifications"
     // A notification must never be silently missed: one arriving while the
     // notch is tucked into the edge brings it back out on the existing reveal.
     readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking && !noticeShown
@@ -3470,6 +3504,14 @@ Item {
     // A press on the notch: open or close the settings, the menu or the
     // widgets, according to which trigger list claims it.
     function trigger(name) {
+      // A notification on the notch is a thing to act on, and a press on it is
+      // that, whatever the gesture lists say: left opens it, right dismisses it,
+      // like Omarchy's own toast.
+      if (notificationShown && notchState === "activity") {
+        var act = name === "click" || name === "doubleClick" || name === "longPress" ? "open"
+          : name === "rightClick" || name === "longRightClick" ? "dismiss" : ""
+        if (act !== "") { root.notificationsSource.interact(String(activityLine.key), act); return }
+      }
       if (root.settingsWith(name)) {
         if (settingsOpen) closePanels()
         else openSettings()
@@ -3505,7 +3547,7 @@ Item {
       viewPlugin = requested === "plugin" ? plugin : ""
       view = requested
       if (how === "click") clickExpanded = true
-      else if (how === "key") { keyExpanded = true; keyVisited = islandHover.hovered }
+      else if (how === "key") { keyExpanded = true; keyVisited = islandOver }
       else hoverExpanded = true
     }
 
@@ -3608,6 +3650,35 @@ Item {
     }
     Component.onDestruction: root.unregisterNotchWindow(barWindow)
 
+    // The pointer on the notch's own surface. `testPointer` stands in for it in a
+    // test notch (the pointer IPC), which has no pointer to move.
+    property bool testPointer: false
+    readonly property bool islandOver: islandHover.hovered || testPointer
+    // …on the notch in either of its windows: the panel window draws it while it
+    // is taller than the resting row.
+    readonly property bool pointerOnNotch: islandOver || panelHover.hovered
+
+    function islandHoverChanged(hovered) {
+      root.setBarHovered(hovered)
+      if (hovered && keyExpanded) keyVisited = true
+      if (hovered) {
+        collapseTimer.stop()
+        autoHideTimer.stop()
+        if (root.opensWith("hover") || root.notchHoverShowsSomething) expandTimer.restart()
+      } else {
+        expandTimer.stop()
+        collapseTimer.restart()
+        if (root.notchAutoHide) autoHideTimer.restart()
+      }
+    }
+
+    // A toast arriving while the hover view is up (the pointer was resting on
+    // the notch) takes its place: it would otherwise be drawn under the open
+    // notch and missed.
+    onNotificationShownChanged: {
+      if (notificationShown && hoverExpanded && !clickExpanded && !keyExpanded && !panelOpen && !pinned) hoverExpanded = false
+    }
+
     Timer {
       id: expandTimer
       interval: root.notchHoverDelay
@@ -3615,7 +3686,10 @@ Item {
       // or shows its own hover view; both close again when the pointer leaves.
       onTriggered: {
         // Not while the update notice is up: the pointer is on its way to a button.
-        if (!islandHover.hovered || barWindow.expanded || barWindow.noticeShown) return
+        if (!barWindow.islandOver || barWindow.expanded || barWindow.noticeShown) return
+        // Nor while one of Omarchy's toasts is on the notch: the pointer is on
+        // its way to act on it, and the hover view would replace it.
+        if (barWindow.notificationShown) return
         if (root.opensWith("hover")) barWindow.openView(root.notchOpenAction, "hoverOpen")
         else barWindow.openView("hover", "hover")
       }
@@ -3625,7 +3699,7 @@ Item {
       id: autoHideTimer
       interval: root.notchCollapseDelay
       onTriggered: {
-        if (islandHover.hovered || revealHover.hovered) return
+        if (islandOver || revealHover.hovered) return
         barWindow.revealed = false
         // The hover view goes into the edge with it, in one step. Dropping it
         // first would put the resting notch -- the glance, which is the media
@@ -3663,7 +3737,7 @@ Item {
           // A reach that stops short and turns away is still a reach: the
           // notch sits there in the hover view until autoHideTimer takes both
           // it and the reveal back down together.
-          if (barWindow.panelOpen || barWindow.expanded || barWindow.noticeShown) return
+          if (barWindow.panelOpen || barWindow.expanded || barWindow.noticeShown || barWindow.notificationShown) return
           if (root.opensWith("hover")) barWindow.openView(root.notchOpenAction, "hoverOpen")
           else if (root.notchHoverShowsSomething) barWindow.openView("hover", "hover")
         }
@@ -3674,7 +3748,7 @@ Item {
       id: collapseTimer
       interval: root.notchCollapseDelay
       onTriggered: {
-        if (islandHover.hovered || barWindow.popoutHere || barWindow.dragHere) return
+        if (islandOver || barWindow.popoutHere || barWindow.dragHere) return
         // The hover view is dropped here -- unless the notch is on its way
         // into the edge, which takes it down in one move (autoHideTimer). A
         // pointer still in the reveal strip is the same reach, not a new one.
@@ -3746,7 +3820,7 @@ Item {
     Connections {
       target: root
       function onActivePopoutChanged() {
-        if (!barWindow.popoutHere && !islandHover.hovered) collapseTimer.restart()
+        if (!barWindow.popoutHere && !islandOver) collapseTimer.restart()
       }
     }
 
@@ -4200,7 +4274,7 @@ Item {
             .map(function(sl) { var it = sl.activeItem; return { key: it && it.activePlayer !== undefined ? root.mediaPlayerKey(it.activePlayer) : null, title: it && it.title !== undefined ? it.title : null } })
         },
         autoHide: { on: root.notchAutoHide, revealed: barWindow.revealed, hidden: barWindow.autoHidden, revealZone: { width: revealZone.width, height: revealZone.height } },
-        pointer: { overNotch: islandHover.hovered, tooltip: root.tooltipShown ? root.tooltipText : "", hoveredWidgets: root.moduleSlots.filter(function(sl) { return root.slotWindow(sl) === barWindow && sl.hovered }).map(function(sl) { return sl.moduleName }) },
+        pointer: { overNotch: islandOver, tooltip: root.tooltipShown ? root.tooltipText : "", hoveredWidgets: root.moduleSlots.filter(function(sl) { return root.slotWindow(sl) === barWindow && sl.hovered }).map(function(sl) { return sl.moduleName }) },
         view: barWindow.view,
         hoverItems: root.notchHoverItems,
         openWith: root.notchOpenWith, settingsWith: root.notchSettingsWith,
@@ -4346,19 +4420,7 @@ Item {
 
       HoverHandler {
         id: islandHover
-        onHoveredChanged: {
-          root.setBarHovered(hovered)
-          if (hovered && barWindow.keyExpanded) barWindow.keyVisited = true
-          if (hovered) {
-            collapseTimer.stop()
-            autoHideTimer.stop()
-            if (root.opensWith("hover") || root.notchHoverShowsSomething) expandTimer.restart()
-          } else {
-            expandTimer.stop()
-            collapseTimer.restart()
-            if (root.notchAutoHide) autoHideTimer.restart()
-          }
-        }
+        onHoveredChanged: barWindow.islandHoverChanged(hovered)
         Component.onDestruction: if (hovered) root.setBarHovered(false)
       }
 
@@ -4701,8 +4763,11 @@ Item {
         filletRadius: barWindow.requestedFilletRadius
         color: barWindow.panelShape ? root.notchColor : "transparent"
 
+        HoverHandler { id: panelHover }
+
         // The same presses as on the bar window's notch, for the notice's
-        // background and a long right-click on a panel.
+        // background, a notification that grows down for its body, and a long
+        // right-click on a panel.
         TapHandler {
           acceptedButtons: Qt.LeftButton
           longPressThreshold: 0.45

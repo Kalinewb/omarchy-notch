@@ -516,7 +516,7 @@ Item {
   // notification competes for the same two slots on the same rules.
   function claimInternal(owner, activity) {
     if (bar && bar.barHidden) return "declined:hidden"
-    var checked = Platform.validClaim(String(owner), activity, false)
+    var checked = Platform.validClaim(String(owner), activity, false, true)
     if (!checked.ok) return "declined:" + checked.reason
     var outcome = Activities.claim(activityState, checked.claim, Date.now())
     activityState = outcome.state

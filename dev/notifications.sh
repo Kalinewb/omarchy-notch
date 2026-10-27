@@ -87,7 +87,7 @@ stop() { kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""; }
 
 echo "${BOLD}Omarchy's notifications in the notch${RESET}  ${DIM}$dir${RESET}"
 
-start '{"batteryPeek":false}'
+start '{"batteryPeek":false,"notificationSeconds":3}'
 check "1. the source is on, watching the sandbox and nothing else" "true true" \
   "$(notifs | jq -r --arg d "$dir" '"\(.enabled) \(.dir == $d)"')"
 check "2. it watches rather than polls when inotifywait is there" "inotify" "$(notifs | jq -r .watch)"
@@ -121,10 +121,12 @@ check "7. the summary is the title and the body the detail" "Time to recharge! B
 check "8. it is the notch's own owner, at transient priority" "notch.notifications transient" \
   "$(n activities | jq -r '.visible[0] | "\(.owner) \(.priority)"')"
 
-# --- it ends the way Omarchy ends it --------------------------------------------
+# --- it ends on the notch's own clock ---------------------------------------------
+# (3 s here, the setting; the file leaving is Omarchy's toast ending, which the
+# copy outlives -- dev/notifications-interact.sh has that, with the clock off.)
 expire "$stamp-1"
-wait_for '.claimed' 0
-check "9. the file leaving releases it, and the notch goes back to its resting size" "0 compact 180" \
+wait_for '.claimed' 0 60
+check "9. it closes by itself, and the notch goes back to its resting size" "0 compact 180" \
   "$(notifs | jq -r .claimed) $(n geometry | jq -r '"\(.state) \(.target.width)"')"
 check "10. …and it is forgotten, not kept as a dead entry" "0" "$(notifs | jq -r '.entries | length')"
 
@@ -223,7 +225,7 @@ stop
 
 # --- polling, for a machine without inotifywait -----------------------------------------
 rm -f "$dir"/*.json
-NOTCH_NOTIFICATIONS_WATCH=poll start '{"batteryPeek":false}'
+NOTCH_NOTIFICATIONS_WATCH=poll start '{"batteryPeek":false,"notificationSeconds":3}'
 check "26. told to poll, it polls" "poll" "$(notifs | jq -r .watch)"
 stamp=$(now_ms)
 write "$stamp" 9 "Found by polling"
@@ -237,7 +239,7 @@ stop
 
 # --- a notification must never be silently missed ----------------------------------------
 rm -f "$dir"/*.json
-start '{"batteryPeek":false,"autoHide":true,"collapseDelay":0}'
+start '{"batteryPeek":false,"autoHide":true,"collapseDelay":0,"notificationSeconds":3}'
 check "29. with auto-hide on, the notch is tucked into the edge" "true hidden" \
   "$(n geometry | jq -r '.autoHide.on') $(n geometry | jq -r .state)"
 stamp=$(now_ms)
@@ -256,8 +258,10 @@ stop
 check "32. no D-Bus, no notification server, no closing, no do-not-disturb" "0" \
   "$(grep -vE "^\s*(//|\*)" "$REPO/NotchNotifications.qml" "$REPO/notifications.js" \
       | grep -cE "NotificationServer|CloseNotification|org\.freedesktop\.Notifications|DBus|doNotDisturb")"
-check "33. no image, icon or action is read: text only" "0" \
-  "$(grep -cE "appIcon|execArgv|\bimage\b" "$REPO/NotchNotifications.qml" "$REPO/notifications.js" \
+# What a click does (open, dismiss) is Omarchy's, dev/notifications-interact.sh;
+# what is drawn is still text.
+check "33. no image or icon is read: text only" "0" \
+  "$(grep -cE "appIcon|\bimage\b" "$REPO/NotchNotifications.qml" "$REPO/notifications.js" \
       | awk -F: '{s+=$2} END {print s+0}')"
 check "34. no QML errors anywhere in the run" "none" \
   "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" || echo none)"

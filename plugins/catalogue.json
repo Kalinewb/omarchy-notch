@@ -24,6 +24,6 @@
     { "id": "kalinewb.oled-corners", "name": "OLED Corners",
       "url": "https://github.com/Kalinewb/omarchy-oled-corners.git",
       "kinds": ["service"], "removeVia": "omarchy",
-      "pin": "9f3335fc3650a3023761ca617e2dafd452d10d06", "version": "1.0.1" }
+      "pin": "5c64ace7d07c4473c94a5f5f7a0fecf4e4480ef4", "version": "1.1.0" }
   ]
 }

@@ -74,7 +74,7 @@ what lands is verified again (a folder that fails is moved aside to
 `plugins/.notch-refused.<name>.<ms>`, which Omarchy ignores). A card left open across a notch
 update that moved the pin refuses: "The notch was updated while this card was open. Open it
 again." Setup and removal of Face ID and Profiles happen in their own panels (Face ID: Settings →
-Remove; Profiles: Manage → Uninstall); OLED Corners has no panel, so its Remove… asks here and
+Remove; Profiles: Manage → Uninstall); OLED Corners' own panel (its radius settings) has no uninstall, so its Remove… asks here and
 hands it to `omarchy plugin remove`. Nothing here asks for your password.
 
 A job runs as `bin/notch-plugins run` in its own `systemd-run --user` unit, because changing a

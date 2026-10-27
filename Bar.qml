@@ -3531,12 +3531,6 @@ Item {
     // The open settings panel itself, for settingsReport.
     readonly property var settingsItem: expandedHost.item
 
-    // The settings, opened at one section ("updates").
-    function openSettingsSection(name) {
-      openSettings()
-      if (expandedHost.item && typeof expandedHost.item.revealSection === "function") expandedHost.item.revealSection(name)
-    }
-
     // pluginsPress: a button on this window's Plugins page or its notice.
     function pressPluginsButton(name) {
       var n = String(name)
@@ -4178,7 +4172,7 @@ Item {
         urgent: hex(root.urgent), hosting: root.hosting.active,
         themeText: hex(Commons.Color.bar.text), themeBarBackground: hex(Commons.Color.bar.background),
         glance: hex(compactGlance.foreground),
-        settings: settings ? { foreground: hex(settings.foreground), accent: hex(settings.accent), surface: hex(settings.surface), glowReach: Number(settings.glowReach.toFixed(3)) } : null,
+        settings: settings ? { foreground: hex(settings.foreground), accent: hex(settings.accent), surface: hex(settings.surface) } : null,
         // What another plugin's panel is actually painting with: it may only use
         // the colours the notch handed it.
         integration: (integrationHost.item && ("background" in integrationHost.item) && ("foreground" in integrationHost.item))
@@ -4293,7 +4287,6 @@ Item {
           motion: pluginsHost.item ? pluginsHost.item.motionSamples : [],
           focus: pluginsHost.item ? pluginsHost.item.focusName : "",
           refreshEnabled: pluginsHost.item ? pluginsHost.item.refreshEnabled : false,
-          settingsUpdatesOpen: expandedHost.item ? expandedHost.item.updatesSectionOpen : false,
           scroll: pluginsHost.item ? pluginsHost.item.scrollReport() : null,
           notice: root.pluginsNotice, shownNotice: barWindow.shownPluginsNotice, noticeKind: barWindow.noticeKind,
           card: pluginsHost.item ? pluginsHost.item.carding : false, selected: pluginsHost.item ? pluginsHost.item.selectedIndex : -1,
@@ -5009,7 +5002,6 @@ Item {
         bar: root
         headerHeight: root.notchCompactHeight
         maxHeight: barWindow.panelMaxHeight
-        glowReach: glow.reach
         onCloseRequested: barWindow.closePanels()
         onSetupRequested: barWindow.openSetup()
         onPluginsRequested: barWindow.openPlugins("")

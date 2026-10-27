@@ -2623,13 +2623,45 @@ Item {
   }
   readonly property var notificationsCompanion: notificationsCompanionHelper
 
+  // The last write a setting made, as the object merged into `bar.notch`
+  // (settingsReport.panel.lastWrite).
+  property var lastNotchWrite: ({})
+
+  // The settings panel's item on whichever screen has one, open or not.
+  function settingsPanelItem() {
+    for (var i = 0; i < root.notchWindows.length; i++) {
+      var item = root.notchWindows[i].settingsItem
+      if (item) return item
+    }
+    return null
+  }
+
+  // settingsReport.panel: what the open panel says about itself (its rows,
+  // tip and cursor), over the shape of an empty one.
+  function settingsPanelReport(panel) {
+    var live = panel && typeof panel.report === "function" ? panel.report() : {}
+    return Object.assign({ rows: [], sections: [], advanced: { open: false },
+                           tip: { pending: false, shown: false, text: "", source: "", id: "" },
+                           cursor: "", contentHeight: 0, viewHeight: 0, footHeight: 0, header: [], badges: [] },
+                         live, { lastWrite: root.lastNotchWrite })
+  }
+
   function setNotchSetting(key, value) {
+    var one = {}
+    one[key] = value
+    return setNotchSettings(one)
+  }
+
+  // Several keys in one write, so a row that sets two reloads the bar once.
+  function setNotchSettings(values) {
     if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
-    return root.shell.mutateShellConfig(function(config) {
+    var saved = root.shell.mutateShellConfig(function(config) {
       if (!Util.isPlainObject(config.bar)) config.bar = {}
       if (!Util.isPlainObject(config.bar.notch)) config.bar.notch = {}
-      config.bar.notch[key] = value
+      for (var key in values) config.bar.notch[key] = values[key]
     }) !== false
+    if (saved) root.lastNotchWrite = values
+    return saved
   }
 
   // The open notch is one row on the same axis as the resting one: it keeps
@@ -2865,14 +2897,24 @@ Item {
     function settingsReport(): string {
       // The panel's item outlives its being shown, so this reads the same
       // cache whether it is open or not.
-      var panel = null
-      for (var i = 0; i < root.notchWindows.length; i++) {
-        var item = root.notchWindows[i].settingsItem
-        if (item) { panel = item; break }
-      }
+      var panel = root.settingsPanelItem()
       return JSON.stringify({ hostable: root.hostableWidgets(), opted: root.notchHostedPanels,
                               integrations: root.platform.list.length,
-                              panelHostable: panel ? panel.hostable.length : -1 })
+                              panelHostable: panel ? panel.hostable.length : -1,
+                              panel: root.settingsPanelReport(panel),
+                              // The settings that have no row, as the notch resolves them.
+                              resolved: { compactHeight: root.notchCompactHeight, menuWith: root.notchMenuWith,
+                                          menuKey: root.notchMenuKey, stateKey: root.notchStateKey,
+                                          criticalBattery: root.notchCriticalBattery } })
+    }
+    // Test hook (dev/settings.sh): press something in the settings panel --
+    // "key:<k>", "hover:<id>", "unhover", "advanced", "header:<name>",
+    // "set:<id>:<value>" -- through the handler a click or a key uses. Only a
+    // test notch accepts it; the panel answers what it did.
+    function settingsPress(name: string): string {
+      if (!root.harnessed) return "refused"
+      var panel = root.settingsPanelItem()
+      return panel && typeof panel.press === "function" ? String(panel.press(String(name))) : "no-such-button"
     }
 
     function integrations(): string { return JSON.stringify(root.platform.report()) }

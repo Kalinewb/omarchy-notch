@@ -547,6 +547,7 @@ Item {
     property bool foldable: false
     property bool open: false
     readonly property int controlCount: slot.children.length
+    readonly property Item foldBody: fold
     signal chosen(var value)
     default property alias control: slot.data
     property alias lines: fold.data
@@ -628,7 +629,7 @@ Item {
     property var selected: []
     property var taken: []
     property bool many: false
-    // The state when nothing is picked, and a summary that replaces the names.
+    // The state when nothing is picked; a summary replaces the names.
     property string none: "None"
     property string summary: ""
     kind: many ? "pickMany" : "pick"
@@ -639,7 +640,7 @@ Item {
       return names.length === 0 ? none : names.length <= 3 ? names.join(", ") : names.length + " picked"
     }
     lines: Repeater {
-      model: pick.options
+      model: pick.open || pick.foldBody.visible ? pick.options : []
       OptionLine {
         required property var modelData
         text: modelData.label
@@ -665,8 +666,7 @@ Item {
     }
   }
 
-  // A number with steps; `shown` replaces "<value> <unit>" when a row has
-  // more to say ("8 / 12 px").
+  // A number with steps; `shown` replaces "<value> <unit>" ("8 / 12 px").
   component StepRow: SettingRow {
     id: step
     property int value: 0

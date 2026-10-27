@@ -1694,6 +1694,11 @@ Item {
   readonly property int glowFadeIn: 800
   readonly property int glowFadeOut: 800
   readonly property int glowCrossfade: 600
+  // The outline glow is as soft as the bottom one (its strength, not 0.35)
+  // and tapers outward along the screen's top edge, three times as far as it
+  // reaches down, instead of being cut off there. Defaults, not settings.
+  readonly property real glowOutlineStrength: 0.24
+  readonly property real glowEdgeTail: 3
 
   // Hyprland animates a layer surface as it maps; the glow's window should just
   // be there. `hyprctl eval` is how this Lua-configured Hyprland takes a rule
@@ -4291,6 +4296,8 @@ Item {
           presence: Number(glowPresence.toFixed(4)),
           curve: {
             style: root.notchGlowStyle,
+          // alphaAt below is the curve (full 0.35 strength); the outline is drawn at `strength`/0.35 of it
+          outlineStrength: glow.strength, tail: glow.edgeTail,
           outlineDrawn: glow.visible, bottomDrawn: bottomGlow.visible, openDrawn: openGlow.visible,
           widen: Number(glowWiden.toFixed(3)),
           open: { width: Number(openGlow.barWidth.toFixed(3)), height: Number(openGlow.barHeight.toFixed(3)), bottomRadius: Number(openGlow.bottomRadius.toFixed(3)), presence: Number(openGlow.presence.toFixed(3)) },
@@ -4359,6 +4366,8 @@ Item {
         bottomRadius: Math.max(0, Math.min(root.notchBottomRadius, barWidth / 2, barHeight / 2))
         filletRadius: Math.max(0, Math.min(root.notchFilletRadius, barHeight - bottomRadius))
         color: barWindow.glowColorShown
+        strength: root.glowOutlineStrength
+        edgeTail: root.glowEdgeTail
         // Drawn only in the outline style, not at all at glow size 0, and
         // handed over to the open-notch glow as the notch widens.
         presence: root.notchGlowStyle === "outline" && root.notchGlowScale > 0 ? barWindow.glowPresence * (1 - barWindow.glowWiden) : 0

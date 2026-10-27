@@ -2961,6 +2961,9 @@ Item {
     // radius, for dev/design.sh (DESIGN-PHILOSOPHY.md, 5).
     function design(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.designReport()) : "{}" }
     function snapshot(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.contractSnapshot()) : "{}" }
+    // The way back, as numbers: whether the strip is offered, how many steps
+    // are behind it, and the menu level it would go up first.
+    function backReport(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.backReport()) : "{}" }
     function geometry(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.geometryReport()) : "{}" }
   }
 
@@ -3193,12 +3196,27 @@ Item {
     // popped by the top-middle press.
     property var viewStack: []
     readonly property bool canGoBack: viewStack.length > 0
+    // Whether the strip at the top centre is there to press: on any of the
+    // notch's own pages, not only once there is a step behind it. At the first
+    // page a press used to fall through to the notch's own click and do
+    // nothing, which read as the strip not working; now it closes the panel,
+    // the last step back.
+    readonly property bool backOffered: panelOpen && !hostedOpen && !integrationOpen
+    function backReport() {
+      var menu = menuHost.item
+      return { offered: backOffered, depth: viewStack.length, panel: panelOpen,
+               menu: menuOpen && menu ? String(menu.activeMenu) : "" }
+    }
     function pushState() {
       if (restoring) return
       var shot = snapshot()
       if (shot) viewStack = viewStack.concat([shot])
     }
+    // The menu navigates inside itself, so the first step back is up one of
+    // its own levels; only from its top does the press leave it.
     function goBack() {
+      var menu = menuHost.item
+      if (menuOpen && menu && menu.opened && menu.mode === "menu" && menu.activeMenu !== "root" && menu.goBack()) return "back"
       if (viewStack.length === 0) { closePanels(); return "closed" }
       var shot = viewStack[viewStack.length - 1]
       viewStack = viewStack.slice(0, -1)
@@ -4852,35 +4870,17 @@ Item {
         // hosted panel and an integration own their surface, their chrome and
         // their own back button, and a strip of the notch's over their header
         // would be the notch reaching into another plugin's UI.
-        Item {
+        BackStrip {
           id: backZone
           width: root.notchCompactWidth
           height: root.notchCompactHeight
           x: (panelIsland.barWidth - width) / 2
           y: 0
-          readonly property bool offered: barWindow.canGoBack && barWindow.panelOpen
-            && !barWindow.hostedOpen && !barWindow.integrationOpen
-          visible: offered
-          enabled: offered
-
-          HoverHandler { id: backHover }
-          TapHandler {
-            acceptedButtons: Qt.LeftButton
-            onSingleTapped: barWindow.goBack()
-          }
-
-          // A chevron, and only under the pointer: the strip is a gap in the
-          // page the rest of the time, and a mark parked in it would be a
-          // control the page never asked for.
-          Text {
-            anchors.centerIn: parent
-            text: "\u2039"
-            color: root.notchForeground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.title
-            opacity: backHover.hovered ? 0.75 : 0
-            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-          }
+          offered: barWindow.backOffered
+          foreground: root.notchForeground
+          fontFamily: root.fontFamily
+          glyphSize: Style.font.title
+          onActivated: barWindow.goBack()
         }
       }
     }

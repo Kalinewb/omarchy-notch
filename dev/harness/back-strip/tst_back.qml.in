@@ -1,0 +1,65 @@
+import QtQuick
+import QtTest
+import "file://@REPO@" as Notch
+
+// The press on the way-back strip, under a parent that handles taps the way the
+// notch's island does (Bar.qml: a TapHandler with a long-press threshold, whose
+// singleTapped runs the notch's own click gesture -- which opens the widgets when
+// nothing is open). A press on the strip must go back and must not also be that
+// click: with the panel closed by the back step, the click opens the widgets
+// again, and the press seems to do nothing.
+TestCase {
+  id: tc
+  name: "BackStrip"
+  width: 300
+  height: 200
+  visible: true
+  when: windowShown
+
+  property int islandTaps: 0
+  property int steps: 0
+  property bool offered: true
+
+  Item {
+    id: island
+    anchors.fill: parent
+    TapHandler {
+      acceptedButtons: Qt.LeftButton
+      longPressThreshold: 0.45
+      onSingleTapped: tc.islandTaps++
+      onDoubleTapped: tc.islandTaps++
+    }
+    Notch.BackStrip {
+      id: strip
+      x: 100; y: 0; width: 100; height: 32
+      offered: tc.offered
+      onActivated: tc.steps++
+    }
+  }
+
+  function init() { steps = 0; islandTaps = 0; offered = true }
+
+  function test_01_a_press_on_the_strip_goes_back_once() {
+    mouseClick(island, 150, 10)
+    wait(700)
+    compare(steps, 1)
+  }
+  function test_02_and_is_not_also_the_islands_click() {
+    mouseClick(island, 150, 10)
+    wait(700)
+    compare(islandTaps, 0)
+  }
+  function test_03_beside_the_strip_is_the_islands_click() {
+    mouseClick(island, 40, 10)
+    wait(700)
+    compare(steps, 0)
+    compare(islandTaps, 1)
+  }
+  function test_04_not_offered_the_press_falls_through() {
+    offered = false
+    mouseClick(island, 150, 10)
+    wait(700)
+    compare(steps, 0)
+    compare(islandTaps, 1)
+  }
+}

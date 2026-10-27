@@ -321,8 +321,9 @@ when you went one page too far. So the notch keeps one step of history per page
 you opened, and **the strip at the top centre — where the resting notch sits —
 goes back one step**. The notch's own pages leave that strip clear (their title
 is on the left of that row and their buttons on the right), a chevron appears
-under the pointer, and it is only there when there is somewhere to go: at the
-first page a press falls through to the notch's usual gestures. It stays off a
+under the pointer, and it is there on every page of the notch's own: with a step
+behind it a press goes back to that page, and at the first page it closes the panel.
+In the menu the first press goes up one menu level. It stays off a
 panel the notch is merely drawing for someone else — a hosted panel and an
 integration own their surface and their own back button. Over IPC: `notch back`.
 

@@ -81,7 +81,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -170,7 +170,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -259,7 +259,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "compact",
@@ -348,7 +348,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -437,7 +437,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "compact",
@@ -526,7 +526,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -627,7 +627,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -726,7 +726,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -825,7 +825,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "compact",
@@ -924,7 +924,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -1023,7 +1023,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "compact",
@@ -1122,7 +1122,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -1218,7 +1218,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 635,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -1312,7 +1312,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 635,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -1403,7 +1403,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 635,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -1490,7 +1490,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 635,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -1584,7 +1584,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 635,
+        "height": 502,
         "width": 424
       },
       "state": "compact",
@@ -1678,7 +1678,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 635,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -1770,7 +1770,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 599,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -1860,7 +1860,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 599,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -1943,7 +1943,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 599,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -2033,7 +2033,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 599,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -2123,7 +2123,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 599,
+        "height": 502,
         "width": 424
       },
       "state": "compact",
@@ -2213,7 +2213,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 599,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -2307,7 +2307,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -2399,7 +2399,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -2486,7 +2486,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "compact",
@@ -2573,7 +2573,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",
@@ -2665,7 +2665,7 @@
       "rowShown": false,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "compact",
@@ -2757,7 +2757,7 @@
       "rowShown": true,
       "settingsOpen": false,
       "settingsPanel": {
-        "height": 619,
+        "height": 502,
         "width": 424
       },
       "state": "expanded",

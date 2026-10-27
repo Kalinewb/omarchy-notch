@@ -23,6 +23,11 @@ Column {
   property bool hasCursor: false
   property bool _hovered: false
   property alias field: spin
+  // The box reads "<value><suffix>" ("180 px"), or `display` when it has more
+  // to say ("8 / 12 px"); typing the number alone is read back.
+  property string suffix: ""
+  property string display: ""
+  onDisplayChanged: spin.locale = spin.locale
 
   signal modified(int value)
   signal hovered(bool on)
@@ -47,6 +52,9 @@ Column {
     stepSize: root.stepSize
     value: root.value
     editable: true
+    textFromValue: function(v) { return root.display !== "" ? root.display : v + root.suffix }
+    valueFromText: function(text) { var n = parseInt(text); return isNaN(n) ? spin.value : n }
+    validator: RegularExpressionValidator { regularExpression: /^[0-9 \/a-z%]*$/ }
     font.family: root.fontFamily
     font.pixelSize: root.fontSize
 

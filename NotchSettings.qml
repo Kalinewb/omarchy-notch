@@ -3,16 +3,20 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 import "keys.js" as KeyCombo
+import "spring.js" as Spring
+import "settings-tips.js" as Tips
 
 // The notch's settings, drawn inside the notch itself: opening them grows the
 // notch -- the same surface, top edge on the screen edge -- into this panel.
 // Opened by a long right-click, by the hover action "Settings", or over IPC;
 // closed by clicking outside, Escape, or the ✕.
 //
-// Every control reads the live value from the bar and writes straight to
-// `bar.notch` in shell.json through `bar.setNotchSetting`, so a change shows
-// on the notch at once and survives a restart. The battery preview is the one
-// thing that is not saved: it only simulates a battery state while chosen.
+// Quiet by default (plan-settings.md): nine rows under three headings, and
+// one fold, Advanced, with the rest. A row is a label and its control, and the
+// control says the state on the right. Every control reads the live value from
+// the bar and writes straight to `bar.notch` in shell.json -- a row that sets
+// two keys writes them in one batch (`bar.setNotchSettings`) -- so a change
+// shows on the notch at once and survives a restart.
 Item {
   id: root
 
@@ -28,8 +32,10 @@ Item {
   signal pluginsRequested()
 
   readonly property real padding: Style.space(16)
+  // The line under the list for the hovered row's tip (phase 3), reserved now.
+  readonly property real footHeight: Style.space(24)
   implicitWidth: Style.space(400)
-  implicitHeight: Math.min(maxHeight, headerHeight + column.implicitHeight + padding)
+  implicitHeight: Math.min(maxHeight, headerHeight + column.implicitHeight + footHeight + padding)
 
   // Drawn on the notch, so colours come from the notch: text that reads on the
   // notch colour whatever the theme (see Bar.qml, "colours on the notch").
@@ -37,82 +43,44 @@ Item {
   readonly property color accent: bar ? bar.notchAccent : "#ffffff"
   readonly property color surface: bar ? bar.notchColor : "#000000"
   readonly property color dim: bar ? bar.notchSecondaryText : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
-  // How far the glow reaches now, in px (for the preview's hint).
-  property real glowReach: 32
   // What the panel's own controls paint with (dev/colours.sh: no hue).
-  readonly property var painted: [replaceMenuSwitch.trackColor, replaceMenuSwitch.knobColor,
-                                  setupButton.selectedFill, setupButton.hoverFill, glowScaleSlider.trackColor]
+  readonly property var painted: [menuRow.trackColor, menuRow.knobColor, setupButton.selectedFill, setupButton.hoverFill]
 
-
-  // Unfold a section and scroll to it: "updates" (the Plugins page's notch row).
-  function revealSection(name) {
-    var sections = { shows: showsSection, opening: openingSection, appearance: appearanceSection,
-                     battery: batterySection, integrations: integrationsSection, updates: updatesSection }
-    var section = sections[name]
-    if (!section) return
-    section.open = true
-    Qt.callLater(function() {
-      settingsFlick.contentY = Math.max(0, Math.min(section.y, settingsFlick.contentHeight - settingsFlick.height))
-    })
-  }
-
-  // Whether Updates is unfolded (dev/plugins.sh).
-  readonly property bool updatesSectionOpen: updatesSection.open
-
-  readonly property QtObject sliderPalette: QtObject {
-    readonly property color foreground: root.foreground
-    readonly property color background: root.surface
-  }
-
-  // The notch's radius for a control this tall (DESIGN-PHILOSOPHY.md, 5).
   function radiusFor(height) { return bar ? bar.radiusFor(height) : Math.max(0, Math.min(10, height / 2)) }
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property int rowHeight: Style.space(34)
+  readonly property int rowHeight: Style.space(30)
 
-  function set(key, value) {
-    if (bar) bar.setNotchSetting(key, value)
-  }
+  // Motion: a control settles on a spring (zeta 0.85, 200 ms) and fades in
+  // 120 ms; the notch itself grows on the arrival spring when a fold opens.
+  // NOTCH_REDUCED_MOTION=1 turns the moving parts into cuts.
+  readonly property bool still: Quickshell.env("NOTCH_REDUCED_MOTION") === "1"
+  readonly property int settleMs: still ? 0 : 200
+  readonly property int fadeMs: still ? 0 : 120
+  readonly property var settleCurve: Spring.curve(0.85, 0.55, 8)
 
-  function toggleItem(key, current, item) {
-    var next = current.slice()
-    var i = next.indexOf(item)
-    if (i === -1) next.push(item)
+  function set(key, value) { if (bar) bar.setNotchSetting(key, value) }
+  // Several keys in one write.
+  function setMany(values) { if (bar) bar.setNotchSettings(values) }
+
+  // `list` with `value` added, or taken out if it was there; `order`, when
+  // given, keeps the list in that order whatever order things were picked in.
+  function toggled(list, value, order) {
+    var next = list.slice()
+    var i = next.indexOf(value)
+    if (i === -1) next.push(value)
     else next.splice(i, 1)
-    // Keep a stable order, whatever order they were switched on in.
-    var order = ["clock", "date", "media", "battery"]
-    next.sort(function(a, b) { return order.indexOf(a) - order.indexOf(b) })
-    set(key, next)
+    if (order) next.sort(function(a, b) { return order.indexOf(a) - order.indexOf(b) })
+    return next
   }
 
-  readonly property var openTriggers: [
-    { value: "hover", label: "Hover" }, { value: "click", label: "Click" },
-    { value: "doubleClick", label: "Double-click" }, { value: "longPress", label: "Long press" },
-    { value: "rightClick", label: "Right-click" }, { value: "middleClick", label: "Middle-click" },
-    { value: "scroll", label: "Scroll" }
-  ]
-  readonly property var settingsTriggers: [
-    { value: "longRightClick", label: "Long right-click" }, { value: "rightClick", label: "Right-click" },
-    { value: "doubleClick", label: "Double-click" }, { value: "longPress", label: "Long press" },
-    { value: "middleClick", label: "Middle-click" }
-  ]
-  readonly property var menuTriggers: [
-    { value: "click", label: "Click" }, { value: "doubleClick", label: "Double-click" },
-    { value: "longPress", label: "Long press" }, { value: "rightClick", label: "Right-click" },
-    { value: "longRightClick", label: "Long right-click" }, { value: "middleClick", label: "Middle-click" }
-  ]
-
-  // Add or remove one trigger. The settings keep at least one way in: their
-  // last trigger cannot be removed unless a keybind opens them.
-  function toggleTrigger(key, current, trigger, isSettings) {
-    var next = current.slice()
-    var i = next.indexOf(trigger)
-    if (i === -1) next.push(trigger)
-    else {
-      if (isSettings && next.length === 1 && !(bar && bar.notchSettingsKey)) return
-      next.splice(i, 1)
-    }
-    set(key, next)
+  // Options from "value=Label;value=Label".
+  function opts(spec) {
+    return spec.split(";").map(function(p) { var i = p.indexOf("="); return { value: p.slice(0, i), label: p.slice(i + 1) } })
   }
+  readonly property var itemOrder: ["clock", "date", "media", "battery"]
+  readonly property var itemOptions: opts("clock=Time;date=Date;media=Media;battery=Battery")
+  // The bar's widgets, as options "plugin:<id>".
+  readonly property var widgetOptions: (bar ? bar.layoutPluginChoices() : []).map(function(w) { return { value: "plugin:" + w.value, label: w.label } })
 
   // Plugins that declare an integration, whatever the notch made of it.
   readonly property var integrations: bar ? bar.platform.list : []
@@ -122,36 +90,36 @@ Item {
   // widget's creation (a warning per run, 18 MB of log in one startup).
   property var hostable: []
   function refreshHostable() { hostable = bar ? bar.hostableWidgets() : [] }
+
+  // What is new: the notch's own update, and each plugin's verified update.
+  // It counts what is known and never probes.
+  readonly property int updates: !bar ? 0
+    : (bar.updateCheckResult && bar.updateCheckResult.state === "available" ? 1 : 0)
+      + bar.pluginsViews.filter(function(v) { return v.state === "update-available" }).length
+  readonly property int issues: bar && bar.setup.enabled ? bar.setup.issueCount : 0
+
   // `enabled` follows the host's `shown` exactly, so this is "the panel is
-  // being opened" with no dependence on the fade. Component.onCompleted alone
-  // caught only what had loaded by the notch's first second.
-  onEnabledChanged: if (enabled) refreshHostable()
+  // being opened" with no dependence on the fade. Every fold starts closed.
+  onEnabledChanged: if (enabled) {
+    refreshHostable()
+    advanced.open = false
+    rows().forEach(function(row) { row.open = false })
+  }
   Component.onCompleted: refreshHostable()
 
-  // Show this plugin inside the notch, or give it its own UI back. The list of
-  // ids that are off is the setting; everything else follows from it.
-  function toggleIntegration(id, off) {
+  // Show a plugin inside the notch or give it its own UI back (the list of ids
+  // that are off is the setting), or draw a widget's own panel inside the
+  // notch or give it back to its own window (takes effect on the next click;
+  // a panel open right now is released).
+  function togglePanel(value) {
     if (!bar) return
-    var next = (bar.notchDisabledIntegrations || []).slice()
-    var at = next.indexOf(id)
-    if (off && at === -1) next.push(id)
-    else if (!off && at !== -1) next.splice(at, 1)
-    else return
-    set("disabledIntegrations", next)
-  }
-
-  // Draw this widget's own panel inside the notch, or give it back to its own
-  // window. Takes effect on the next click; a panel open right now is released.
-  function toggleHostedPanel(id, hosted) {
+    var integration = value.indexOf("i:") === 0
+    var id = value.slice(2)
+    var key = integration ? "disabledIntegrations" : "hostedPanels"
+    var list = integration ? bar.notchDisabledIntegrations || [] : bar.notchHostedPanels || []
     Qt.callLater(refreshHostable)
-    if (!bar) return
-    var next = (bar.notchHostedPanels || []).slice()
-    var at = next.indexOf(id)
-    if (hosted && at === -1) next.push(id)
-    else if (!hosted && at !== -1) next.splice(at, 1)
-    else return
-    if (!hosted) bar.releaseHostedPanel()
-    set("hostedPanels", next)
+    if (!integration && list.indexOf(id) !== -1) bar.releaseHostedPanel()
+    set(key, toggled(list, id))
   }
 
   function resetAll() {
@@ -162,16 +130,67 @@ Item {
     })
   }
 
+  // Scroll `item` into view.
+  function reveal(item) {
+    var y = item.mapToItem(column, 0, 0).y
+    var view = settingsFlick
+    if (y + item.height > view.contentY + view.height)
+      view.contentY = Math.max(0, Math.min(y + item.height - view.height, view.contentHeight - view.height))
+    else if (y < view.contentY) view.contentY = y
+  }
+
+  // Every row, in the order it is drawn: what the report and `press` walk.
+  readonly property var groups: [look, opening, inside, advanced]
+  function rows() { return groups.reduce(function(all, g) { return all.concat(g.rows()) }, []) }
+
+  // The header's buttons, as the report and `press` see them.
+  readonly property var headerButtons: [{ name: "updates", item: updatesButton }, { name: "setup", item: setupButton },
+                                        { name: "guide", item: guideButton }, { name: "close", item: closeButton }]
+
+  // dev/settings.sh reads this through Bar's settingsReport.panel.
+  function report() {
+    var header = headerButtons.filter(function(b) { return b.item.visible }).map(function(b) {
+      return { name: b.name, text: b.item.text, x: Number(b.item.mapToItem(root, 0, 0).x.toFixed(1)), width: Number(b.item.width.toFixed(1)) }
+    })
+    return {
+      rows: rows().map(function(r) {
+        return { id: r.rid, section: r.parent.sectionName || "", depth: r.parent.sectionName !== undefined ? 1 : 2,
+                 label: r.label, control: r.kind, controls: r.controlCount, state: r.stateText, tip: Tips.t[r.rid] || "",
+                 helper: r.helper, attention: r.attention, visible: r.visible, dimmed: r.dimmed, open: r.open, keys: r.keys }
+      }),
+      sections: groups.map(function(g) { return g.title }),
+      advanced: { open: advanced.open },
+      contentHeight: settingsFlick.contentHeight, viewHeight: settingsFlick.height, footHeight: foot.height,
+      header: [{ name: "title", text: "Notch", x: root.padding, width: Number(titleText.width.toFixed(1)) }].concat(header),
+      badges: [{ name: "updates", count: updates }, { name: "setup", count: issues }].filter(function(b) { return b.count > 0 })
+    }
+  }
+
+  // Test hook (Bar's settingsPress): the handler a click would use.
+  function press(name) {
+    var parts = String(name).split(":")
+    if (parts[0] === "advanced") { advanced.open = !advanced.open; return "ok" }
+    var found = parts[0] === "header" ? headerButtons.filter(function(b) { return b.name === parts[1] && b.item.visible })
+      : parts[0] === "set" ? rows().filter(function(r) { return r.rid === parts[1] }) : []
+    if (found.length === 0) return "no-such-button"
+    if (parts[0] === "header") { found[0].item.clicked(); return "ok" }
+    var raw = parts.slice(2).join(":")
+    found[0].apply(found[0].kind === "switch" ? raw === "true" : found[0].kind === "stepper" ? Number(raw) : raw)
+    return "ok"
+  }
+
   focus: true
   Keys.onEscapePressed: root.closeRequested()
 
-  // Header, on the resting notch's row.
+  // Header, on the resting notch's row. Badges are counts on its buttons,
+  // shown only above 0, and a button appears only when it has a target.
   Item {
     x: root.padding
     width: parent.width - 2 * root.padding
     height: root.headerHeight
 
     Text {
+      id: titleText
       anchors.verticalCenter: parent.verticalCenter
       text: "Notch"
       color: root.foreground
@@ -180,36 +199,15 @@ Item {
       font.bold: true
     }
 
-    // Setup, with the number of things that need attention.
-    NotchButton {
-      id: setupButton
-      foreground: root.foreground
-      accent: root.accent
-      radius: root.radiusFor(Math.min(width, height))
-      anchors.right: closeButton.left
-      anchors.rightMargin: Style.space(6)
-      anchors.verticalCenter: parent.verticalCenter
-      visible: !!root.bar && root.bar.setup.enabled
-      text: {
-        var n = root.bar ? root.bar.setup.issueCount : 0
-        return n > 0 ? "Setup · " + n : "Setup"
-      }
-      fontFamily: root.fontFamily
-      horizontalPadding: Style.space(10)
-      onClicked: root.setupRequested()
-    }
-
-    NotchButton {
-      id: closeButton
-      foreground: root.foreground
-      accent: root.accent
-      radius: root.radiusFor(Math.min(width, height))
+    Row {
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      text: "✕"
-      fontFamily: root.fontFamily
-      horizontalPadding: Style.space(8)
-      onClicked: root.closeRequested()
+      spacing: Style.space(6)
+
+      HeaderButton { id: updatesButton; visible: root.updates > 0; text: "Updates · " + root.updates; onClicked: root.pluginsRequested() }
+      HeaderButton { id: setupButton; visible: !!root.bar && root.bar.setup.enabled; text: root.issues > 0 ? "Setup · " + root.issues : "Setup"; onClicked: root.setupRequested() }
+      HeaderButton { id: guideButton; visible: !!root.bar && typeof root.bar.openWizard === "function"; text: "Guided setup"; onClicked: root.bar.openWizard() }
+      HeaderButton { id: closeButton; text: "✕"; horizontalPadding: Style.space(8); onClicked: root.closeRequested() }
     }
   }
 
@@ -218,7 +216,7 @@ Item {
     x: root.padding
     y: root.headerHeight
     width: parent.width - 2 * root.padding
-    height: parent.height - root.headerHeight - root.padding
+    height: parent.height - root.headerHeight - root.padding - root.footHeight
     contentWidth: width
     contentHeight: column.implicitHeight
     clip: true
@@ -229,835 +227,464 @@ Item {
       width: parent.width
       spacing: Style.space(2)
 
-      // Sections fold; "What it shows" starts open. Long plugin lists fold
-      // inside them, with a summary of what is picked.
+      Group {
+        id: look
+        title: "Look"
 
-      Section {
-        id: showsSection
-        title: "What it shows"
-        open: true
+        PickRow {
+          rid: "atRest"; label: "At rest"; many: true; keys: ["compact"]
+          none: "Nothing"
+          options: root.itemOptions
+          selected: root.bar ? root.bar.notchCompactItems : []
+          onChosen: function(v) { root.set("compact", root.toggled(root.bar.notchCompactItems, v, root.itemOrder)) }
+        }
+        ToggleRow {
+          rid: "autoHide"; label: "Auto-hide"; keys: ["autoHide"]
+          checked: root.bar ? root.bar.notchAutoHide : false
+        }
 
-        SettingRow {
-          label: "At rest"
-          ItemChips {
-            selected: root.bar ? root.bar.notchCompactItems : []
-            onPicked: function(item) { root.toggleItem("compact", root.bar.notchCompactItems, item) }
+        PickRow {
+          rid: "glow"; label: "Charging glow"; keys: ["batteryGlow", "glowStyle"]
+          options: root.opts("off=Off;outline=Outline;bottom=Bottom")
+          selected: [!root.bar ? "outline" : !root.bar.notchBatteryGlow ? "off" : root.bar.notchGlowStyle]
+          onChosen: function(v) { root.setMany(v === "off" ? { batteryGlow: false } : { batteryGlow: true, glowStyle: v }) }
+        }
+      }
+
+      Group {
+        id: opening
+        title: "Open"
+
+        // A trigger another gesture already uses is shown, but not pickable.
+        PickRow {
+          rid: "openWith"; label: "Open with"; many: true; keys: ["openWith"]
+          none: "Nothing"
+          options: root.opts("hover=Hover;click=Click;doubleClick=Double-click;longPress=Long press;rightClick=Right-click;middleClick=Middle-click;scroll=Scroll")
+          taken: root.bar ? root.bar.notchSettingsWith.concat(root.bar.notchMenuWith) : []
+          selected: root.bar ? root.bar.notchOpenWith : []
+          onChosen: function(v) { root.set("openWith", root.toggled(root.bar.notchOpenWith, v)) }
+        }
+
+        // Each widget is an option of its own, not a second row that appears.
+        PickRow {
+          rid: "opensTo"; label: "Opens to"; keys: ["openAction", "openPlugin"]
+          options: root.opts("widgets=Widgets;clock=Clock;battery=Battery;settings=Settings;menu=Menu").concat(root.widgetOptions)
+          selected: !root.bar ? [] : [root.bar.notchOpenAction === "plugin" ? "plugin:" + root.bar.notchOpenPlugin : root.bar.notchOpenAction]
+          onChosen: function(v) { root.setMany(v.indexOf("plugin:") === 0 ? { openAction: "plugin", openPlugin: v.slice(7) } : { openAction: v }) }
+        }
+      }
+
+      Group {
+        id: inside
+        title: "In the notch"
+
+        // Omarchy's own toast still appears as well unless the notch is
+        // "only": it is a second display of the same notification.
+        PickRow {
+          rid: "notifications"; label: "Notifications"; keys: ["notifications", "suppressNativeToast"]
+          options: root.opts("toast=Notch + toast;only=Notch only;off=Off")
+          selected: [!root.bar ? "toast" : !root.bar.notchNotifications ? "off" : root.bar.notchSuppressNativeToast ? "only" : "toast"]
+          onChosen: function(v) { root.setMany(v === "off" ? { notifications: false } : { notifications: true, suppressNativeToast: v === "only" }) }
+        }
+
+        PickRow {
+          rid: "notifyLight"; label: "Notification light"; keys: ["notificationLight"]
+          options: root.opts("off=Off;notch=Around the notch;top=Top edge;full=Full screen")
+          selected: [root.bar ? String(root.bar.notchSetting("notificationLight", "off")) : "off"]
+          onChosen: function(v) { root.set("notificationLight", v) }
+        }
+
+        // The notch installs the companion plugin the routing needs
+        // (Companion.keepInStep); Setup reports it if that fails.
+        ToggleRow {
+          id: menuRow
+          rid: "menu"; label: "Menu"; keys: ["replaceMenu"]
+          checked: root.bar ? root.bar.notchReplaceMenu : false
+        }
+        ToggleRow {
+          rid: "volume"; label: "Volume and brightness"; keys: ["replaceOsd"]
+          checked: root.bar ? root.bar.notchReplaceOsd : false
+        }
+      }
+
+      // The rest, flat, in the order of use. Closed each time the panel opens.
+      Group {
+        id: advanced
+        title: "Advanced"
+        fold: true
+
+        StepRow {
+          rid: "width"; label: "Width"; keys: ["compactWidth"]
+          value: root.bar ? Math.round(root.bar.notchCompactWidth) : 180; from: 100; to: 600; stepSize: 10; unit: "px"
+          onChosen: function(v) { root.set("compactWidth", v) }
+        }
+
+        // Items and widgets in one list; dimmed when hover opens the notch.
+        PickRow {
+          rid: "onHover"; label: "On hover"; many: true; keys: ["hoverItems", "hoverPlugins"]
+          none: "Nothing"
+          dimmed: !!root.bar && root.bar.opensWith("hover")
+          summary: dimmed ? "Hover opens" : ""
+          options: root.itemOptions.concat(root.widgetOptions)
+          selected: !root.bar ? [] : root.bar.notchHoverItems.concat(root.bar.notchHoverPlugins.map(function(id) { return "plugin:" + id }))
+          onChosen: function(v) {
+            if (v.indexOf("plugin:") === 0) root.set("hoverPlugins", root.toggled(root.bar.notchHoverPlugins, v.slice(7)))
+            else root.set("hoverItems", root.toggled(root.bar.notchHoverItems, v, root.itemOrder))
           }
         }
 
-        SettingRow {
-          label: "On hover"
-          ItemChips {
-            selected: root.bar ? root.bar.notchHoverItems : []
-            onPicked: function(item) { root.toggleItem("hoverItems", root.bar.notchHoverItems, item) }
-          }
-        }
-
-        PluginPicker {
-          label: "Plugins on hover"
-          key: "hoverPlugins"
-          selected: root.bar ? root.bar.notchHoverPlugins : []
-        }
-
-        Text {
-          visible: root.bar && root.bar.opensWith("hover")
-          width: parent.width
-          wrapMode: Text.WordWrap
-          text: "Hover opens the notch (see Behaviour), so these are not shown."
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          bottomPadding: Style.space(4)
-        }
-
-        ViewRow {
-          label: "When open (click, keybind, …)"
-          actionKey: "openAction"; pluginKey: "openPlugin"
-          action: root.bar ? root.bar.notchOpenAction : "widgets"
-          plugin: root.bar ? root.bar.notchOpenPlugin : ""
-        }
-
-        PluginPicker {
-          label: "Hide from the open notch"
-          key: "hiddenPlugins"
+        // A plugin declaring hideable: false can't be hidden.
+        PickRow {
+          rid: "hidden"; label: "Hidden widgets"; many: true; keys: ["hiddenPlugins"]
+          options: root.widgetOptions.map(function(w) { return { value: w.value.slice(7), label: w.label } })
+          taken: root.bar ? root.bar.notchPlugins.list.filter(function(p) { return p.hideable === false }).map(function(p) { return p.id }) : []
           selected: root.bar ? root.bar.notchHiddenPlugins : []
-          // A plugin declaring hideable: false can't be hidden.
-          locked: root.bar ? root.bar.notchPlugins.list.filter(function(p) { return p.hideable === false }).map(function(p) { return p.id }) : []
+          summary: selected.length > 0 ? selected.length + " hidden" : "None"
+          onChosen: function(v) { root.set("hiddenPlugins", root.toggled(root.bar.notchHiddenPlugins, v)) }
         }
 
-        // Omarchy's own toast still appears as well unless the switch below is
-        // on: the notch is a second display of the same notification.
+        PickRow {
+          rid: "openRow"; label: "Also in the widget row"; many: true; keys: ["expanded"]
+          none: "Nothing"
+          options: root.itemOptions
+          selected: root.bar ? root.bar.notchExpandedItems : []
+          onChosen: function(v) { root.set("expanded", root.toggled(root.bar.notchExpandedItems, v, root.itemOrder)) }
+        }
+
+        // Plugins that draw inside the notch, and widgets whose own panel the
+        // notch can draw. Hidden until one says it can; a plugin the notch
+        // does not accept says why, on its line.
+        PickRow {
+          rid: "panels"; label: "Panels"; many: true; keys: ["hostedPanels", "disabledIntegrations"]
+          visible: root.integrations.length > 0 || root.hostable.length > 0
+          options: root.integrations.map(function(i) { return { value: "i:" + i.id, label: (i.name || i.id) + (i.accepted ? "" : " · " + i.reasonText) } })
+            .concat(root.hostable.map(function(h) { return { value: "h:" + h.id, label: h.name } }))
+          selected: root.integrations.filter(function(i) { return !i.userOff }).map(function(i) { return "i:" + i.id })
+            .concat(root.hostable.filter(function(h) { return h.hosted }).map(function(h) { return "h:" + h.id }))
+          summary: selected.length + " of " + options.length
+          attention: root.integrations.some(function(i) { return !i.accepted })
+          helper: attention ? root.integrations.filter(function(i) { return !i.accepted })[0].reasonText : ""
+          onOpenChanged: if (open) root.refreshHostable()
+          onChosen: function(v) { root.togglePanel(v) }
+        }
+
+        // One number rounds both the lower corners and the edge curves.
+        StepRow {
+          rid: "corners"; label: "Corners"; keys: ["bottomRadius", "filletRadius"]
+          value: root.bar ? Math.round(root.bar.notchBottomRadius) : 10; from: 0; to: 24; stepSize: 1
+          shown: !root.bar || Math.round(root.bar.notchBottomRadius) === Math.round(root.bar.notchFilletRadius) ? ""
+            : value + " / " + Math.round(root.bar.notchFilletRadius) + " px"
+          unit: "px"
+          onChosen: function(v) { root.setMany({ bottomRadius: v, filletRadius: v }) }
+        }
+
+        PickRow {
+          rid: "notifyTime"; label: "Notification time"; keys: ["notificationStay", "notificationSeconds"]
+          dimmed: !!root.bar && !root.bar.notchNotifications
+          readonly property string current: !root.bar ? "6" : root.bar.notchNotificationStay ? "stay" : String(root.bar.notchNotificationSeconds)
+          // Another stored value shows as itself.
+          options: root.opts("stay=Until I act;3=3 s;6=6 s;10=10 s;30=30 s").concat(["stay", "3", "6", "10", "30"].indexOf(current) === -1 ? [{ value: current, label: current + " s" }] : [])
+          selected: [current]
+          onChosen: function(v) { root.setMany(v === "stay" ? { notificationStay: true } : { notificationStay: false, notificationSeconds: Number(v) }) }
+        }
+
+        PickRow {
+          rid: "lightColours"; label: "Light colours"; keys: ["notificationLightColours"]
+          dimmed: !root.bar || root.bar.notchSetting("notificationLight", "off") === "off"
+          options: root.opts("aurora=Aurora;blue=Blue;white=White")
+          selected: [root.bar ? String(root.bar.notchSetting("notificationLightColours", "aurora")) : "aurora"]
+          onChosen: function(v) { root.set("notificationLightColours", v) }
+        }
+
+        PickRow {
+          rid: "peeks"; label: "Peeks"; many: true; keys: ["peekOnTrackChange", "batteryPeek"]
+          none: "Off"
+          options: root.opts("peekOnTrackChange=New track;batteryPeek=Plug-in and low battery")
+          selected: !root.bar ? [] : (root.bar.notchPeekOnTrackChange ? ["peekOnTrackChange"] : []).concat(root.bar.notchBatteryPeek ? ["batteryPeek"] : [])
+          summary: selected.length === 2 ? "Both" : ""
+          onChosen: function(v) { root.set(v, selected.indexOf(v) === -1) }
+        }
+
+        // Relative to the resting notch's size (100 % reaches 32 px on the
+        // default 180 × 32 notch, further on a bigger one; at most 80 px).
+        StepRow {
+          rid: "glowSize"; label: "Glow size"; keys: ["glowScale"]
+          value: root.bar ? Math.round(root.bar.notchGlowScale * 100) : 100; from: 0; to: 250; stepSize: 5; unit: "%"
+          onChosen: function(v) { root.set("glowScale", v / 100) }
+        }
+        StepRow {
+          rid: "greenAbove"; label: "Green from"; keys: ["greenAbove"]
+          value: root.bar ? root.bar.notchGreenAbove : 100; from: 0; to: 100; stepSize: 5; unit: "%"
+          onChosen: function(v) { root.set("greenAbove", v) }
+        }
+        StepRow {
+          rid: "lowBelow"; label: "Low battery at"; keys: ["lowBattery"]
+          value: root.bar ? root.bar.notchLowBattery : 20; from: 5; to: 60; stepSize: 5; unit: "%"
+          onChosen: function(v) { root.set("lowBattery", v) }
+        }
+
+        // The four keys the panel offers. The recorder's clash check reads all
+        // six, so a hand-set menuKey or stateKey is protected too.
         SettingRow {
-          label: "Omarchy's notifications"
-          Switch {
-            checked: root.bar ? root.bar.notchNotifications : true
-            onToggled: root.set("notifications", !checked)
-          }
+          id: keybindsRow
+          rid: "keybinds"; label: "Keybinds"; kind: "keyRecord"; foldable: true
+          keys: ["openKey", "settingsKey", "autoHideKey", "stayOpenKey"]
+          readonly property var combos: !root.bar ? [] : [root.bar.notchOpenKey, root.bar.notchSettingsKey, root.bar.notchAutoHideKey, root.bar.notchStayOpenKey]
+          readonly property int count: combos.filter(function(c) { return c !== "" }).length
+          stateText: count > 0 ? count + " set" : "None"
+          lines: [
+            KeyLine { label: "Open the notch"; key: "openKey"; current: keybindsRow.combos[0] || "" },
+            KeyLine { label: "Open settings"; key: "settingsKey"; current: keybindsRow.combos[1] || "" },
+            KeyLine { label: "Auto-hide"; key: "autoHideKey"; current: keybindsRow.combos[2] || "" },
+            KeyLine { label: "Keep it open"; key: "stayOpenKey"; current: keybindsRow.combos[3] || "" }
+          ]
+        }
+        ToggleRow {
+          rid: "stayOpen"; label: "Keep open"; keys: ["stayOpen"]
+          checked: root.bar ? root.bar.notchStayOpen : false
         }
 
-        // The same deal as the OSD's switch: the notch installs the companion
-        // plugin that keeps Omarchy's toast off screen, and Setup reports it
-        // if that fails. The toast comes back by itself whenever the notch
-        // can't show one (bar hidden, no notch running).
-        SettingRow {
-          label: "Suppress Omarchy's own toast"
-          Switch {
-            enabled: root.bar ? root.bar.notchNotifications : false
-            checked: root.bar ? root.bar.notchSuppressNativeToast : false
-            onToggled: root.set("suppressNativeToast", !checked)
-          }
+        // Follows Auto-hide until set; a user who set it must be able to undo it.
+        ToggleRow {
+          rid: "windowsToTop"; label: "Windows to the top"; keys: ["windowsToTop"]
+          checked: root.bar ? root.bar.notchWindowsToTop : false
+        }
+        ToggleRow {
+          rid: "updateCheck"; label: "Check for updates"; keys: ["updateCheck"]
+          checked: root.bar ? root.bar.notchUpdateCheck : true
         }
 
-        SettingRow {
-          label: "Also in the widget row"
-          ItemChips {
-            selected: root.bar ? root.bar.notchExpandedItems : []
-            onPicked: function(item) { root.toggleItem("expanded", root.bar.notchExpandedItems, item) }
-          }
-        }
-      }
-
-      // Every row here answers "what makes the notch do a thing"; each
-      // gesture is followed by its keybind.
-      Section {
-        id: openingSection
-        title: "How it opens"
-
-        StackedRow {
-          label: "Open the notch with"
-          ChipFlow {
-            options: root.openTriggers
-            selected: root.bar ? root.bar.notchOpenWith : []
-            taken: root.bar ? root.bar.notchSettingsWith.concat(root.bar.notchMenuWith) : []
-            onPicked: function(value) { root.toggleTrigger("openWith", root.bar.notchOpenWith, value, false) }
-          }
+        // plan-export.md's rows: hidden until the notch can export.
+        ButtonRow {
+          rid: "share"; label: "Share settings"
+          visible: !!root.bar && typeof root.bar.shareSettings === "function"
+          buttons: [ActionButton { text: "Copy code"; onClicked: root.bar.shareSettings("copy") },
+                    ActionButton { text: "Save file"; onClicked: root.bar.shareSettings("file") }]
         }
 
-        KeyRow { label: "Keybind for the notch"; key: "openKey"; current: root.bar ? root.bar.notchOpenKey : "" }
-
-        StackedRow {
-          label: "Open settings with"
-          ChipFlow {
-            options: root.settingsTriggers
-            selected: root.bar ? root.bar.notchSettingsWith : []
-            taken: root.bar ? root.bar.notchOpenWith.concat(root.bar.notchMenuWith) : []
-            onPicked: function(value) { root.toggleTrigger("settingsWith", root.bar.notchSettingsWith, value, true) }
-          }
+        ButtonRow {
+          rid: "importer"; label: "Use someone's settings"
+          visible: !!root.bar && typeof root.bar.importSettings === "function"
+          buttons: ActionButton { text: "Import"; onClicked: root.bar.importSettings() }
         }
 
-        KeyRow { label: "Keybind for settings"; key: "settingsKey"; current: root.bar ? root.bar.notchSettingsKey : "" }
-
-        StackedRow {
-          label: "Open the Omarchy menu with"
-          ChipFlow {
-            options: root.menuTriggers
-            selected: root.bar ? root.bar.notchMenuWith : []
-            taken: root.bar ? root.bar.notchOpenWith.concat(root.bar.notchSettingsWith) : []
-            onPicked: function(value) { root.toggleTrigger("menuWith", root.bar.notchMenuWith, value, false) }
-          }
-        }
-
-        KeyRow { label: "Keybind for the menu"; key: "menuKey"; current: root.bar ? root.bar.notchMenuKey : "" }
-
-        // Just the switch. The companion plugin it needs is the notch's
-        // business (Companion.keepInStep); Setup's if that fails.
-        SettingRow {
-          label: "Replace the Omarchy menu"
-          Switch {
-            id: replaceMenuSwitch
-            checked: root.bar ? root.bar.notchReplaceMenu : false
-            onToggled: root.set("replaceMenu", !checked)
-          }
-        }
-
-        // The same shape as the menu's switch, and the same deal: the notch
-        // installs the companion plugin the routing needs, and Setup reports it
-        // if that fails.
-        SettingRow {
-          label: "Show the OSD in the notch"
-          Switch {
-            id: replaceOsdSwitch
-            checked: root.bar ? root.bar.notchReplaceOsd : false
-            onToggled: root.set("replaceOsd", !checked)
-          }
-        }
-
-        SettingRow {
-          label: "Keep the notch open"
-          Switch {
-            checked: root.bar ? root.bar.notchStayOpen : false
-            onToggled: root.set("stayOpen", !checked)
-          }
-        }
-
-        KeyRow { label: "Keybind to keep it open"; key: "stayOpenKey"; current: root.bar ? root.bar.notchStayOpenKey : "" }
-
-        // Close it where it stands, open it where it stood. For anyone working
-        // on a panel: testing a change means shutting the notch and opening it
-        // again, and without this that is the walk back in through the menus
-        // every single time.
-        KeyRow { label: "Keybind to close and reopen where you were"; key: "stateKey"; current: root.bar ? root.bar.notchStateKey : "" }
-
-      }
-
-      // The notch's shape, and how it sits on the screen: auto-hide and
-      // windows-to-top are about its presence, not about what opens it.
-      Section {
-        id: appearanceSection
-        title: "Appearance"
-
-        NumberRow { label: "Width at rest"; key: "compactWidth"; value: root.bar ? root.bar.notchCompactWidth : 180; from: 100; to: 600; stepSize: 10 }
-        NumberRow { label: "Height at rest"; key: "compactHeight"; value: root.bar ? root.bar.notchCompactHeight : 32; from: 26; to: 60; stepSize: 2 }
-        NumberRow { label: "Bottom corners"; key: "bottomRadius"; value: root.bar ? root.bar.notchBottomRadius : 10; from: 0; to: 24; stepSize: 1 }
-        NumberRow { label: "Edge fillets"; key: "filletRadius"; value: root.bar ? root.bar.notchFilletRadius : 10; from: 0; to: 24; stepSize: 1 }
-
-        SettingRow {
-          label: "Hide until the pointer reaches for it"
-          Switch {
-            checked: root.bar ? root.bar.notchAutoHide : false
-            onToggled: root.set("autoHide", !checked)
-          }
-        }
-
-        KeyRow { label: "Keybind for auto-hide"; key: "autoHideKey"; current: root.bar ? root.bar.notchAutoHideKey : "" }
-
-        SettingRow {
-          label: "Windows reach the top edge"
-          Switch {
-            checked: root.bar ? root.bar.notchWindowsToTop : false
-            onToggled: root.set("windowsToTop", !checked)
-          }
-        }
-
-        Text {
-          visible: root.bar && root.bar.notchAutoHide && !root.bar.notchWindowsToTopSet
-          width: parent.width
-          wrapMode: Text.WordWrap
-          text: "On while the notch auto-hides. Switch it off to keep windows below the notch."
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          bottomPadding: Style.space(4)
-        }
-      }
-
-      // The two peeks are one idea -- the notch briefly showing you something
-      // -- so they sit together, ahead of the glow they used to be split by.
-      Section {
-        id: batterySection
-        title: "Peeks, notifications and battery"
-        summary: !root.bar ? "" : !root.bar.notchBatteryGlow ? "Glow off"
-          : (root.bar.notchGlowStyle === "bottom" ? "Bottom" : "Outline") + " · " + root.bar.notchGlowScale.toFixed(2) + "× · green above " + root.bar.notchGreenAbove + " %"
-
-        SettingRow {
-          label: "Peek on a new track"
-          Switch {
-            checked: root.bar ? root.bar.notchPeekOnTrackChange : true
-            onToggled: root.set("peekOnTrackChange", !checked)
-          }
-        }
-
-        SettingRow {
-          label: "Notifications"
-          enabled: root.bar ? root.bar.notchNotifications : false
-          Choice {
-            options: [{ value: "stay", label: "Stay until I act" }, { value: "close", label: "Close after" }]
-            value: root.bar && root.bar.notchNotificationStay ? "stay" : "close"
-            fontFamily: root.fontFamily
-            onChanged: function(value) { root.set("notificationStay", value === "stay") }
-          }
-        }
-
-        NumberRow {
-          visible: !(root.bar && root.bar.notchNotificationStay)
-          enabled: root.bar ? root.bar.notchNotifications : false
-          label: "Seconds"; key: "notificationSeconds"
-          value: root.bar ? root.bar.notchNotificationSeconds : 6; from: 1; to: 60; stepSize: 1
-        }
-
-        SettingRow {
-          label: "Peek on plug-in and low battery"
-          Switch {
-            checked: root.bar ? root.bar.notchBatteryPeek : true
-            onToggled: root.set("batteryPeek", !checked)
-          }
-        }
-
-        SettingRow {
-          label: "Charging glow"
-          Switch {
-            checked: root.bar ? root.bar.notchBatteryGlow : true
-            onToggled: root.set("batteryGlow", !checked)
-          }
-        }
-
-        SettingRow {
-          label: "Glow style"
-          Choice {
-            options: [{ value: "outline", label: "Outline" }, { value: "bottom", label: "Bottom" }]
-            value: root.bar ? root.bar.notchGlowStyle : "outline"
-            fontFamily: root.fontFamily
-            onChanged: function(value) { root.set("glowStyle", value) }
-          }
-        }
-
-        SettingRow {
-          id: glowScaleRow
-          label: "Glow size"
-          // Relative to the resting notch's size (1.0 reaches 32 px on the
-          // default 180 × 32 notch, further on a bigger one; at most 80 px). The slider shows its value while it
-          // moves and saves once on release.
-          property real liveScale: root.bar ? root.bar.notchGlowScale : 1
-          Row {
-            spacing: Style.space(8)
-            PanelSlider {
-              id: glowScaleSlider
-              anchors.verticalCenter: parent.verticalCenter
-              width: Style.space(160)
-              height: Style.space(24)
-              // Omarchy's slider takes its colours off `bar`, and its track off
-              // a theme token: hand it the notch's palette instead.
-              bar: sliderPalette
-              trackColor: Util.alpha(root.foreground, Style.selectedFillAlpha)
-              minimum: 0
-              maximum: 2.5
-              step: 0.05
-              value: root.bar ? root.bar.notchGlowScale : 1
-              onMoved: function(value) { glowScaleRow.liveScale = value }
-              onReleased: function(value) { root.set("glowScale", Math.round(value * 100) / 100) }
-            }
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              width: Style.space(44)
-              horizontalAlignment: Text.AlignRight
-              readonly property real shownScale: glowScaleSlider.dragging ? glowScaleRow.liveScale : (root.bar ? root.bar.notchGlowScale : 1)
-              text: shownScale <= 0 ? "off" : shownScale.toFixed(2) + "×"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
-          }
-        }
-
-        NumberRow { label: "Green when charging above %"; key: "greenAbove"; value: root.bar ? root.bar.notchGreenAbove : 100; from: 0; to: 100; stepSize: 5 }
-        NumberRow { label: "Low below %"; key: "lowBattery"; value: root.bar ? root.bar.notchLowBattery : 20; from: 5; to: 60; stepSize: 5 }
-        NumberRow { label: "Critical below %"; key: "criticalBattery"; value: root.bar ? root.bar.notchCriticalBattery : 10; from: 1; to: 40; stepSize: 1 }
-
-        SettingRow {
-          label: "Preview"
-          Choice {
-            readonly property string current: !root.bar || !root.bar.batterySimulated ? "real"
-              : root.bar.batterySimulatedState
-            options: [{ value: "real", label: "Off" }, { value: "charging", label: "Charging" },
-                      { value: "full", label: "Full" }, { value: "discharging", label: "Low" }]
-            value: current
-            fontFamily: root.fontFamily
-            onChanged: function(value) {
-              var b = root.bar
-              if (!b) return
-              if (value === "real") { b.batterySimulatedState = ""; b.batterySimulatedPercent = -1; return }
-              b.batterySimulatedPercent = value === "charging" ? 64 : value === "full" ? 100 : Math.max(1, b.notchLowBattery - 2)
-              b.batterySimulatedState = value
-            }
-          }
-        }
-
-        // The preview shows the real glow, so at a tiny glow size there is
-        // nothing to see: say so rather than look broken.
-        Text {
-          visible: text !== ""
-          width: parent.width
-          wrapMode: Text.WordWrap
-          text: !root.bar ? ""
-            : !root.bar.notchBatteryGlow ? "The battery glow is switched off, so the preview has nothing to show."
-            : root.bar.notchGlowScale <= 0 ? "Glow size is off, so the preview has nothing to show. Raise Glow size to see it."
-            : root.glowReach < 4 ? "Glow size " + root.bar.notchGlowScale.toFixed(2) + "× reaches only " + root.glowReach.toFixed(1) + " px, too small to see. Raise Glow size to see the preview."
-            : root.bar.batterySimulated ? "Previewing: while the settings are open the glow sits under the panel's bottom edge. It stops when the settings close."
-            : ""
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          bottomPadding: Style.space(4)
-        }
-      }
-
-      // Plugins that draw inside the notch. Hidden until one says it can.
-      Section {
-        id: integrationsSection
-        title: "Integrations"
-        visible: root.integrations.length > 0 || root.hostable.length > 0
-        onOpenChanged: if (open) root.refreshHostable()
-
-        Repeater {
-          model: root.integrations
-
-          SettingRow {
-            label: modelData.name || modelData.id
-            Row {
-              spacing: Style.space(8)
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: modelData.reasonText
-                color: modelData.accepted ? root.dim : root.accent
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-              }
-
-              Switch {
-                checked: !modelData.userOff
-                onToggled: root.toggleIntegration(modelData.id, !checked)
-              }
-            }
-          }
-        }
-
-        // Widgets already in the bar whose own panel the notch can draw. These
-        // need nothing from the plugin: the notch takes its panel while it is
-        // open and gives it back untouched.
-        Repeater {
-          model: root.hostable
-
-          SettingRow {
-            label: modelData.name
-            Row {
-              spacing: Style.space(8)
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: modelData.hosted ? "Opens in the notch" : "Opens in its own window"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-              }
-
-              Switch {
-                checked: modelData.hosted
-                onToggled: root.toggleHostedPanel(modelData.id, !checked)
-              }
-            }
-          }
-        }
-
-        Text {
-          width: parent.width
-          wrapMode: Text.WordWrap
-          text: "A plugin that integrates opens its own panel inside the notch, on the notch's colour and motion. Switching one off gives that plugin its own window back at once."
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          bottomPadding: Style.space(4)
-        }
-      }
-
-      // A preference, and only that. Whether the notch has an update, and the
-      // button that installs it, live on the Plugins page with the notch's own
-      // row -- the same place a plugin's update lives, so there is one answer
-      // to "what is managed where" instead of two.
-      Section {
-        id: updatesSection
-        title: "Updates"
-        summary: root.bar ? root.bar.updateWords : ""
-
-        SettingRow {
-          label: "Check for updates"
-          Switch {
-            checked: root.bar ? root.bar.notchUpdateCheck : true
-            onToggled: root.set("updateCheck", !checked)
-          }
-        }
-
-        SettingRow {
-          label: "Where updates are done"
-          NotchButton {
-            text: "Plugins…"
-            bordered: true
-            foreground: root.foreground
-            accent: root.accent
-            radius: root.radiusFor(Math.min(width, height))
-            fontFamily: root.fontFamily
-            fontSize: Style.font.bodySmall
-            horizontalPadding: Style.space(7)
-            onClicked: root.pluginsRequested()
-          }
-        }
-      }
-
-      PanelSeparator { width: parent.width; foreground: root.foreground }
-
-      Item {
-        width: parent.width
-        height: resetButton.implicitHeight + Style.space(8)
-        NotchButton {
-          id: resetButton
-          foreground: root.foreground
-          accent: root.accent
-          radius: root.radiusFor(Math.min(width, height))
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
-          text: "Reset to defaults"
-          bordered: true
-          fontFamily: root.fontFamily
-          onClicked: root.resetAll()
+        // Deletes `bar.notch` with no undo.
+        ButtonRow {
+          rid: "reset"; label: "Reset to defaults"
+          buttons: ActionButton { text: "Reset"; onClicked: root.resetAll() }
         }
       }
     }
   }
 
-  component SettingRow: Item {
-    id: row
-    property string label: ""
-    default property alias control: slot.data
-    width: parent ? parent.width : 0
-    height: Math.max(root.rowHeight, slot.childrenRect.height + Style.space(6))
-
-    Text {
-      anchors.left: parent.left
-      anchors.right: slot.left
-      anchors.rightMargin: Style.space(10)
-      anchors.verticalCenter: parent.verticalCenter
-      text: row.label
-      elide: Text.ElideRight
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-    }
-
-    Item {
-      id: slot
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      width: childrenRect.width
-      height: childrenRect.height
-    }
+  Item {
+    id: foot
+    x: root.padding
+    y: parent.height - root.padding - height
+    width: parent.width - 2 * root.padding
+    height: root.footHeight
   }
 
-  // A label on its own line with its control below, for controls too wide
-  // to share a line.
-  component StackedRow: Column {
-    id: stacked
-    property string label: ""
-    default property alias control: stackedSlot.data
-    width: parent ? parent.width : 0
-    spacing: Style.space(4)
-    topPadding: Style.space(6)
-    bottomPadding: Style.space(6)
-
-    Text {
-      text: stacked.label
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-    }
-
-    Item {
-      id: stackedSlot
-      width: parent.width
-      height: childrenRect.height
-    }
-  }
-
-  // Chips that wrap onto more lines as needed; `selected` holds the values
-  // shown as chosen.
-  component ChipFlow: Flow {
-    id: flow
-    property var options: []
-    property var selected: []
-    // Values another list already uses: shown, but not selectable.
-    property var taken: []
-    signal picked(string value)
-    width: parent ? parent.width : 0
-    spacing: Style.space(4)
-    Repeater {
-      model: flow.options
-      NotchButton {
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
-        required property var modelData
-        text: modelData.label
-        selected: flow.selected.indexOf(modelData.value) !== -1
-        enabled: flow.taken.indexOf(modelData.value) === -1
-        opacity: enabled ? 1 : 0.35
-        bordered: true
-        fontFamily: root.fontFamily
-        fontSize: Style.font.bodySmall
-        horizontalPadding: Style.space(7)
-        onClicked: flow.picked(modelData.value)
-      }
-    }
-  }
-
-  // A settings section whose title folds and unfolds it. Folded state lasts
-  // while the shell runs (it is not saved).
-  component Section: Column {
-    id: section
+  // A heading and its rows; with `fold`, the heading opens and closes them.
+  component Group: Column {
+    id: group
     property string title: ""
-    // One line of the current state, shown on the fold so it isn't a dead end.
-    property string summary: ""
-    property bool open: false
-    default property alias content: sectionBody.data
+    property bool fold: false
+    property bool open: !fold
+    default property alias content: body.data
     width: parent ? parent.width : 0
+    spacing: Style.space(2)
+    function rows() { return Array.prototype.slice.call(body.children).filter(function(c) { return c.rid !== undefined }) }
 
     Item {
       width: parent.width
-      height: Style.space(30)
+      height: Style.space(group.fold ? 30 : 26)
 
       Text {
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
-        text: (section.open ? "▾  " : "▸  ") + section.title
+        text: group.fold ? group.title + "  " + (group.open ? "▾" : "▸") : group.title
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.bodySmall
         font.bold: true
-      }
-
-      Text {
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        visible: !section.open && section.summary !== ""
-        text: section.summary
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
       }
 
       MouseArea {
         anchors.fill: parent
+        enabled: group.fold
         cursorShape: Qt.PointingHandCursor
-        onClicked: section.open = !section.open
+        onClicked: group.open = !group.open
       }
     }
 
     Column {
-      id: sectionBody
-      visible: section.open
+      id: body
+      property string sectionName: group.title
       width: parent.width
       spacing: Style.space(2)
-      bottomPadding: Style.space(8)
+      opacity: group.open ? 1 : 0
+      visible: group.open || opacity > 0
+      Behavior on opacity { NumberAnimation { duration: root.fadeMs; easing.type: Easing.OutCubic } }
     }
-
-    PanelSeparator { width: parent.width; foreground: root.foreground }
   }
 
-  // A plugin list folded to one line: the label, what is picked, and a
-  // chevron; unfolded, a chip per widget in the bar layout. Many can be
-  // picked, or with `single` just one. Saves `key` on every pick.
-  component PluginPicker: Column {
-    id: picker
+  // A label and its control, nothing else; the state is the control's value.
+  // A `foldable` row says its state with a chevron and unfolds its own option
+  // lines in place, flat and without tips.
+  component SettingRow: Column {
+    id: row
+    property string rid: ""
     property string label: ""
-    property string key: ""
-    property var selected: []
-    property bool single: false
+    // The control: switch pick pickMany stepper keyRecord button.
+    property string kind: "switch"
+    property var keys: []
+    property string stateText: ""
+    // Text beyond label and state is allowed only as an attention state.
+    property bool attention: false
+    property string helper: ""
+    property bool dimmed: false
+    property bool foldable: false
     property bool open: false
-    // Ids shown but not pickable.
-    property var locked: []
-    readonly property var choices: root.bar ? root.bar.layoutPluginChoices() : []
-    readonly property string summary: {
-      var names = []
-      for (var i = 0; i < choices.length; i++)
-        if (selected.indexOf(choices[i].value) !== -1) names.push(choices[i].label)
-      if (names.length === 0) return "none"
-      return names.length <= 2 ? names.join(", ") : names.length + " picked"
+    readonly property int controlCount: slot.children.length
+    signal chosen(var value)
+    default property alias control: slot.data
+    property alias lines: fold.data
+
+    // What a click or a key does to this row's control.
+    function apply(value) {
+      chosen(value)
+      if (kind === "pick") open = false
     }
+
     width: parent ? parent.width : 0
+    opacity: dimmed ? 0.45 : 1
+    onOpenChanged: if (open) Qt.callLater(function() { root.reveal(row) })
 
     Item {
       width: parent.width
-      height: root.rowHeight
+      height: Math.max(root.rowHeight, slot.height)
 
       Text {
         anchors.left: parent.left
+        anchors.right: row.foldable ? stateLabel.left : slot.left
+        anchors.rightMargin: Style.space(10)
         anchors.verticalCenter: parent.verticalCenter
-        text: picker.label
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-      }
-
-      Text {
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        width: parent.width * 0.55
-        horizontalAlignment: Text.AlignRight
+        text: row.label
         elide: Text.ElideRight
-        text: picker.summary + (picker.open ? "  ▾" : "  ▸")
-        color: root.foreground
+        color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
 
       MouseArea {
         anchors.fill: parent
+        enabled: row.foldable
         cursorShape: Qt.PointingHandCursor
-        onClicked: picker.open = !picker.open
+        onClicked: row.open = !row.open
       }
-    }
-
-    ChipFlow {
-      visible: picker.open
-      options: picker.choices
-      selected: picker.selected
-      taken: picker.locked
-      bottomPadding: Style.space(6)
-      onPicked: function(value) {
-        if (picker.single) { root.set(picker.key, value); return }
-        var next = picker.selected.slice()
-        var i = next.indexOf(value)
-        if (i === -1) next.push(value)
-        else next.splice(i, 1)
-        root.set(picker.key, next)
-      }
-    }
-  }
-
-  // What a way of opening the notch shows, and for "A plugin", which one.
-  component ViewRow: Column {
-    id: viewRow
-    property string label: ""
-    property string actionKey: ""
-    property string pluginKey: ""
-    property string action: "widgets"
-    property string plugin: ""
-    property bool allowNothing: false
-    property string note: ""
-    width: parent ? parent.width : 0
-
-    function pick(key, value) { root.set(key, value) }
-
-    StackedRow {
-      label: viewRow.label
-      ChipFlow {
-        options: [{ value: "widgets", label: "Widgets" }, { value: "clock", label: "Clock" },
-                  { value: "battery", label: "Battery" }, { value: "plugin", label: "A plugin" },
-                  { value: "settings", label: "Settings" }, { value: "menu", label: "Menu" }].concat(viewRow.allowNothing ? [{ value: "none", label: "Nothing" }] : [])
-        selected: [viewRow.action]
-        onPicked: function(value) { viewRow.pick(viewRow.actionKey, value) }
-      }
-    }
-
-    Text {
-      visible: viewRow.note !== ""
-      text: viewRow.note
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      bottomPadding: Style.space(4)
-    }
-
-    PluginPicker {
-      visible: viewRow.action === "plugin"
-      label: "Which plugin"
-      key: viewRow.pluginKey
-      single: true
-      selected: viewRow.plugin ? [viewRow.plugin] : []
-    }
-  }
-
-  // A Hyprland key combination, applied when typing finishes (Enter or
-  // leaving the field). Empty removes the keybind.
-  // A keybind: the current combination, a Record button that listens for
-  // the next key press (Escape cancels), and ✕ to remove it. Saved on record.
-  component KeyRow: SettingRow {
-    id: keyRow
-    property string key: ""
-    property string current: ""
-    property bool recording: false
-    property string hint: ""
-
-    // Every notch keybind, so one combination can't be recorded twice.
-    function usedBy(combo) {
-      if (!root.bar) return ""
-      var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey,
-                     menuKey: root.bar.notchMenuKey, stayOpenKey: root.bar.notchStayOpenKey, stateKey: root.bar.notchStateKey }
-      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide", menuKey: "the menu",
-                     stayOpenKey: "keep open", stateKey: "close and reopen" }
-      for (var k in others) if (k !== keyRow.key && others[k] === combo) return labels[k]
-      return ""
-    }
-
-    function stop() {
-      recording = false
-      root.forceActiveFocus()
-    }
-
-    Row {
-      spacing: Style.space(6)
 
       Text {
+        id: stateLabel
+        visible: row.foldable
+        anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        text: keyRow.recording ? (keyRow.hint || "press keys…") : (keyRow.hint || (keyRow.current || "none"))
-        color: keyRow.recording || keyRow.hint ? root.dim : root.foreground
+        width: Math.min(implicitWidth, parent.width * 0.6)
+        horizontalAlignment: Text.AlignRight
+        elide: Text.ElideRight
+        text: row.stateText + (row.open ? "  ▴" : "  ▾")
+        color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
 
-      NotchButton {
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
-        text: keyRow.recording ? "Cancel" : "Record"
-        bordered: true
-        fontFamily: root.fontFamily
-        fontSize: Style.font.bodySmall
-        horizontalPadding: Style.space(7)
-        onClicked: {
-          keyRow.hint = ""
-          if (keyRow.recording) { keyRow.stop(); return }
-          keyRow.recording = true
-          catcher.forceActiveFocus()
-        }
-      }
-
-      NotchButton {
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
-        visible: keyRow.current !== "" && !keyRow.recording
-        text: "✕"
-        bordered: true
-        fontFamily: root.fontFamily
-        fontSize: Style.font.bodySmall
-        horizontalPadding: Style.space(6)
-        onClicked: { keyRow.hint = ""; root.set(keyRow.key, "") }
+      Item {
+        id: slot
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        width: childrenRect.width
+        height: childrenRect.height
       }
     }
 
-    Item {
-      id: catcher
-      focus: keyRow.recording
-      Keys.onPressed: function(event) {
-        if (!keyRow.recording) return
-        event.accepted = true
-        if (event.key === KeyCombo.ESCAPE) { keyRow.hint = ""; keyRow.stop(); return }
-        var result = KeyCombo.combo(event.key, event.modifiers)
-        if (result.waiting) return
-        if (!result.combo) { keyRow.hint = result.reason; return }
-        var clash = keyRow.usedBy(result.combo)
-        if (clash) { keyRow.hint = result.combo + " is used by " + clash; return }
-        keyRow.hint = ""
-        root.set(keyRow.key, result.combo)
-        keyRow.stop()
-      }
-      onActiveFocusChanged: if (!activeFocus && keyRow.recording) keyRow.recording = false
+    Column {
+      id: fold
+      x: Style.space(10)
+      width: parent.width - x
+      spacing: Style.space(2)
+      bottomPadding: Style.space(4)
+      opacity: row.open ? 1 : 0
+      visible: row.foldable && (row.open || opacity > 0)
+      Behavior on opacity { NumberAnimation { duration: root.fadeMs; easing.type: Easing.OutCubic } }
     }
   }
 
-  component NumberRow: SettingRow {
-    id: numberRow
-    property string key: ""
+  // One of three or more (`many: false`), or a set (`many: true`), unfolding
+  // its options in place. `selected` holds the values shown as chosen; `taken`
+  // are options shown but not pickable.
+  component PickRow: SettingRow {
+    id: pick
+    property var options: []
+    property var selected: []
+    property var taken: []
+    property bool many: false
+    // The state when nothing is picked, and a summary that replaces the names.
+    property string none: "None"
+    property string summary: ""
+    kind: many ? "pickMany" : "pick"
+    foldable: true
+    stateText: {
+      if (summary !== "") return summary
+      var names = options.filter(function(o) { return selected.indexOf(o.value) !== -1 }).map(function(o) { return o.label })
+      return names.length === 0 ? none : names.length <= 3 ? names.join(", ") : names.length + " picked"
+    }
+    lines: Repeater {
+      model: pick.options
+      OptionLine {
+        required property var modelData
+        text: modelData.label
+        on: pick.selected.indexOf(modelData.value) !== -1
+        enabled: pick.taken.indexOf(modelData.value) === -1
+        onClicked: pick.apply(modelData.value)
+      }
+    }
+  }
+
+  component ToggleRow: SettingRow {
+    id: toggle
+    property bool checked: false
+    readonly property color trackColor: toggleSwitch.trackColor
+    readonly property color knobColor: toggleSwitch.knobColor
+    kind: "switch"
+    stateText: checked ? "On" : "Off"
+    onChosen: function(v) { root.set(keys[0], v) }
+    Switch {
+      id: toggleSwitch
+      checked: toggle.checked
+      onToggled: toggle.apply(!checked)
+    }
+  }
+
+  // A number with steps; `shown` replaces "<value> <unit>" when a row has
+  // more to say ("8 / 12 px").
+  component StepRow: SettingRow {
+    id: step
     property int value: 0
     property int from: 0
     property int to: 100
     property int stepSize: 1
+    property string unit: ""
+    property string shown: ""
+    kind: "stepper"
+    stateText: shown !== "" ? shown : value + " " + unit
     NotchNumberField {
-      id: numberField
       foreground: root.foreground
       accent: root.accent
-      // NumberField takes its corner from the theme; give its box the notch's.
-      // Its box and its up/down buttons take their corners from the theme; give
-      // them the notch's.
+      fieldWidth: Style.space(92)
+      suffix: " " + step.unit
+      display: step.shown
+      // The box and its up/down buttons take their corners from the theme;
+      // give them the notch's.
       Component.onCompleted: {
         if (!field) return
         var parts = [field.background, field.up ? field.up.indicator : null, field.down ? field.down.indicator : null]
@@ -1066,42 +693,155 @@ Item {
             part.radius = Qt.binding(function() { return root.radiusFor(Math.min(part.height, part.width)) })
         })
       }
-      value: numberRow.value
-      from: numberRow.from
-      to: numberRow.to
-      stepSize: numberRow.stepSize
+      value: step.value
+      from: step.from
+      to: step.to
+      stepSize: step.stepSize
       fontFamily: root.fontFamily
-      onModified: function(value) { root.set(numberRow.key, value) }
+      onModified: function(v) { step.apply(v) }
     }
   }
 
-  // Omarchy's ButtonGroup, with the notch's colours and radius: one of N.
-  component Choice: Row {
-    id: choice
-    property var options: []
-    property string value: ""
-    property string fontFamily: root.fontFamily
-    signal changed(string value)
-    spacing: Style.spacing.md
-    Repeater {
-      model: choice.options
-      NotchButton {
-        required property var modelData
-        text: modelData.label
-        selected: modelData.value === choice.value
-        bordered: true
-        foreground: root.foreground
-        background: root.surface
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
-        fontFamily: choice.fontFamily
-        onClicked: choice.changed(modelData.value)
+  component ButtonRow: SettingRow {
+    kind: "button"
+    property alias buttons: buttonRow.data
+    Row { id: buttonRow; spacing: Style.space(6) }
+  }
+
+  component ActionButton: NotchButton {
+    foreground: root.foreground
+    accent: root.accent
+    radius: root.radiusFor(Math.min(width, height))
+    bordered: true
+    fontFamily: root.fontFamily
+    fontSize: Style.font.bodySmall
+    horizontalPadding: Style.space(7)
+  }
+
+  component HeaderButton: NotchButton {
+    foreground: root.foreground
+    accent: root.accent
+    radius: root.radiusFor(Math.min(width, height))
+    fontFamily: root.fontFamily
+    horizontalPadding: Style.space(10)
+  }
+
+  // One option of a Pick, a flat line in the row's fold. The mark is not the
+  // fill alone: the chosen one carries a tick.
+  component OptionLine: NotchButton {
+    property bool on: false
+    width: parent ? parent.width : 0
+    height: Style.space(26)
+    leftAlign: true
+    selected: on
+    foreground: root.foreground
+    accent: root.accent
+    radius: root.radiusFor(Math.min(width, height))
+    fontFamily: root.fontFamily
+    fontSize: Style.font.bodySmall
+    horizontalPadding: Style.space(10)
+    opacity: enabled ? 1 : 0.35
+
+    Text {
+      anchors.right: parent.right
+      anchors.rightMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      visible: parent.on
+      text: "✓"
+      color: root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+  }
+
+  // A Hyprland key combination: the current one, a Record button that listens
+  // for the next key press (Escape cancels), and ✕ to remove it. Saved on record.
+  component KeyLine: Item {
+    id: keyLine
+    property string label: ""
+    property string key: ""
+    property string current: ""
+    property bool recording: false
+    property string hint: ""
+    width: parent ? parent.width : 0
+    height: Style.space(28)
+
+    // Every notch keybind: one combination can't be recorded twice.
+    function usedBy(combo) {
+      if (!root.bar) return ""
+      var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey,
+                     menuKey: root.bar.notchMenuKey, stayOpenKey: root.bar.notchStayOpenKey, stateKey: root.bar.notchStateKey }
+      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide", menuKey: "the menu",
+                     stayOpenKey: "keep open", stateKey: "close and reopen" }
+      for (var k in others) if (k !== keyLine.key && others[k] === combo) return labels[k]
+      return ""
+    }
+
+    function stop() { recording = false; root.forceActiveFocus() }
+
+    Text {
+      anchors.left: parent.left
+      anchors.leftMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      text: keyLine.label
+      color: root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+    Row {
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(6)
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: keyLine.recording ? (keyLine.hint || "press keys…") : (keyLine.hint || (keyLine.current || "none"))
+        color: keyLine.recording || keyLine.hint ? root.accent : root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
       }
+
+      ActionButton {
+        text: keyLine.recording ? "Cancel" : "Record"
+        onClicked: {
+          keyLine.hint = ""
+          if (keyLine.recording) { keyLine.stop(); return }
+          keyLine.recording = true
+          catcher.forceActiveFocus()
+        }
+      }
+
+      ActionButton {
+        visible: keyLine.current !== "" && !keyLine.recording
+        text: "✕"
+        horizontalPadding: Style.space(6)
+        onClicked: { keyLine.hint = ""; root.set(keyLine.key, "") }
+      }
+    }
+
+    Item {
+      id: catcher
+      focus: keyLine.recording
+      Keys.onPressed: function(event) {
+        if (!keyLine.recording) return
+        event.accepted = true
+        if (event.key === KeyCombo.ESCAPE) { keyLine.hint = ""; keyLine.stop(); return }
+        var result = KeyCombo.combo(event.key, event.modifiers)
+        if (result.waiting) return
+        if (!result.combo) { keyLine.hint = result.reason; return }
+        var clash = keyLine.usedBy(result.combo)
+        if (clash) { keyLine.hint = result.combo + " is used by " + clash; return }
+        keyLine.hint = ""
+        root.set(keyLine.key, result.combo)
+        keyLine.stop()
+      }
+      onActiveFocusChanged: if (!activeFocus && keyLine.recording) keyLine.recording = false
     }
   }
 
   // Omarchy's ToggleSwitch, with the notch's colours and radius. `toggled`
-  // fires before `checked` changes, as ToggleSwitch's does.
+  // fires before `checked` changes, as ToggleSwitch's does. The knob settles
+  // on the controls' spring; a press dips to 0.97.
   component Switch: Item {
     id: toggle
     property bool checked: false
@@ -1112,9 +852,16 @@ Item {
     readonly property int knobInset: Math.max(1, Math.round((trackHeight - knobSize) / 2))
     implicitWidth: trackWidth
     implicitHeight: trackHeight
+    scale: switchMouse.pressed ? 0.97 : 1
+    Behavior on scale {
+      NumberAnimation {
+        duration: root.still ? 0 : switchMouse.pressed ? 60 : root.settleMs
+        easing.type: switchMouse.pressed ? Easing.OutCubic : Easing.BezierSpline
+        easing.bezierCurve: root.settleCurve
+      }
+    }
 
-    // Fills and outline are the text colour at the theme's alpha, never a
-    // colour the theme pinned in a style token (NotchButton.qml).
+    // Fills are the text colour at the theme's alpha (NotchButton.qml).
     readonly property string borderState: toggle.checked ? "selected" : (switchMouse.containsMouse ? "hover-cursor" : "normal")
     readonly property color trackColor: track.color
     readonly property color knobColor: knob.color
@@ -1127,7 +874,7 @@ Item {
       borderSpec: ({ color: Util.alpha(root.foreground, toggle.checked ? Style.selectedBorderAlpha : (switchMouse.containsMouse ? Style.hoverBorderAlpha : Style.normalBorderAlpha)),
                      widths: Border.controlSpec(toggle.borderState, root.foreground, root.foreground).widths,
                      gradient: { colors: [], angle: 0, enabled: false } })
-      Behavior on color { ColorAnimation { duration: 120 } }
+      Behavior on color { ColorAnimation { duration: root.still ? 0 : 90 } }
 
       Rectangle {
         id: knob
@@ -1137,8 +884,8 @@ Item {
         x: toggle.checked ? track.width - width - toggle.knobInset : toggle.knobInset
         anchors.verticalCenter: parent.verticalCenter
         color: toggle.checked ? root.foreground : Qt.darker(root.foreground, 1.25)
-        Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on x { NumberAnimation { duration: root.settleMs; easing.type: Easing.BezierSpline; easing.bezierCurve: root.settleCurve } }
+        Behavior on color { ColorAnimation { duration: root.still ? 0 : 90 } }
       }
     }
 
@@ -1148,30 +895,6 @@ Item {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: toggle.toggled()
-    }
-  }
-
-  component ItemChips: Row {
-    id: chips
-    property var selected: []
-    signal picked(string item)
-    spacing: Style.space(4)
-    Repeater {
-      model: [{ value: "clock", label: "Time" }, { value: "date", label: "Date" },
-              { value: "media", label: "Media" }, { value: "battery", label: "Battery" }]
-      NotchButton {
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
-        required property var modelData
-        text: modelData.label
-        selected: chips.selected.indexOf(modelData.value) !== -1
-        bordered: true
-        fontFamily: root.fontFamily
-        fontSize: Style.font.bodySmall
-        horizontalPadding: Style.space(7)
-        onClicked: chips.picked(modelData.value)
-      }
     }
   }
 }

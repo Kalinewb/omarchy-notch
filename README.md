@@ -447,12 +447,12 @@ from its exact distance to the resting notch's outline, the fillet arcs included
 So at the default 32 px reach: 0.35 up to 2.4 px, 0.18 at 8 px, 0.07 at 20 px, 0 from 32 px.
 Between those points the curve is a monotone cubic Hermite spline, with zero slope at both ends.
 
-The outline style draws that curve as soft as the bottom style: scaled to 0.24 at the edge instead
-of 0.35, same shape and reach (the table above is the curve at its full 0.35; multiply by 0.24 / 0.35
-for what is on screen). Along the top edge of the screen the glow does not stop at the fillet tip: it
-tapers outward, running three times as far along the edge as it reaches down, so it fades out instead
-of being cut off at its brightest (`edgeTail` 3 in `shaders/glow.frag`; below and beside the bar
-nothing changes). Neither is a setting. `dev/glow-fade.sh` checks both.
+The outline style is not that curve: it is a diffuse glow, a gaussian-like bell peaking at 0.16
+right at the notch's edge (no flat top, so no rim), reaching zero 1.6 times as far out as the reach
+above (`Glow.diffuse`, profile in `glow.js`). Along the top edge of the screen the glow does not stop
+at the fillet tip: it tapers outward, running three times as far along the edge as it reaches down,
+so it fades out instead of being cut off at its brightest (`edgeTail` 3 in `shaders/glow.frag`; below
+and beside the bar nothing changes). Neither is a setting. `dev/glow-fade.sh` checks both.
 
 | State | Colour |
 |---|---|

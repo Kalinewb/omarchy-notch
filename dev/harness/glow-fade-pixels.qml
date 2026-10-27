@@ -2,11 +2,11 @@ import QtQuick
 import QtQuick.Window
 import "notch" as Notch
 
-// glow-pixels.qml with `tail` (Glow.edgeTail) and `strength` (Glow.strength)
+// glow-pixels.qml with `tail` (Glow.edgeTail), `strength` (Glow.strength) and `diffuse` (Glow.diffuse)
 // as arguments, for dev/glow-fade.sh. A copy, so the pixel suites that freeze
 // the plain glow keep rendering the plain glow:
 //
-//   qml6 glow-fade-pixels.qml -- w=180 h=32 r=10 fillet=10 tail=3 strength=0.24 out=glow.png
+//   qml6 glow-fade-pixels.qml -- w=180 h=32 r=10 fillet=10 tail=3 strength=0.16 diffuse=1 out=glow.png
 Window {
   id: win
   visible: true
@@ -24,7 +24,7 @@ Window {
   }
   function num(key, fallback) { var n = Number(args[key]); return isFinite(n) && args[key] !== undefined ? n : fallback }
 
-  readonly property real margin: Math.ceil(glow.maxReach) + 30
+  readonly property real margin: Math.ceil(glow.maxReach * 3) + 30   // room for the tail
   width: Math.ceil(island.width + 2 * margin)
   height: Math.ceil(island.height + margin)
 
@@ -45,6 +45,7 @@ Window {
       size: win.num("size", 80)
       edgeTail: win.num("tail", 1)
       strength: win.num("strength", 0.35)
+      diffuse: win.num("diffuse", 0) > 0
     }
 
     Notch.Island {
@@ -69,7 +70,7 @@ Window {
       win.log("barX", island.x + island.barX)
       win.log("barWidth", island.barWidth)
       win.log("barHeight", island.barHeight)
-      win.log("reach", glow.reach)
+      win.log("reach", glow.drawReach)
       scene.grabToImage(function(result) {
         win.log("saved", result.saveToFile(win.args.out || "glow.png"))
         Qt.exit(0)

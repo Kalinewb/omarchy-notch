@@ -83,3 +83,51 @@ function uniforms(size) {
     m: Qt.vector4d(m[0] / k, m[1] / k, m[2] / k, m[3] / k)
   }
 }
+
+// A diffuse profile, for Glow.qml's `diffuse`: no plateau and no rim, a
+// gaussian-like bell that is brightest at the edge (zero slope there), falls
+// slowly at first and reaches zero smoothly at `size` px. Opacities are
+// fractions of the peak, which the caller sets. Same spline and same shader as
+// the curve above; only the knots differ.
+var softKnots = [
+  { d: 0, a: 1 },
+  { d: 0.3, a: 0.78 },
+  { d: 0.62, a: 0.34 },
+  { d: 1, a: 0 }
+]
+
+function softSlopes() {
+  var m = [0]
+  for (var i = 1; i < softKnots.length - 1; i++) {
+    var h0 = softKnots[i].d - softKnots[i - 1].d, h1 = softKnots[i + 1].d - softKnots[i].d
+    var s0 = (softKnots[i].a - softKnots[i - 1].a) / h0, s1 = (softKnots[i + 1].a - softKnots[i].a) / h1
+    m.push(s0 * s1 <= 0 ? 0 : 3 * (h0 + h1) / ((2 * h1 + h0) / s0 + (h1 + 2 * h0) / s1))
+  }
+  m.push(0)
+  return m
+}
+var softM = softSlopes()
+
+// Opacity at `d` px for a diffuse glow of peak `peak` reaching zero at `size`.
+function softAlpha(d, size, peak) {
+  var x = d / size
+  if (x <= 0) return peak
+  if (x >= 1) return 0
+  var i = 0
+  while (x > softKnots[i + 1].d) i++
+  var h = softKnots[i + 1].d - softKnots[i].d
+  var t = (x - softKnots[i].d) / h
+  var t2 = t * t, t3 = t2 * t
+  return peak * ((2 * t3 - 3 * t2 + 1) * softKnots[i].a + (t3 - 2 * t2 + t) * h * softM[i]
+       + (-2 * t3 + 3 * t2) * softKnots[i + 1].a + (t3 - t2) * h * softM[i + 1])
+}
+
+// ShaderEffect knots for a diffuse glow of peak `peak` reaching zero at `size`.
+function softUniforms(size, peak) {
+  var s = Number(size)
+  return {
+    d: Qt.vector4d(softKnots[0].d * s, softKnots[1].d * s, softKnots[2].d * s, softKnots[3].d * s),
+    a: Qt.vector4d(softKnots[0].a * peak, softKnots[1].a * peak, softKnots[2].a * peak, softKnots[3].a * peak),
+    m: Qt.vector4d(softM[0] * peak / s, softM[1] * peak / s, softM[2] * peak / s, softM[3] * peak / s)
+  }
+}

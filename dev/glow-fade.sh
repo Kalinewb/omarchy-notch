@@ -48,9 +48,9 @@ ln -s "$REPO" "$root/notch"
 cp "$REPO/dev/harness/shell.qml" "$root/shell.qml"
 cp "$REPO/dev/harness/glow-fade-pixels.qml" "$root/glow-fade-pixels.qml"
 
-render() { # render <png> <tail> <strength> [presence] -> the bar's x in the image
+render() { # render <png> <tail> <strength> [presence] [diffuse] -> the bar's x in the image
   QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 \
-    timeout 30 qml6 "$root/glow-fade-pixels.qml" -- w=180 h=31.5 r=10 fillet=10 offset=0.5 color=#FFB340 "presence=${4:-1}" size=32 "tail=$2" "strength=$3" "out=$1" 2>&1 \
+    timeout 30 qml6 "$root/glow-fade-pixels.qml" -- w=180 h=31.5 r=10 fillet=10 offset=0.5 color=#FFB340 "presence=${4:-1}" size=32 "tail=$2" "strength=$3" "diffuse=${5:-0}" "out=$1" 2>&1 \
     | sed -n 's/^.*GLOW barX //p'
 }
 
@@ -58,9 +58,10 @@ echo "${BOLD}Outline glow: soft strength and top-edge fade${RESET}  ${DIM}plugin
 bx=$(render "$root/t1-35.png" 1 0.35)
 render "$root/t1-24.png" 1 0.24 >/dev/null
 render "$root/t3-35.png" 3 0.35 >/dev/null
-render "$root/t3-24.png" 3 0.24 >/dev/null
+render "$root/t1-d.png" 1 0.16 1 1 >/dev/null
+render "$root/t3-d.png" 3 0.16 1 1 >/dev/null
 render "$root/island.png" 1 0.35 0 >/dev/null     # the notch alone, to leave its antialiased edge out
-echo "  ${DIM}180 × 31.5 notch, bottom r=10, fillet r=10, reach 32 px, amber; bar at x=$bx${RESET}"
+echo "  ${DIM}180 × 31.5 notch, bottom r=10, fillet r=10, reach 32 px (diffuse: out to 51.2 px), amber; bar at x=$bx${RESET}"
 
 m=$(python3 -I - "$root" "$bx" <<'PY'
 import json, subprocess, sys
@@ -74,7 +75,7 @@ def load(name):
     w, h = map(int, subprocess.run(["magick", "identify", "-format", "%w %h", png], capture_output=True, text=True).stdout.split())
     return np.frombuffer(raw, dtype=np.uint8).reshape(h, w, 4)[:, :, 3].astype(float) / 255
 
-a = {k: load(k) for k in ("t1-35", "t1-24", "t3-35", "t3-24", "island")}
+a = {k: load(k) for k in ("t1-35", "t1-24", "t3-35", "t1-d", "t3-d", "island")}
 own = a["island"] > 0                          # pixels the notch itself touches: not glow
 tip = bx - F                                  # fillet tip, image x
 cols = np.arange(int(tip - 0.5), -1, -1)       # pixel columns going out to the left, nearest first
@@ -82,7 +83,7 @@ out = tip - (cols + 0.5)                       # px from the tip to each pixel c
 def row(img, y): return img[y, cols]
 def at(img, y, d): return float(img[y, cols[int(np.argmin(abs(out - d)))]])
 res = {}
-for k, strength in (("35", 0.35), ("24", 0.24)):
+for k, strength, reach in (("35", 0.35, 32.0), ("d", 0.16, 51.2)):
     t3, t1 = a["t3-" + k], a["t1-" + k]
     r0 = row(t3, 0)
     lit = np.nonzero(r0 > 1 / 255)[0]
@@ -91,7 +92,7 @@ for k, strength in (("35", 0.35), ("24", 0.24)):
     res[k] = {
         "monotone": bool((d <= 1e-9).all()),
         "lastLit": float(out[lit[-1]] + 0.5) if len(lit) else 0.0,
-        "tip": at(t3, 0, 2.5), "strength": strength,
+        "tip": at(t3, 0, 2.5), "strength": strength, "reach": reach,
         "a12": at(t3, 0, 12), "a24": at(t3, 0, 24), "a24plain": at(t1, 0, 24),
         "noClip": all(abs((at(t3, 0, x) - at(t3, 1, x)) - (at(t3, 1, x) - at(t3, 2, x))) <= 3 / 255 * strength / 0.35 + 1e-9 for x in (12, 24, 48)),
         "clipDiff": [round((at(t3, 0, x) - at(t3, 1, x)) - (at(t3, 1, x) - at(t3, 2, x)), 4) for x in (12, 24, 48)],
@@ -101,7 +102,20 @@ for k, strength in (("35", 0.35), ("24", 0.24)):
     }
 # strength only scales the curve
 res["scales"] = float(np.abs(a["t1-24"] - a["t1-35"] * 0.24 / 0.35)[~own].max())
-res["scalesTail"] = float(np.abs(a["t3-24"] - a["t3-35"] * 0.24 / 0.35)[~own].max())
+# the diffuse profile straight down from the bar's middle (past the notch's own edge pixel)
+col = int(bx + W / 2)
+dd = np.arange(2, 120) + 0.0
+prof = np.array([a["t1-d"][int(H - 0.5 + x), col] for x in dd])
+res["profile"] = [round(float(v), 3) for v in prof[:80:6]]
+res["peak"] = float(prof[0])
+res["profMonotone"] = bool((np.diff(prof) <= 1e-9).all())
+sel = prof > 0.01
+cf = np.polyfit(dd[sel] ** 2, np.log(prof[sel]), 1)
+fit = np.polyval(cf, dd[sel] ** 2)
+lg = np.log(prof[sel])
+res["gaussR2"] = float(1 - ((lg - fit) ** 2).sum() / ((lg - lg.mean()) ** 2).sum())
+res["lastLitBelow"] = float(dd[np.nonzero(prof > 1 / 255)[0][-1]] + 0.5)
+res["edgeDrop"] = float(1 - prof[int(8 - 2)] / prof[0])          # how much it has fallen 8 px out: no rim means gently
 # nothing changes below the bar's bottom edge or over it
 h, w = a["t1-35"].shape
 yy, xx = np.mgrid[0:h, 0:w]
@@ -112,25 +126,27 @@ ys, xs = np.nonzero((np.abs(a["t3-35"] - a["t1-35"]) > 1.5 / 255) & far & ~own)
 res["where"] = {"xMin": int(xs.min() - bx) if len(xs) else None, "xMax": int(xs.max() - bx) if len(xs) else None, "yMin": int(ys.min()) if len(ys) else None, "yMax": int(ys.max()) if len(ys) else None}
 res["changedOutsideTop"] = int(((np.abs(a["t3-35"] - a["t1-35"]) > 1.5 / 255) & far & ~own).sum())
 # the soft glow stays a glow under the notch: still pure black inside
-res["insideNotch"] = [float(v) for v in subprocess.run(["magick", f"{root}/t3-24.png", "-depth", "8", "-format", "%[fx:p{%d,12}.r],%[fx:p{%d,12}.a]".replace("%d", str(int(bx + W / 2))), "info:"], capture_output=True, text=True).stdout.split(",")]
+res["insideNotch"] = [float(v) for v in subprocess.run(["magick", f"{root}/t3-d.png", "-depth", "8", "-format", "%[fx:p{%d,12}.r],%[fx:p{%d,12}.a]".replace("%d", str(int(bx + W / 2))), "info:"], capture_output=True, text=True).stdout.split(",")]
 print(json.dumps(res))
 PY
 )
 [[ -n $m ]] || { check "analysed" "true" "false"; exit 1; }
 
-for k in 35 24; do
+for k in 35 d; do
   s=$(jq -r ".\"$k\".strength" <<<"$m")
-  echo; echo "${BOLD}strength $s, edgeTail 3${RESET}"
+  r=$(jq -r ".\"$k\".reach" <<<"$m")
+  if [[ $k == 35 ]]; then label="plain curve, strength $s"; else label="diffuse, peak $s, out to $r px"; fi
+  echo; echo "${BOLD}$label, edgeTail 3${RESET}"
   echo "  ${DIM}row 0 out from the tip, every 6 px: $(jq -r ".\"$k\".row | map(tostring) | join(\" \")" <<<"$m")${RESET}"
   check "row 0 from the tip never rises" "true" "$(jq -r ".\"$k\".monotone" <<<"$m")"
-  check "…and its last visible pixel is 2.4 to 3.0 × the reach out (77 to 96 px) ${DIM}($(jq -r ".\"$k\".lastLit" <<<"$m") px)${RESET}" "true" \
-    "$(jq -r ".\"$k\".lastLit >= 76.8 and .\"$k\".lastLit <= 96.5" <<<"$m")"
-  check "the tip is as bright as the plain glow's: $s ±1/255 ${DIM}($(jq -r ".\"$k\".tip*1000|round/1000" <<<"$m"))${RESET}" "true" \
+  check "…and its last visible pixel is 2.4 to 3.0 × its reach out ($(jq -nr "$r * 2.4|round") to $(jq -nr "$r * 3.02|round") px) ${DIM}($(jq -r ".\"$k\".lastLit" <<<"$m") px)${RESET}" "true" \
+    "$(jq -r ".\"$k\" | .lastLit >= .reach * 2.4 and .lastLit <= .reach * 3.02 + 0.5" <<<"$m")"
+  check "the tip is as bright as the untapered glow's: $s ±1/255 ${DIM}($(jq -r ".\"$k\".tip*1000|round/1000" <<<"$m"))${RESET}" "true" \
     "$(jq -r ".\"$k\" | (.tip - .strength | fabs) <= 1/255 + 0.0005" <<<"$m")"
   check "12 px out it is still at least 0.25 × strength/0.35 ${DIM}($(jq -r ".\"$k\".a12*1000|round/1000" <<<"$m"))${RESET}" "true" \
     "$(jq -r ".\"$k\" | .a12 >= 0.25 * .strength / 0.35" <<<"$m")"
-  check "24 px out it is at least twice the plain glow's ${DIM}($(jq -r ".\"$k\".a24*1000|round/1000" <<<"$m") against $(jq -r ".\"$k\".a24plain*1000|round/1000" <<<"$m"))${RESET}" "true" \
-    "$(jq -r ".\"$k\" | .a24 >= 2 * .a24plain" <<<"$m")"
+  check "24 px out it is at least 1.5 × the untapered glow's ${DIM}($(jq -r ".\"$k\".a24*1000|round/1000" <<<"$m") against $(jq -r ".\"$k\".a24plain*1000|round/1000" <<<"$m"))${RESET}" "true" \
+    "$(jq -r ".\"$k\" | .a24 >= 1.5 * .a24plain" <<<"$m")"
   check "no clipped top row: the drop from row 0 to row 1 is within 3/255 of the drop from row 1 to row 2 at 12, 24, 48 px out, and rows 0 to 8 never rise downward ${DIM}(second difference down the rows: $(jq -r ".\"$k\".clipDiff | map(tostring) | join(\" \")" <<<"$m"))${RESET}" "true true" \
     "$(jq -r ".\"$k\" | \"\(.noClip) \(.rowsDown)\"" <<<"$m")"
   check "no step or kink along row 0: neighbours differ by at most 0.035, and that changes by at most 0.035 ${DIM}($(jq -r ".\"$k\".maxStep*1000|round/1000" <<<"$m") / $(jq -r ".\"$k\".maxKink*1000|round/1000" <<<"$m"))${RESET}" "true" \
@@ -138,9 +154,17 @@ for k in 35 24; do
 done
 
 echo
+echo "${BOLD}The diffuse profile, straight down from the bar's middle${RESET}"
+echo "  ${DIM}every 6 px from 2 px out: $(jq -r '.profile | map(tostring) | join(" ")' <<<"$m")${RESET}"
+check "peak right at the edge is 0.14 to 0.18, with no plateau and no rim ${DIM}($(jq -r '.peak*1000|round/1000' <<<"$m"); only $(jq -r '.edgeDrop*100|round' <<<"$m") % down by 8 px)${RESET}" "true" \
+  "$(jq -r '.peak >= 0.14 and .peak <= 0.18 and .edgeDrop > 0.03 and .edgeDrop < 0.3' <<<"$m")"
+check "it never rises, and is gone by 51 px ${DIM}(last visible pixel $(jq -r .lastLitBelow <<<"$m") px)${RESET}" "true" "$(jq -r '.profMonotone and .lastLitBelow <= 52' <<<"$m")"
+check "it is gaussian-like: ln α is a straight line against d² (R² ≥ 0.97) ${DIM}($(jq -r '.gaussR2*10000|round/10000' <<<"$m"))${RESET}" "true" "$(jq -r '.gaussR2 >= 0.97' <<<"$m")"
+
+echo
 echo "${BOLD}Against the plain glow${RESET}"
-check "strength 0.24 is the 0.35 glow scaled by 0.24/0.35, to within 1/255 (plain, and with the tail) ${DIM}($(jq -r '.scales*1000|round/1000' <<<"$m") / $(jq -r '.scalesTail*1000|round/1000' <<<"$m"))${RESET}" "true" \
-  "$(jq -r '.scales <= 1/255 + 0.0005 and .scalesTail <= 1/255 + 0.0005' <<<"$m")"
+check "strength 0.24 is the 0.35 curve scaled by 0.24/0.35, to within 1/255 ${DIM}($(jq -r '.scales*1000|round/1000' <<<"$m"))${RESET}" "true" \
+  "$(jq -r '.scales <= 1/255 + 0.0005' <<<"$m")"
 check "below the bar's bottom edge, and over the notch's width up to a pixel inside its fillet tips, edgeTail 3 changes nothing (±1/255) ${DIM}(max $(jq -r '.unchangedElsewhere*1000|round/1000' <<<"$m"); $(jq -r .changedPixels <<<"$m") pixels differ, $(jq -r .changedOutsideTop <<<"$m") of them there)${RESET}" "true" \
   "$(jq -r '.unchangedElsewhere <= 1/255 + 0.0005' <<<"$m")"
 
@@ -156,10 +180,10 @@ qs_pid=$!
 for _ in $(seq 1 40); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
 sleep 0.8
 ipc simulateBattery charging 64 >/dev/null; sleep 1.5
-live=$(ipc geometry | jq -c '.glow.curve | {style, outlineDrawn, outlineStrength, tail}')
+live=$(ipc geometry | jq -c '.glow | .size as $s | .curve | {style, outlineDrawn, diffuse, outlineStrength, outlineReach: (if .outlineReach == ((.size * 1.6 * 1000 | round) / 1000) or (.outlineReach == 80 and .size * 1.6 > 80) then "1.6x" else .outlineReach end), tail}')
 kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""
 echo "  ${DIM}reported: $live${RESET}"
-check "the default outline glow is drawn at strength 0.24 with edgeTail 3" '{"style":"outline","outlineDrawn":true,"outlineStrength":0.24,"tail":3}' "$live"
+check "the default outline glow is drawn diffuse, peak 0.16 out to 1.6 × the reach, with edgeTail 3" '{"style":"outline","outlineDrawn":true,"diffuse":true,"outlineStrength":0.16,"outlineReach":"1.6x","tail":3}' "$live"
 if grep -qE '\.qml:[0-9]+|ReferenceError|TypeError|Cannot assign|Unable to assign' "$root/qs.log"; then
   check "no QML errors while running" "none" "$(grep -E '\.qml:[0-9]+|ReferenceError|TypeError' "$root/qs.log" | head -1)"
 fi

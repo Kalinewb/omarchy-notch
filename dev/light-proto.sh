@@ -114,9 +114,9 @@ sheets() {
 
   # a 3x look at what the pixels do: the toast notch's lower-right corner at t = 2.5 s
   render "$work/crop.png" "$SCALE" style=notch w=360 h=110 palette=aurora t=2.5 tw=692 >/dev/null
-  magick "$work/crop.png" -crop 480x240+700+240 +repage -filter point -resize 300% "$OUT/crop-3x-aurora-notch-2.5s.png"
+  magick "$work/crop.png" -crop 480x240+640+60 +repage -filter point -resize 300% "$OUT/crop-3x-aurora-notch-2.5s.png"
   render "$work/crop2.png" "$SCALE" style=notch w=360 h=110 palette=aurora particles=0 t=2.5 tw=692 >/dev/null
-  magick "$work/crop2.png" -crop 480x240+700+240 +repage -filter point -resize 300% "$OUT/crop-3x-aurora-notch-2.5s-cloud-off.png"
+  magick "$work/crop2.png" -crop 480x240+640+60 +repage -filter point -resize 300% "$OUT/crop-3x-aurora-notch-2.5s-cloud-off.png"
   echo "  crop-3x-aurora-notch-2.5s.png (+ cloud off)"
 
   # 12 frames at 1/30 s from t = 2.0 s

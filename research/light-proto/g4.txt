@@ -1,0 +1,8 @@
+notch 180x32 (resting)       aurora    0.52 ms  (pairs 0.28 .. 0.67; hidden baseline 7.28 ms)
+notch 180x32 (resting)       white     0.24 ms  (pairs 0.00 .. 0.56; hidden baseline 6.95 ms)
+notch 360x110 (toast)        aurora    0.84 ms  (pairs 0.77 .. 0.95; hidden baseline 7.01 ms)
+notch 360x110 (toast)        white     0.26 ms  (pairs 0.17 .. 0.41; hidden baseline 7.06 ms)
+top 1800 wide                aurora    0.87 ms  (pairs 0.75 .. 1.00; hidden baseline 7.06 ms)
+top 1800 wide                white     0.16 ms  (pairs 0.06 .. 0.33; hidden baseline 7.17 ms)
+full 1800x1125 (four strips) aurora    3.92 ms  (pairs 2.76 .. 4.83; hidden baseline 12.59 ms)
+full 1800x1125 (four strips) white     1.09 ms  (pairs -0.04 .. 1.75; hidden baseline 14.46 ms)

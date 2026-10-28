@@ -1,0 +1,28 @@
+Shaders  every .qsb rebuilds byte for byte from its .frag
+  pass  shaders/glow.frag.qsb is what qsb --qt6 builds
+  pass  shaders/bottomglow.frag.qsb is what qsb --qt6 builds
+  pass  shaders/mono.frag.qsb is what qsb --qt6 builds
+  pass  shaders/notiflight.frag.qsb is what qsb --qt6 builds
+
+Maths  notiflight.js under node
+  pass  flow: E(0) = E(1) = 0 for 1000 random (h4, h5)  (max 0, 0)
+  pass  flow: E'(0) = E'(1) = 0  (max slope 0.0e+0, 0.0e+0)
+  pass  flow: E is continuous across the wrap for 2000 (s, d, t)  (max jump 3.0e-8)
+  note  Jacobian samples 19199: before the curl det in [0.746, 1.231], with it [0.727, 1.286]
+  pass  jacobian: before the curl, det = 1 - W T n phi' (the cross term cancels)  (max |measured - closed form| 1.0e-6)
+  pass  jacobian: before the curl, det within [0.7, 1.4]  (0.746 .. 1.231)
+  pass  jacobian: with the curl (A 6 px), det within [0.7, 1.4]  (0.727 .. 1.286)
+  note  speed samples 19201: peak grain speed 32.1 px/s = 0.54 px per 1/60 s; smallest grain radius 1 px
+  pass  speed: a grain moves under 0.75 r_min (0.75 px) per 1/60 s  (0.54 px per frame)
+
+Pixels  the cloud of the 180 x 32 notch, 4 cycles at 1/60 s, presence 1, scale 1
+    LIGHT size 6144x5220 tile 512x116 dpr 1
+    LIGHT saved true
+  pass  the same render twice is byte identical (530 frames)
+  {"additiveMinDelta":0,"addedOutsideBand":0,"bandPixels":46392,"fractionAbove2of255":0.209,"fractionAbove8of255":0.1649,"meanLight":983933.3,"lightRange":[0.785,1.282],"maxFrameChange":0.0191,"maxStretchChange":0.0581,"minCorrelation":0.934,"meanCorrelation":0.949}
+  pass  added light is zero outside the band, and never negative
+  pass  cloud on is never darker than cloud off
+  pass  no pop: total light changes by <= 3% per frame (0.0191), a 45 px stretch by <= 8% (0.0581)
+  pass  no static sparkle: frame-to-frame correlation >= 0.6 (min 0.934, mean 0.949)
+
+16 checks pass

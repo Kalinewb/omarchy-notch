@@ -375,23 +375,23 @@ Item {
         }
       }
 
+      // Why the list can't be acted on, when it can't. What the page installs
+      // (only the marketplace's verified commits) is the card's Install tip.
       Text {
         width: parent.width
         topPadding: Style.space(6)
-        wrapMode: Text.WordWrap
+        elide: Text.ElideRight
         textFormat: Text.PlainText
         text: {
           var b = root.bar
-          var lines = []
-          if (b && !b.pluginsCanAct) lines.push("Test notch: plugins aren't checked.")
-          else if (b && b.pluginsState && b.pluginsState.reason) lines.push(PluginsModel.reasonWords(b.pluginsState.reason, ""))
-          else if (b && b.pluginsState && b.pluginsState.shell === false) lines.push(PluginsModel.reasonWords("not-running", ""))
-          lines.push("Only these plugins can be installed here, each at the commit the marketplace verified. Anything that needs your password is set up in the plugin's own panel.")
-          return lines.join("\n")
+          if (b && !b.pluginsCanAct) return "Test notch: plugins aren't checked."
+          if (b && b.pluginsState && b.pluginsState.reason) return PluginsModel.reasonWords(b.pluginsState.reason, "")
+          if (b && b.pluginsState && b.pluginsState.shell === false) return PluginsModel.reasonWords("not-running", "")
+          return ""
         }
         color: root.secondary
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
       }
     }
 
@@ -437,7 +437,7 @@ Item {
 
       Text {
         width: parent.width
-        wrapMode: Text.WordWrap
+        elide: Text.ElideRight
         textFormat: Text.PlainText
         text: (card.install ? "Install " : card.removal ? "Remove " : "Update ") + card.name + "?"
         color: root.foreground
@@ -455,7 +455,7 @@ Item {
           if (card.install || card.removal || !card.ready)
             return root.repoName(card.url) + (card.removal ? "" : " · verified " + card.version + " (" + root.shortSha(card.pin) + ")")
           var n = Number(card.p.behind || 0), f = Number(card.p.files || 0)
-          return n + (n === 1 ? " commit" : " commits") + " · " + f + (f === 1 ? " file" : " files")
+          return n + " " + (n === 1 ? "commit" : "commits") + " · " + f + " " + (f === 1 ? "file" : "files")
             + ", +" + Number(card.p.insertions || 0) + " −" + Number(card.p.deletions || 0)
         }
         color: root.secondary
@@ -483,23 +483,14 @@ Item {
         textFormat: Text.PlainText
         text: {
           var lines = []
-          if (card.refused === "wrong-id" || card.refused === "bar-kind") {
-            return (card.refused === "wrong-id" ? "The verified commit isn't " + card.name + "."
-                                                : "The verified commit is a bar, not " + card.name + ".")
-              + (card.install ? " Nothing was installed." : " Nothing was updated.")
-          }
-          if (card.install) {
-            lines.push("Plugins run unsandboxed inside your shell. It's turned on when it lands.")
-          } else if (card.removal) {
-            lines.push("Its folder is deleted. You can install it again here.")
-          } else {
-            lines.push("Plugins run unsandboxed inside your shell.")
+          if (card.refused === "wrong-id" || card.refused === "bar-kind") return PluginsModel.reasonWords(card.refused, card.name)
+          // A removal says nothing here: its folder going is the Remove tip.
+          if (!card.removal) lines.push("Plugins run unsandboxed inside your shell.")
+          if (!card.install && !card.removal) {
             // The one surprise in the flow: a new name, a restart, a password.
-            if (card.p.renames === true)
-              lines.push("This renames " + card.name + " to " + card.pluginId + " and restarts the shell. "
-                + card.name + "'s Setup then asks for your password once, to update its system files.")
+            if (card.p.renames === true) lines.push("Renames " + card.name + ": asks a password later.")
             if (card.p.panelOpen === true) lines.push("Updating closes " + card.name + "'s panel.")
-            if (card.p.restartLikely === true) lines.push("The shell may need a restart to load every file.")
+            if (card.p.restartLikely === true) lines.push("The shell may need a restart.")
             if (card.p.pluginBusy === true) lines.push(PluginsModel.reasonWords("plugin-busy", card.name))
           }
           if (root.bar && root.bar.pluginJobRunning) lines.push(PluginsModel.reasonWords("busy", card.name))
@@ -574,6 +565,11 @@ Item {
             fontSize: Style.font.bodySmall
             horizontalPadding: Style.space(12)
             onClicked: root.bar.startPluginJob(root.confirm.token)
+
+            HoverHandler {
+              onHoveredChanged: hovered ? foot.want("confirm", "hover", card.removal ? "Deletes its folder; install it again here"
+                : card.install ? "Installs the commit the marketplace verified" : "Updates to the commit the marketplace verified") : foot.leave()
+            }
           }
         }
       }

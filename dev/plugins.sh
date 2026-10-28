@@ -357,7 +357,7 @@ catalogue "$sb/catalogue.json" omarchy-profiles "$fpin" "$ppin"
 out=$(np run install kalinewb.profiles "$st" 0123456789abcdef0123456789abcdef01234567); rc=$?
 check "install with a commit that isn't the pin (a stale card): changed, nothing installed, nothing in scratch" "1 changed false 0" \
   "$rc $(field .reason "$out") $(exists "$PD/kalinewb.profiles") $(scratch_left)"
-check "…and it says why in words" "true" "$(field '.message | contains("Open it again")' "$out")"
+check "…and it says why in words" "true" "$(field '.message | contains("reopen this card")' "$out")"
 
 chmod 000 "$sb/gh/omarchy-profiles.git"
 p=$(np preview kalinewb.profiles)

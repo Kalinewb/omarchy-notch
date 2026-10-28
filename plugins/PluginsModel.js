@@ -32,25 +32,25 @@ function reasonWords(reason, name) {
   var n = name || "The plugin"
   switch (reason) {
     case "catalogue": return "The notch's plugin list is invalid."
-    case "denied": return "That plugin can't be installed from the notch."
+    case "denied": return "Can't install that plugin here."
     case "unknown-id": return "That plugin isn't in the notch's list."
     case "sandbox": return "A test notch can't change plugins."
     case "locked": return "The session is locked."
-    case "busy": return "Another plugin job or a notch update is running."
+    case "busy": return "A plugin job or update is running."
     case "not-installed": return n + " isn't installed."
     case "already-installed": return n + " is already installed."
-    case "not-git": return n + " wasn't installed from git, so it can't update here."
+    case "not-git": return "Not from git: reinstall to update."
     case "wrong-origin": return n + " was installed from somewhere else."
     case "local-changes": return n + " has local changes."
-    case "plugin-busy": return n + " is busy. Try again when it has finished."
-    case "changed": return "The notch was updated while this card was open. Open it again."
-    case "wrong-id": return "The verified commit isn't " + n + ", so nothing changed."
-    case "bar-kind": return "The verified commit is a bar, not " + n + ", so nothing changed."
-    case "renamed": return n + " is installed under its old name. Update it instead."
-    case "rename": return n + " was updated, but its rename didn't finish. Setup can finish it."
-    case "invalid": return "The verified " + n + " didn't validate here, so it stays as it was."
-    case "newer": return n + " is newer than the verified version, so it stays as it is."
-    case "not-started": return "It didn't start. Another plugin job or a notch update may be running."
+    case "plugin-busy": return n + " is busy: try again soon."
+    case "changed": return "Notch updated: reopen this card."
+    case "wrong-id": return "Verified commit isn't " + n + ": nothing changed."
+    case "bar-kind": return "Verified commit is a bar, not " + n + "."
+    case "renamed": return n + " has its old name: update it."
+    case "rename": return "Rename unfinished: open Setup."
+    case "invalid": return "Verified " + n + " didn't validate: left alone."
+    case "newer": return "Newer than verified: left alone."
+    case "not-started": return "Didn't start: another job may be running."
     case "command": return "The command failed."
     case "stopped": return "Stopped without finishing."
     case "offline": return "Couldn't reach GitHub."
@@ -67,6 +67,11 @@ function busyWords(action) {
 // "Update to 1.4.0…", or "Update…" when the catalogue names no version.
 function updateLabel(e) {
   return e.pinVersion ? "Update to " + e.pinVersion + "…" : "Update…"
+}
+
+// The non-empty parts of a state line, a middle dot between them.
+function joinWords(parts) {
+  return parts.filter(function(p) { return p !== "" }).join(" · ")
 }
 
 function entryView(entry, job, now, options) {
@@ -110,14 +115,12 @@ function entryView(entry, job, now, options) {
       act("remove", "Remove…", false)
       break
     case "disabled":
-      words = "Installed, turned off" + (e.relation === "behind" ? " · verified update ready" : "")
-      if (setupDue) words += ". Turn it on to set it up."
+      words = joinWords(["Installed, turned off", e.relation === "behind" ? "Verified update ready" : "", setupDue ? "Turn on to set up" : ""])
       if (e.relation === "behind") act("update", updateLabel(e), false, !e.pluginBusy)
       act("enable", "Enable", true)
       break
     case "update-available":
-      words = "Verified update ready" + (e.renames ? " · renames it " + id : "")
-      if (e.pluginBusy) words += " · busy"
+      words = joinWords(["Verified update ready", e.renames ? "Renames to " + id : "", e.pluginBusy ? "Busy" : ""])
       act("remove", "Remove…", false)
       act("update", updateLabel(e), true, !e.pluginBusy)
       break
@@ -135,7 +138,7 @@ function entryView(entry, job, now, options) {
 
   // An enabled plugin that says it needs setting up: its own panel, primary.
   if (e.enabled && setupDue && view.state !== "disabled") {
-    words += e.setup === "attention" ? " · needs attention" : " · needs setup"
+    words = joinWords([words, e.setup === "attention" ? "Needs attention" : "Needs setup"])
     for (var i = 0; i < actions.length; i++) actions[i].primary = false
     act("setup", "Open setup", true)
   }
@@ -176,5 +179,26 @@ function selfView(self, update) {
     id: id, name: String(s.name || "Notch"), version: String(s.version || ""),
     state: "self", words: String(u.words || "This notch."),
     actions: actions
+  }
+}
+
+// Where the notch's own updates stand, in words: its row's line. `check` is
+// bin/notch-update's answer, `notice` the update notice's state.
+function updateWords(check, enabled, notice) {
+  if (!enabled) return "This notch doesn't update itself."
+  if (notice === "updating") return "Updating…"
+  var c = check || {}
+  var version = c.localVersion ? " (" + c.localVersion + ")" : ""
+  switch (c.state) {
+    case "unchecked": return "Not checked yet" + version + "."
+    case "current": return "Up to date" + version + "."
+    case "available": return (c.remoteVersion && c.remoteVersion !== c.localVersion
+      ? c.remoteVersion : (c.behind === 1 ? "1 change" : c.behind + " changes")) + " available."
+    case "ahead": return "Ahead of GitHub (a development install)."
+    case "diverged": return "Differs from GitHub: update by hand."
+    case "dirty": return "Local edits: update by hand."
+    case "not-git": return "Not a git install."
+    case "offline": return "Couldn't reach GitHub."
+    default: return "Couldn't check for updates."
   }
 }

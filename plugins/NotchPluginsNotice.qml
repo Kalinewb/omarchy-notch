@@ -50,13 +50,32 @@ Item {
   readonly property bool canEnable: !!entry && entry.installed === true && entry.enabled !== true
   readonly property bool stopped: job.phase === "running"
 
-  readonly property string title: notice === "running"
-      ? ({ update: "Updating ", enable: "Turning on ", remove: "Removing " }[action] || "Installing ") + name + "…"
-    : notice === "done"
-      ? name + ({ update: " updated", enable: " turned on", remove: " removed" }[action] || " installed")
-    : notice === "failed"
-      ? "Couldn't " + ({ update: "update ", enable: "turn on ", remove: "remove " }[action] || "install ") + name
-    : ""
+  readonly property string title: {
+    switch (notice) {
+      case "running":
+        switch (action) {
+          case "update": return "Updating " + name + "…"
+          case "enable": return "Turning on " + name + "…"
+          case "remove": return "Removing " + name + "…"
+        }
+        return "Installing " + name + "…"
+      case "done":
+        switch (action) {
+          case "update": return name + " updated"
+          case "enable": return name + " turned on"
+          case "remove": return name + " removed"
+        }
+        return name + " installed"
+      case "failed":
+        switch (action) {
+          case "update": return "Couldn't update " + name
+          case "enable": return "Couldn't turn on " + name
+          case "remove": return "Couldn't remove " + name
+        }
+        return "Couldn't install " + name
+    }
+    return ""
+  }
   readonly property string detail: notice === "done" && action !== "remove" ? (job.version ? String(job.version) : shortSha(job.to)) : ""
   readonly property string line: {
     if (notice === "running") {
@@ -73,18 +92,18 @@ Item {
       }
     }
     if (notice === "done") {
-      if (setupDue) return name + " needs setting up in its own panel."
+      if (setupDue) return name + " needs setup: open its panel."
       if (canEnable) return "It's installed but turned off."
       if (job.restartSuggested === true) return "Restart the shell to load every file."
       if (action === "remove") return "You can install it again from Plugins."
-      if (job.renamed === true) return "Renamed. The shell restarts to load it."
+      if (job.renamed === true) return "Renamed: the shell restarts to load it."
       return job.to ? "Pinned to the verified version, " + shortSha(job.to) + "." : ""
     }
     if (notice === "failed") {
       if (stopped) return PluginsModel.reasonWords("stopped", name)
       if (job.reason === "command" && job.message) return String(job.message)
       // A folder moved aside is named, for deleting by hand.
-      if (job.movedTo) return PluginsModel.reasonWords(job.reason, name) + " Moved to " + String(job.movedTo) + "."
+      if (job.movedTo) return PluginsModel.reasonWords(job.reason, name).replace(/\.$/, "") + ": moved to " + String(job.movedTo)
       return PluginsModel.reasonWords(job.reason, name)
     }
     return ""

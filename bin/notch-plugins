@@ -543,7 +543,7 @@ run() {
   # A card opened before the notch moved its pins would install or update to
   # a commit the notch no longer vouches for.
   [[ $action == enable || $action == remove || $sha == "$PIN" ]] \
-    || fail changed "The notch was updated while this card was open. Open it again."
+    || fail changed "Notch updated: reopen this card."
 
   case $action in
     install) run_install ;;

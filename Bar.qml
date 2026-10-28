@@ -2231,31 +2231,9 @@ Item {
                                                              checking: pluginsStateProcess.running })
     })
   }
-  // Where the notch's own updates stand, in words. The settings panel used to
-  // own this sentence; it belongs with the thing it describes, on the Plugins
-  // page, where the notch is listed beside the plugins it is updated like.
-  readonly property string updateWords: {
-  if (!updatesEnabled) return "This notch doesn't update itself."
-  if (updateNotice === "updating") return "Updating…"
-  var c = updateCheckResult || {}
-  var version = c.localVersion ? " (" + c.localVersion + ")" : ""
-  switch (c.state) {
-    case "unchecked": return "Not checked yet" + version + "."
-    case "current": return "Up to date" + version + "."
-    case "available": return (c.remoteVersion && c.remoteVersion !== c.localVersion
-      ? c.remoteVersion : (c.behind === 1 ? "1 change" : c.behind + " changes")) + " available."
-    case "ahead": return "Ahead of GitHub (a development install)."
-    case "diverged": return "Differs from GitHub: update by hand."
-    case "dirty": return "The plugin folder has local edits: update by hand."
-    case "not-git": return "Not a git install, so it can't update itself."
-    case "offline": return "Couldn't reach GitHub."
-    default: return "Couldn't check for updates."
-  }
-  }
-
   readonly property var pluginsSelfView: PluginsModel.selfView(
     Object.assign({}, (pluginsCatalogue || {}).self || {}, (pluginsState || {}).self || {}),
-    { state: (updateCheckResult || {}).state || "unchecked", words: updateWords,
+    { state: (updateCheckResult || {}).state || "unchecked", words: PluginsModel.updateWords(updateCheckResult, updatesEnabled, updateNotice),
       checking: updateCheckRunning, canCheck: updatesEnabled,
       canUpdate: updateNotice === "" && !pluginJobRunning, busy: pluginJobRunning })
   readonly property var pluginsJobEntry: {

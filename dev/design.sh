@@ -82,8 +82,9 @@ echo "${BOLD}One radius${RESET}  ${DIM}Hyprland rounding now: $(hyprctl -j getop
 for r in ${RADII:-10 8 3 16}; do
   echo; echo "${BOLD}bottomRadius $r${RESET}"
   start "{\"bottomRadius\":$r,\"batteryPeek\":false}"
-  # Open both panels once so every delegate exists at its real size.
-  ipc settings >/dev/null; sleep 0.9; ipc settings >/dev/null
+  # Open both panels once so every delegate exists at its real size: the
+  # settings with Advanced open, the nine main rows alone draw too few.
+  ipc settings >/dev/null; sleep 0.9; ipc settingsPress advanced >/dev/null; sleep 0.5; ipc settings >/dev/null
   ipc menu root >/dev/null; sleep 1.1
   d=$(ipc design)
   ipc menu root >/dev/null

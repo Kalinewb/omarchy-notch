@@ -16,10 +16,14 @@
 #       file that only shrinks; the default view fits without scrolling
 #   3   the tips: one per row id, short, one sentence, none that repeats its label
 #   4   Advanced is closed on open, opens on press, and is closed again on reopen
+#   5   the foot line: its delays (parsed from NotchTip.qml), when a tip pends,
+#       shows, swaps and goes, that it never moves the panel, and fits all 28
 #   6   the state on the right, and the merged rows' one write each
 #   7   the keys the panel has no row for still work, still change, and survive
 #       a write -- true of the panel as it was before the rows moved
 #   8   every key the notch reads is decided: on a row, or listed as rowless
+#   9   the keyboard: the row cursor on all six controls, Escape's order, the
+#       recorder suspending it, the cursor row always inside the view
 #   11  the settings panel's height is the one thing the contract may change
 
 set -uo pipefail
@@ -260,6 +264,140 @@ settle '.panel.lastWrite.suppressNativeToast == true' || true
 check "setNotchSettings writes its keys in one write" "$((before + 1))" "$(TARGET=settingstest ipc writes)"
 check "…as one lastWrite object with exactly those keys" '{"notifications":true,"suppressNativeToast":true}' "$(report | jq -c .panel.lastWrite)"
 check "…leaving the others as they were" "36 12 false" "$(TARGET=settingstest ipc config | jq -r '"\(.compactHeight) \(.criticalBattery) \(.windowsToTop)"')"
+stop
+
+# ---------------------------------------------------------------------------
+# 5  The foot line
+# ---------------------------------------------------------------------------
+echo; echo "${BOLD}5  Tip state${RESET}"
+TIP="$REPO/NotchTip.qml"
+delay() { sed -nE "s/^ *readonly property int $1: ([0-9]+).*/\1/p" "$TIP"; }
+check "the delays in NotchTip.qml: hover 400, focus 250, hide 120, fade 90 ms" "400 250 120 90" "$(delay hoverMs) $(delay focusMs) $(delay hideMs) $(delay fadeMs)"
+check "…the fade is opacity only: no Behavior on x, y, width or height, no wrapped text" "0 1 1 0" \
+  "$(grep -cE 'Behavior on (x|y|width|height)' "$TIP" || true) $(grep -c 'Behavior on opacity { NumberAnimation { duration: tip.fadeMs' "$TIP" || true) $(grep -c 'Behavior' "$TIP" || true) $(grep -c wrapMode "$TIP" || true)"
+check "…and the foot is one reserved line of space(24), in the panel" "1" "$(grep -c 'readonly property real footHeight: Style.space(24)' "$SRC" || true)"
+start '{"batteryPeek":false}'
+open_panel || true; sleep 0.3
+tip() { report | jq -r "$1"; }
+tipof() { python3 - "$REPO/settings-tips.js" "$1" <<'PY'
+import re, sys
+print(dict(re.findall(r'^\s+(\w+):\s+"(.*)",?\s*$', open(sys.argv[1]).read(), re.M))[sys.argv[2]])
+PY
+}
+without=$(report)
+for _ in 1 2 3; do ipc settingsPress key:down >/dev/null; done
+check "key:down three times: the third row is pending from the keyboard" "true glow focus" "$(tip '.panel.tip | "\(.pending) \(.id) \(.source)"')"
+settle '.panel.tip.shown == true' || true
+check "…then shown with that row's text" "true focus $(tipof glow)" "$(tip '.panel.tip | "\(.shown) \(.source) \(.text)"')"
+ipc settingsPress key:down >/dev/null
+check "…and the next row swaps it at once" "true openWith $(tipof openWith)" "$(tip '.panel.tip | "\(.shown) \(.id) \(.text)"')"
+ipc settingsPress key:escape >/dev/null
+ipc settingsPress hover:atRest >/dev/null
+check "hover:atRest: pending at once, not yet shown" "true false hover" "$(tip '.panel.tip | "\(.pending) \(.shown) \(.source)"')"
+settle '.panel.tip.shown == true' || true
+check "…then shown with the row's text, from the pointer" "false true hover atRest $(tipof atRest)" "$(tip '.panel.tip | "\(.pending) \(.shown) \(.source) \(.id) \(.text)"')"
+ipc settingsPress hover:width >/dev/null
+check "hover:width swaps the text at once, still shown" "true width $(tipof width)" "$(tip '.panel.tip | "\(.shown) \(.id) \(.text)"')"
+check "the foot is as tall with a tip as without, the list did not move, and the foot sits below it" "true true true" \
+  "$(jq -rn --argjson a "$without" --argjson b "$(report)" '"\($a.panel.footHeight == $b.panel.footHeight and $a.panel.footHeight > 0) \($a.panel.viewHeight == $b.panel.viewHeight and $a.panel.contentHeight == $b.panel.contentHeight) \($b.panel.footTop >= $b.panel.viewBottom)"')"
+check "the tip is drawn in the notch's secondary text colour" "$(ipc geometry | jq -r .colours.secondary)" "$(tip .panel.tip.color)"
+ipc settingsPress unhover >/dev/null
+settle '.panel.tip.shown == false' || true
+check "unhover: gone, nothing pending" "false false" "$(tip '.panel.tip | "\(.pending) \(.shown)"')"
+cut=""
+for id in $ROWS; do
+  ipc settingsPress hover:$id >/dev/null
+  settle ".panel.tip.shown == true and .panel.tip.id == \"$id\"" || true
+  sleep 0.1
+  [[ $(tip .panel.tip.truncated) == false ]] || cut+="$id "
+done
+check "all 28 tips fit on the line, none is cut off" "" "$cut"
+stop
+
+# ---------------------------------------------------------------------------
+# 9  The keyboard
+# ---------------------------------------------------------------------------
+echo; echo "${BOLD}9  Keyboard${RESET}"
+start '{"batteryPeek":false}'
+open_panel || true; sleep 0.3
+miss=""
+# Press a key; the cursor must come to rest on <row>, inside the view.
+move() {
+  ipc settingsPress "key:$1" >/dev/null
+  settle ".panel.cursor == \"$2\" and .panel.cursorTop >= -0.5 and .panel.cursorBottom <= .panel.viewHeight + 0.5" || miss+="$1:$2(got $(tip .panel.cursor)) "
+}
+MAIN="atRest autoHide glow openWith opensTo notifications notifyLight menu volume"
+for id in $MAIN advanced; do move down $id; done
+check "Down walks the nine main rows and reaches the Advanced line, each inside the view" "" "$miss"
+ipc settingsPress key:space >/dev/null
+settle '.panel.advanced.open == true' || true
+check "Space on the Advanced line opens it" "true" "$(tip .panel.advanced.open)"
+miss=""
+ADV="width onHover hidden openRow corners notifyTime lightColours peeks glowSize greenAbove lowBelow keybinds stayOpen windowsToTop updateCheck reset"
+for id in $ADV; do move down $id; done
+check "…and Down goes on through its 16 rows to the last, scrolling to keep each in the view" "" "$miss"
+check "…the list did scroll" "true" "$(tip '.panel.contentHeight > .panel.viewHeight')"
+miss=""
+for id in updateCheck windowsToTop stayOpen keybinds lowBelow greenAbove glowSize peeks lightColours notifyTime corners openRow hidden onHover width advanced volume; do move up $id; done
+check "Up walks back to the Advanced line and the main rows" "" "$miss"
+act() { # act <key> <lastWrite> <what>
+  ipc settingsPress "key:$1" >/dev/null
+  settle ".panel.lastWrite == $2" || true
+  check "$3" "$2" "$(report | jq -c .panel.lastWrite)"
+}
+ipc settingsPress hover:autoHide >/dev/null
+check "the pointer moves the cursor to its row" "autoHide" "$(tip .panel.cursor)"
+act space '{"autoHide":true}' "Space flips a Switch"
+act return '{"autoHide":false}' "…and Enter flips it back"
+ipc settingsPress hover:atRest >/dev/null
+ipc settingsPress key:space >/dev/null
+settle '.panel.rows[] | select(.id == "atRest") | .open == true' || true
+check "Space opens a PickMany, the cursor on its first option" "true 0" "$(tip '"\(.panel.rows[] | select(.id == "atRest") | .open) \(.panel.cursorSub)"')"
+ipc settingsPress key:right >/dev/null
+check "Right walks to the next option" "1" "$(tip .panel.cursorSub)"
+act space '{"compact":["date"]}' "Space chooses it, and the PickMany stays open"
+ipc settingsPress key:left >/dev/null
+act return '{"compact":["clock","date"]}' "Left and Enter choose the one before"
+ipc settingsPress key:escape >/dev/null
+settle '.panel.rows[] | select(.id == "atRest") | .open == false' || true
+check "Escape closes the open Pick" "false true" "$(tip '"\(.panel.rows[] | select(.id == "atRest") | .open) \(.panel.open)"')"
+ipc settingsPress hover:glow >/dev/null
+ipc settingsPress key:space >/dev/null
+ipc settingsPress key:right >/dev/null; ipc settingsPress key:right >/dev/null
+act space '{"batteryGlow":true,"glowStyle":"bottom"}' "a Pick takes the option Right walked to"
+settle '.panel.rows[] | select(.id == "glow") | .open == false' || true
+check "…and folds shut" "false" "$(tip '.panel.rows[] | select(.id == "glow") | .open')"
+ipc settingsPress hover:width >/dev/null
+act right '{"compactWidth":190}' "Right steps a Stepper up"
+act left '{"compactWidth":180}' "…and Left steps it down"
+ipc settingsPress hover:keybinds >/dev/null
+ipc settingsPress key:space >/dev/null
+ipc settingsPress key:space >/dev/null
+settle '.panel.recorder == true' || true
+check "Space on the Keybinds row opens it, and Space again starts a recorder" "true" "$(tip .panel.recorder)"
+ipc settingsPress key:down >/dev/null; ipc settingsPress key:right >/dev/null; ipc settingsPress key:space >/dev/null
+check "while it listens, Down, Right and Space do nothing: the cursor and the recorder stay" "keybinds 0 true" "$(tip '"\(.panel.cursor) \(.panel.cursorSub) \(.panel.recorder)"')"
+ipc settingsPress key:escape >/dev/null
+settle '.panel.recorder == false' || true
+check "Escape stops only the recording: the panel and the row are as they were" "false true keybinds" "$(tip '"\(.panel.recorder) \(.panel.open) \(.panel.cursor)"')"
+ipc settingsPress key:escape >/dev/null
+ipc settingsPress hover:reset >/dev/null
+ipc settingsPress key:space >/dev/null
+sleep 0.3
+cfg=$(TARGET=settingstest ipc config)
+check "Space presses a Button: Reset ran, and the settings are gone" "true" "$([[ $cfg != *autoHide* && $cfg != *glowStyle* ]] && echo true || echo false)"
+ipc settingsPress hover:atRest >/dev/null
+ipc settingsPress key:space >/dev/null
+ipc settingsPress hover:glow >/dev/null
+settle '.panel.tip.shown == true' || true
+ipc settingsPress key:escape >/dev/null
+check "Escape first closes the tip: the Pick and the panel stay" "false true true" "$(tip '"\(.panel.tip.shown) \(.panel.rows[] | select(.id == "atRest") | .open) \(.panel.open)"')"
+ipc settingsPress key:escape >/dev/null
+settle '.panel.rows[] | select(.id == "atRest") | .open == false' || true
+check "…then the open Pick, the panel still open" "false true" "$(tip '"\(.panel.rows[] | select(.id == "atRest") | .open) \(.panel.open)"')"
+ipc settingsPress key:escape >/dev/null
+settle '.panel.open == false' || true
+check "…then the panel" "false" "$(tip .panel.open)"
 stop
 
 # ---------------------------------------------------------------------------

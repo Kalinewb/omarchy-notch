@@ -17,20 +17,20 @@
 #       across two `+`-joined literals, a 45-character title and a stale
 #       allowlist entry are flagged; a 7-word string and an allowlisted one pass
 #   5   none of the strings the diet removed is back in dev/, bin/ or README.md
-#   6   wiki/*.md: relative links resolve, Home.md lists every page, the 13 pages
-#       exist (the wiki is plan-wizard.md phase 2: skipped until wiki/ exists)
+#   6   wiki/*.md: the 13 pages exist and nothing else is there, Home.md lists
+#       every page, every relative link and anchor resolves, no image and no
+#       curl piped to a shell, the README links Home; the check can fail
 
 set -uo pipefail
 
 GREEN=$'\e[32m'; RED=$'\e[31m'; DIM=$'\e[2m'; BOLD=$'\e[1m'; RESET=$'\e[0m'
 REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-failures=0; checks=0; skipped=0
+failures=0; checks=0
 check() { # check <description> <expected> <actual>
   checks=$((checks + 1))
   if [[ $2 == "$3" ]]; then echo "  ${GREEN}pass${RESET}  $1"
   else echo "  ${RED}FAIL${RESET}  $1 ${DIM}(expected '$2', got '$3')${RESET}"; failures=$((failures + 1)); fi
 }
-skip() { skipped=$((skipped + 1)); echo "  ${DIM}skip${RESET}  $1"; }
 
 PY="$REPO/dev/strings.py"
 ALLOW="$REPO/dev/strings-allow.txt"
@@ -135,29 +135,80 @@ check "…and the check can fail: one put back in bin/ is found" "bin/script" \
 # ---------------------------------------------------------------------------
 echo; echo "${BOLD}6  The wiki${RESET}"
 PAGES="Home Getting-started Settings Plugins Setup-points Integrations Notifications Menu Lock-and-Face Profiles Corners Troubleshooting Export-and-import"
-if [[ ! -d $REPO/wiki ]]; then
-  skip "wiki/ does not exist yet: pages, Home and links wait for plan-wizard.md phase 2"
-else
-  missing=""; for p in $PAGES; do [[ -f $REPO/wiki/$p.md ]] || missing+="$p "; done
-  check "the 13 pages exist" "" "$missing"
-  check "no page beyond the 13" "13" "$(find "$REPO/wiki" -maxdepth 1 -name '*.md' | wc -l)"
-  unlisted=""; for p in $PAGES; do [[ $p == Home ]] || grep -q "($p.md)" "$REPO/wiki/Home.md" 2>/dev/null || unlisted+="$p "; done
-  check "Home.md lists every other page" "" "$unlisted"
-  broken=$(python3 - "$REPO/wiki" <<'PY'
+
+# wiki_problems <wiki dir>: one problem per line (none when the wiki is sound).
+# Pages and Home; every relative link resolves, anchors too (GitHub's slugs, and
+# a link into another .md file of the repo); no image, no `curl | sh`, no <word> that GitHub would hide as HTML, nothing
+# in wiki/ but the 13 .md files. Links and headings inside code are not read.
+wiki_problems() {
+  python3 - "$1" "$PAGES" <<'PY'
 import os, re, sys
-root = sys.argv[1]
+root, pages = sys.argv[1], sys.argv[2].split()
 bad = []
-for name in sorted(os.listdir(root)):
+files = sorted(os.listdir(root)) if os.path.isdir(root) else []
+for p in pages:
+    if p + ".md" not in files: bad.append(f"missing page {p}")
+for f in files:
+    if f.endswith(".md") and f[:-3] not in pages: bad.append(f"extra page {f}")
+    if not f.endswith(".md"): bad.append(f"not a page: {f}")
+def text_of(path):
+    t = open(path, encoding="utf-8").read()
+    return re.sub(r"```.*?```", lambda m: "\n" * m.group(0).count("\n"), t, flags=re.S)
+def slugs(path):
+    out, seen = set(), {}
+    for h in re.findall(r"^#{1,6}\s+(.+?)\s*#*\s*$", text_of(path), flags=re.M):
+        h = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", h).replace("`", "").lower()
+        s = re.sub(r"[^\w\- ]", "", h).replace(" ", "-")
+        n = seen.get(s, 0); seen[s] = n + 1
+        out.add(s if n == 0 else f"{s}-{n}")
+    return out
+home = os.path.join(root, "Home.md")
+if os.path.isfile(home):
+    h = open(home, encoding="utf-8").read()
+    for p in pages:
+        if p != "Home" and f"({p}.md)" not in h: bad.append(f"Home does not list {p}")
+for name in files:
     if not name.endswith(".md"): continue
-    for target in re.findall(r"\]\(([^)#\s]+)(?:#[^)]*)?\)", open(os.path.join(root, name), encoding="utf-8").read()):
-        if re.match(r"[a-z]+:", target): continue
-        if not os.path.exists(os.path.normpath(os.path.join(root, target))): bad.append(f"{name}->{target}")
-print(" ".join(bad))
+    raw = open(os.path.join(root, name), encoding="utf-8").read()
+    if re.search(r"!\[[^\]]*\]\(", raw): bad.append(f"{name}: image")
+    if re.search(r"<img\b", raw, re.I): bad.append(f"{name}: image")
+    if re.search(r"<[A-Za-z/][^>]*>", re.sub(r"`[^`\n]*`", "", text_of(os.path.join(root, name)))): bad.append(f"{name}: angle brackets read as HTML")
+    if re.search(r"curl[^\n]*\|\s*(su[d]o\s+)?(ba|z)?sh\b", raw): bad.append(f"{name}: curl piped to a shell")
+    body = re.sub(r"`[^`\n]*`", "", text_of(os.path.join(root, name)))
+    for target in re.findall(r"\]\(([^)\s]+)\)", body):
+        if re.match(r"[a-z][a-z0-9+.-]*:", target): continue
+        path, _, frag = target.partition("#")
+        dest = os.path.normpath(os.path.join(root, path)) if path else os.path.join(root, name)
+        if not os.path.exists(dest): bad.append(f"{name}->{target}"); continue
+        if frag and dest.endswith(".md") and frag not in slugs(dest): bad.append(f"{name}->{target} (no such heading)")
+print("\n".join(bad))
 PY
-)
-  check "every relative link resolves" "" "$broken"
-fi
+}
+
+check "the wiki folder exists" "true" "$([[ -d $REPO/wiki ]] && echo true || echo false)"
+problems=$(wiki_problems "$REPO/wiki")
+check "the 13 pages exist and no other file is in wiki/" "" "$(grep -E '^(missing page|extra page|not a page)' <<<"$problems" | paste -sd';')"
+check "Home.md lists every other page" "" "$(grep -E '^Home does not' <<<"$problems" | paste -sd';')"
+check "every relative link and anchor resolves" "" "$(grep -E -- '->' <<<"$problems" | paste -sd';')"
+check "no image, no curl piped to a shell, no <word> GitHub would hide" "" "$(grep -E ': (image|curl|angle)' <<<"$problems" | paste -sd';')"
+check "the README links the wiki's Home" "true" \
+  "$(grep -q 'https://github.com/Kalinewb/omarchy-notch/blob/master/wiki/Home.md' "$REPO/README.md" && echo true || echo false)"
+
+# The check can fail: a fixture wiki with one of each fault.
+fxw="$work/wiki"; mkdir -p "$fxw"
+for p in $PAGES; do printf '# %s\n\n## Heading\n' "$p" >"$fxw/$p.md"; done
+{ echo "# Home"; for p in $PAGES; do [[ $p == Home || $p == Corners ]] || echo "- [$p]($p.md)"; done; } >"$fxw/Home.md"
+printf '# Plugins\n\n## Heading\n[gone](Nowhere.md) [bad](Menu.md#no-such) [ok](Menu.md#heading) [self](#heading)\n![pic](a.png)\nRun `curl x | sh` now <hidden> text\n' >"$fxw/Plugins.md"
+rm "$fxw/Troubleshooting.md"; echo x >"$fxw/Extra.md"; echo x >"$fxw/shot.png"
+fxp=$(wiki_problems "$fxw")
+check "…and it can fail: a missing page is found" "true" "$(grep -q 'missing page Troubleshooting' <<<"$fxp" && echo true || echo false)"
+check "…an extra page and a binary are found" "2" "$(grep -cE '^(extra page Extra.md|not a page: shot.png)' <<<"$fxp")"
+check "…a page Home leaves out is found" "true" "$(grep -q 'Home does not list Corners' <<<"$fxp" && echo true || echo false)"
+check "…a broken link and a broken anchor are found" "Plugins.md->Nowhere.md;Plugins.md->Menu.md#no-such (no such heading)" \
+  "$(grep -E 'Plugins.md->(Nowhere|Menu)' <<<"$fxp" | paste -sd';')"
+check "…and a good link, a good anchor and a link to its own heading pass" "" "$(grep -E 'Menu.md#heading|->#heading' <<<"$fxp" | paste -sd';')"
+check "…an image, a piped curl and a hidden <word> are found" "3" "$(grep -cE ': (image|curl|angle)' <<<"$fxp")"
 
 echo
 if (( failures )); then echo "${RED}$failures of $checks checks failed${RESET}"; exit 1; fi
-echo "${GREEN}$checks checks pass${RESET}${skipped:+ ${DIM}($skipped skipped)${RESET}}"
+echo "${GREEN}$checks checks pass${RESET}"

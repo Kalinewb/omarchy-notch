@@ -52,8 +52,8 @@ Item {
 
   // Motion: a control settles on a spring (zeta 0.85, 200 ms) and fades in
   // 120 ms; the notch itself grows on the arrival spring when a fold opens.
-  // NOTCH_REDUCED_MOTION=1 turns the moving parts into cuts.
-  readonly property bool still: Quickshell.env("NOTCH_REDUCED_MOTION") === "1"
+  // OMARCHY_REDUCED_MOTION=1 (or NOTCH_REDUCED_MOTION) turns the moving parts into cuts.
+  readonly property bool still: Quickshell.env("OMARCHY_REDUCED_MOTION") === "1" || Quickshell.env("NOTCH_REDUCED_MOTION") === "1"
   readonly property int settleMs: still ? 0 : 200
   readonly property int fadeMs: still ? 0 : 120
   readonly property var settleCurve: Spring.curve(0.85, 0.55, 8)

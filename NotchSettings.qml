@@ -32,7 +32,7 @@ Item {
   signal pluginsRequested()
 
   readonly property real padding: Style.space(16)
-  // The line under the list for the hovered row's tip (phase 3), reserved now.
+  // The line under the list for the tip of the row hovered or under the cursor.
   readonly property real footHeight: Style.space(24)
   implicitWidth: Style.space(400)
   implicitHeight: Math.min(maxHeight, headerHeight + column.implicitHeight + footHeight + padding)
@@ -104,6 +104,7 @@ Item {
     refreshHostable()
     advanced.open = false
     rows().forEach(function(row) { row.open = false })
+    nav.reset()
   }
   Component.onCompleted: refreshHostable()
 
@@ -130,15 +131,6 @@ Item {
     })
   }
 
-  // Scroll `item` into view.
-  function reveal(item) {
-    var y = item.mapToItem(column, 0, 0).y
-    var view = settingsFlick
-    if (y + item.height > view.contentY + view.height)
-      view.contentY = Math.max(0, Math.min(y + item.height - view.height, view.contentHeight - view.height))
-    else if (y < view.contentY) view.contentY = y
-  }
-
   // Every row, in the order it is drawn: what the report and `press` walk.
   readonly property var groups: [look, opening, inside, advanced]
   function rows() { return groups.reduce(function(all, g) { return all.concat(g.rows()) }, []) }
@@ -152,7 +144,7 @@ Item {
     var header = headerButtons.filter(function(b) { return b.item.visible }).map(function(b) {
       return { name: b.name, text: b.item.text, x: Number(b.item.mapToItem(root, 0, 0).x.toFixed(1)), width: Number(b.item.width.toFixed(1)) }
     })
-    return {
+    return Object.assign({
       rows: rows().map(function(r) {
         return { id: r.rid, section: r.parent.sectionName || "", depth: r.parent.sectionName !== undefined ? 1 : 2,
                  label: r.label, control: r.kind, controls: r.controlCount, state: r.stateText, tip: Tips.t[r.rid] || "",
@@ -163,16 +155,19 @@ Item {
       contentHeight: settingsFlick.contentHeight, viewHeight: settingsFlick.height, footHeight: foot.height,
       header: [{ name: "title", text: "Notch", x: root.padding, width: Number(titleText.width.toFixed(1)) }].concat(header),
       badges: [{ name: "updates", count: updates }, { name: "setup", count: issues }].filter(function(b) { return b.count > 0 })
-    }
+    }, nav.report())
   }
 
-  // Test hook (Bar's settingsPress): the handler a click would use.
+  // Test hook (Bar's settingsPress): the handler a click, a key or the pointer would use.
   function press(name) {
     var parts = String(name).split(":")
     if (parts[0] === "advanced") { advanced.open = !advanced.open; return "ok" }
+    if (parts[0] === "key") return nav.press(parts[1]) ? "ok" : "no-such-button"
+    if (parts[0] === "unhover") { nav.unhover(null); return "ok" }
     var found = parts[0] === "header" ? headerButtons.filter(function(b) { return b.name === parts[1] && b.item.visible })
-      : parts[0] === "set" ? rows().filter(function(r) { return r.rid === parts[1] }) : []
+      : parts[0] === "set" || parts[0] === "hover" ? rows().filter(function(r) { return r.rid === parts[1] }) : []
     if (found.length === 0) return "no-such-button"
+    if (parts[0] === "hover") { nav.hover(found[0]); return "ok" }
     if (parts[0] === "header") { found[0].item.clicked(); return "ok" }
     var raw = parts.slice(2).join(":")
     found[0].apply(found[0].kind === "switch" ? raw === "true" : found[0].kind === "stepper" ? Number(raw) : raw)
@@ -180,7 +175,12 @@ Item {
   }
 
   focus: true
-  Keys.onEscapePressed: root.closeRequested()
+  Keys.onPressed: function(event) { event.accepted = nav.handle(event) }
+  onActiveFocusChanged: if (!activeFocus) foot.hide()
+  // The key recorder that is listening, if any: the cursor waits for it.
+  property var recorder: null
+  readonly property Item tip: foot
+  NotchSettingsCursor { id: nav; panel: root; flick: settingsFlick }
 
   // Header, on the resting notch's row. Badges are counts on its buttons,
   // shown only above 0, and a button appears only when it has a target.
@@ -221,6 +221,8 @@ Item {
     contentHeight: column.implicitHeight
     clip: true
     boundsBehavior: Flickable.StopAtBounds
+    onMovingChanged: if (moving) foot.hide()
+    onContentHeightChanged: nav.ensureVisible()
 
     Column {
       id: column
@@ -477,12 +479,14 @@ Item {
     }
   }
 
-  Item {
+  NotchTip {
     id: foot
     x: root.padding
     y: parent.height - root.padding - height
     width: parent.width - 2 * root.padding
     height: root.footHeight
+    color: root.dim
+    fontFamily: root.fontFamily
   }
 
   // A heading and its rows; with `fold`, the heading opens and closes them.
@@ -492,13 +496,19 @@ Item {
     property bool fold: false
     property bool open: !fold
     default property alias content: body.data
+    // The fold's own line is a stop of the cursor.
+    readonly property string rid: "advanced"
+    readonly property string kind: "fold"
+    readonly property Item head: heading
     width: parent ? parent.width : 0
     spacing: Style.space(2)
     function rows() { return Array.prototype.slice.call(body.children).filter(function(c) { return c.rid !== undefined }) }
 
     Item {
+      id: heading
       width: parent.width
       height: Style.space(group.fold ? 30 : 26)
+      CursorFill { visible: group.fold && nav.at === group.rid }
 
       Text {
         anchors.left: parent.left
@@ -548,23 +558,34 @@ Item {
     property bool open: false
     readonly property int controlCount: slot.children.length
     readonly property Item foldBody: fold
+    readonly property Item head: line
     signal chosen(var value)
     default property alias control: slot.data
     property alias lines: fold.data
 
     // What a click or a key does to this row's control.
     function apply(value) {
+      foot.hide()
       chosen(value)
       if (kind === "pick") open = false
     }
 
     width: parent ? parent.width : 0
     opacity: dimmed ? 0.45 : 1
-    onOpenChanged: if (open) Qt.callLater(function() { root.reveal(row) })
+    onOpenChanged: { foot.hide(); if (open) Qt.callLater(function() { nav.reveal(row) }) }
+
+    // The lines the cursor walks inside this row: its buttons, or its open fold's.
+    function targets() {
+      var from = kind === "button" ? slot.children[0] : foldable && open ? fold : null
+      return from ? Array.prototype.slice.call(from.children).filter(function(c) { return c.hasCursor !== undefined }) : []
+    }
 
     Item {
+      id: line
       width: parent.width
       height: Math.max(root.rowHeight, slot.height)
+      CursorFill { visible: nav.at === row.rid && nav.sub < 0 }
+      HoverHandler { onHoveredChanged: hovered ? nav.hover(row) : nav.unhover(row) }
 
       Text {
         anchors.left: parent.left
@@ -717,6 +738,7 @@ Item {
     fontFamily: root.fontFamily
     fontSize: Style.font.bodySmall
     horizontalPadding: Style.space(7)
+    Component.onCompleted: clicked.connect(foot.hide)
   }
 
   component HeaderButton: NotchButton {
@@ -725,6 +747,15 @@ Item {
     radius: root.radiusFor(Math.min(width, height))
     fontFamily: root.fontFamily
     horizontalPadding: Style.space(10)
+    Component.onCompleted: clicked.connect(foot.hide)
+  }
+
+  // The keyboard cursor's mark: NotchButton's focus fill, in the row's shape.
+  component CursorFill: Rectangle {
+    anchors.fill: parent
+    z: -1
+    radius: root.radiusFor(Math.min(width, height))
+    color: Util.alpha(root.foreground, Style.focusFillAlpha)
   }
 
   // One option of a Pick, a flat line in the row's fold. The mark is not the
@@ -764,8 +795,11 @@ Item {
     property string current: ""
     property bool recording: false
     property string hint: ""
+    property bool hasCursor: false
+    onRecordingChanged: root.recorder = recording ? keyLine : root.recorder === keyLine ? null : root.recorder
     width: parent ? parent.width : 0
     height: Style.space(28)
+    CursorFill { visible: keyLine.hasCursor }
 
     // Every notch keybind: one combination can't be recorded twice.
     function usedBy(combo) {
@@ -778,7 +812,13 @@ Item {
       return ""
     }
 
-    function stop() { recording = false; root.forceActiveFocus() }
+    function stop() { hint = ""; recording = false; root.forceActiveFocus() }
+    function activate() {
+      hint = ""
+      if (recording) { stop(); return }
+      recording = true
+      catcher.forceActiveFocus()
+    }
 
     Text {
       anchors.left: parent.left
@@ -804,12 +844,7 @@ Item {
 
       ActionButton {
         text: keyLine.recording ? "Cancel" : "Record"
-        onClicked: {
-          keyLine.hint = ""
-          if (keyLine.recording) { keyLine.stop(); return }
-          keyLine.recording = true
-          catcher.forceActiveFocus()
-        }
+        onClicked: keyLine.activate()
       }
 
       ActionButton {
@@ -826,13 +861,12 @@ Item {
       Keys.onPressed: function(event) {
         if (!keyLine.recording) return
         event.accepted = true
-        if (event.key === KeyCombo.ESCAPE) { keyLine.hint = ""; keyLine.stop(); return }
+        if (event.key === KeyCombo.ESCAPE) { keyLine.stop(); return }
         var result = KeyCombo.combo(event.key, event.modifiers)
         if (result.waiting) return
         if (!result.combo) { keyLine.hint = result.reason; return }
         var clash = keyLine.usedBy(result.combo)
         if (clash) { keyLine.hint = result.combo + " is used by " + clash; return }
-        keyLine.hint = ""
         root.set(keyLine.key, result.combo)
         keyLine.stop()
       }

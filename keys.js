@@ -42,7 +42,7 @@ function keyName(key) {
 function combo(key, modifiers) {
   if (MODIFIER_KEYS.indexOf(key) !== -1) return { combo: "", waiting: true, reason: "" }
   var name = keyName(key)
-  if (!name) return { combo: "", waiting: false, reason: "that key can't be bound" }
+  if (!name) return { combo: "", waiting: false, reason: "That key can't be bound" }
   var mods = []
   for (var i = 0; i < MODIFIERS.length; i++)
     if (modifiers & MODIFIERS[i].mask) mods.push(MODIFIERS[i].name)
@@ -50,6 +50,6 @@ function combo(key, modifiers) {
   // the like are fine alone.
   var needsModifier = !/^F\d+$/.test(name) && !(name === "PRINT")
   if (needsModifier && mods.filter(function(m) { return m !== "SHIFT" }).length === 0)
-    return { combo: "", waiting: false, reason: "add SUPER, CTRL or ALT" }
+    return { combo: "", waiting: false, reason: "Add SUPER, CTRL or ALT" }
   return { combo: mods.concat([name]).join(" + "), waiting: false, reason: "" }
 }

@@ -41,7 +41,7 @@ function reasonText(reason, detail) {
 // "error". `available` is what the integration itself says.
 function acceptance(scan, enabled, userOff, loadStatus, available, loadError) {
   function no(reason, detail) { return { accepted: false, reason: reason, detail: detail || "" } }
-  if (!scan) return no("invalid-manifest", "no manifest")
+  if (!scan) return no("invalid-manifest", "No manifest")
   if (scan.problems && scan.problems.length > 0) return no("invalid-manifest", String(scan.problems[0]))
   var contract = Number(scan.contract)
   if (!(contract > 0)) return no("invalid-manifest", "bad-contract")

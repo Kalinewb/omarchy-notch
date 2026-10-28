@@ -806,8 +806,8 @@ Item {
       if (!root.bar) return ""
       var others = { openKey: root.bar.notchOpenKey, settingsKey: root.bar.notchSettingsKey, autoHideKey: root.bar.notchAutoHideKey,
                      menuKey: root.bar.notchMenuKey, stayOpenKey: root.bar.notchStayOpenKey, stateKey: root.bar.notchStateKey }
-      var labels = { openKey: "the notch", settingsKey: "settings", autoHideKey: "auto-hide", menuKey: "the menu",
-                     stayOpenKey: "keep open", stateKey: "close and reopen" }
+      var labels = { openKey: "Notch", settingsKey: "Settings", autoHideKey: "Auto-hide", menuKey: "Menu",
+                     stayOpenKey: "Keep open", stateKey: "Close and reopen" }
       for (var k in others) if (k !== keyLine.key && others[k] === combo) return labels[k]
       return ""
     }
@@ -836,7 +836,7 @@ Item {
 
       Text {
         anchors.verticalCenter: parent.verticalCenter
-        text: keyLine.recording ? (keyLine.hint || "press keys…") : (keyLine.hint || (keyLine.current || "none"))
+        text: keyLine.recording ? (keyLine.hint || "Press keys…") : (keyLine.hint || (keyLine.current || "none"))
         color: keyLine.recording || keyLine.hint ? root.accent : root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall

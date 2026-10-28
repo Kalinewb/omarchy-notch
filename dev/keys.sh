@@ -49,10 +49,10 @@ for n in "SUPER + N" "SUPER + ALT + N" "F12 alone" "CTRL + RETURN" "SUPER + SPAC
   check "$n" "$(awk -F' alone' '{print $1}' <<<"$n")" "$(get "$n" .combo)"
 done
 check "modifiers always come out as SUPER, CTRL, ALT, SHIFT" "SUPER + CTRL + ALT + SHIFT + K" "$(get "order is SUPER CTRL ALT SHIFT" .combo)"
-check "a plain letter is refused (it would fire while typing)" "|add SUPER, CTRL or ALT" "$(get "plain letter" '"\(.combo)|\(.reason)"')"
-check "SHIFT + a letter is refused too" "|add SUPER, CTRL or ALT" "$(get "SHIFT + letter" '"\(.combo)|\(.reason)"')"
+check "a plain letter is refused (it would fire while typing)" "|Add SUPER, CTRL or ALT" "$(get "plain letter" '"\(.combo)|\(.reason)"')"
+check "SHIFT + a letter is refused too" "|Add SUPER, CTRL or ALT" "$(get "SHIFT + letter" '"\(.combo)|\(.reason)"')"
 check "holding only a modifier keeps listening" "true|" "$(get "modifier held alone" '"\(.waiting)|\(.combo)"')"
-check "a key with no bindable name is refused" "|that key can't be bound" "$(get "unbindable key" '"\(.combo)|\(.reason)"')"
+check "a key with no bindable name is refused" "|That key can't be bound" "$(get "unbindable key" '"\(.combo)|\(.reason)"')"
 check "Escape (which cancels recording) is Qt's Escape" "true" "$(get "escape code" .escape)"
 
 echo; echo "${BOLD}bin/notch-keybinds reconciles with Hyprland's own bind list${RESET}"

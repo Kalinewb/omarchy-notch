@@ -24,13 +24,16 @@ Item {
   property string text: ""
   property string source: ""
   property string rowId: ""
+  property string wanted: ""
 
-  // `from` is "hover" or "focus".
-  function want(id, from) {
+  // `from` is "hover" or "focus". The text is the id's tip in settings-tips.js
+  // unless the page brings its own (a Setup point's summary).
+  function want(id, from, own) {
     hideTimer.stop()
-    var next = Tips.t[id] || ""
+    var next = own !== undefined ? String(own) : (Tips.t[id] || "")
     if (next === "") { hide(); return }
     rowId = id
+    wanted = next
     source = from
     if (shown) { text = next; return }
     pending = true
@@ -54,7 +57,7 @@ Item {
 
   Timer {
     id: showTimer
-    onTriggered: { tip.text = Tips.t[tip.rowId] || ""; tip.pending = false; tip.shown = true }
+    onTriggered: { tip.text = tip.wanted; tip.pending = false; tip.shown = true }
   }
   Timer { id: hideTimer; interval: tip.hideMs; onTriggered: tip.hide() }
 

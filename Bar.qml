@@ -2100,6 +2100,8 @@ Item {
   function setupReport() {
     var status = setupService.status()
     status.script = setupService.script
+    var page = root.focusedNotchWindow() ? root.focusedNotchWindow().setupItem : null
+    status.tip = page ? page.tipReport() : null
     return status
   }
 
@@ -2977,6 +2979,13 @@ Item {
     // the live notch changes nothing without a click in the page.
     function setup(action: string, arg: string): string {
       if (action === "check") root.setup.check(false)
+      else if (action === "hover" || action === "unhover") {
+        // A test notch's stand-in for a pointer resting on a point (dev/setup.sh).
+        var page = root.harnessed && root.focusedNotchWindow() ? root.focusedNotchWindow().setupItem : null
+        if (!page) return JSON.stringify({ refused: "not-a-test-notch" })
+        if (action === "hover") page.hoverTip(arg)
+        else page.unhoverTip()
+      }
       else if (action === "fix" || action === "restore" || action === "forget") {
         if (!(root.harnessed && Quickshell.env("NOTCH_SETUP_IPC_ACTIONS") === "1")) return JSON.stringify({ refused: "ipc" })
         if (action === "fix") root.setup.startFix(arg, "")
@@ -3530,6 +3539,7 @@ Item {
 
     // The open settings panel itself, for settingsReport.
     readonly property var settingsItem: expandedHost.item
+    readonly property var setupItem: setupHost.item
 
     // pluginsPress: a button on this window's Plugins page or its notice.
     function pressPluginsButton(name) {
@@ -4233,7 +4243,8 @@ Item {
                        host: { opacity: Number(integrationHost.opacity.toFixed(3)), enabled: integrationHost.enabled },
                        width: Number(barWindow.integrationWidth.toFixed(3)), height: Number(barWindow.integrationHeight.toFixed(3)),
                        contentWidth: Number(panelContent.width.toFixed(3)), contentHeight: Number(panelContent.height.toFixed(3)) },
-        setup: { open: barWindow.setupOpen, width: Number(barWindow.setupWidth.toFixed(3)), height: Number(barWindow.setupHeight.toFixed(3)) },
+        setup: { open: barWindow.setupOpen, width: Number(barWindow.setupWidth.toFixed(3)), height: Number(barWindow.setupHeight.toFixed(3)),
+                 tip: setupHost.item ? setupHost.item.tipReport() : null },
         open: { key: barWindow.keyExpanded, click: barWindow.clickExpanded, hover: barWindow.hoverExpanded, pinned: barWindow.pinned, stayOpen: root.notchStayOpen },
         window: { height: barWindow.height, exclusiveZone: barWindow.reservedZone, windowsToTop: root.notchWindowsToTop,
                   applied: { zone: barWindow.exclusiveZone, mode: barWindow.exclusionMode === ExclusionMode.Ignore ? "ignore" : "normal", onScreen: barWindow.reservesOnScreen } },
@@ -4288,6 +4299,7 @@ Item {
           focus: pluginsHost.item ? pluginsHost.item.focusName : "",
           refreshEnabled: pluginsHost.item ? pluginsHost.item.refreshEnabled : false,
           scroll: pluginsHost.item ? pluginsHost.item.scrollReport() : null,
+          tip: pluginsHost.item ? pluginsHost.item.tipReport() : null,
           notice: root.pluginsNotice, shownNotice: barWindow.shownPluginsNotice, noticeKind: barWindow.noticeKind,
           card: pluginsHost.item ? pluginsHost.item.carding : false, selected: pluginsHost.item ? pluginsHost.item.selectedIndex : -1,
           foreground: pluginsHost.item ? String(pluginsHost.item.foreground).toUpperCase() : "",

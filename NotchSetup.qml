@@ -24,8 +24,11 @@ Item {
   signal pluginsRequested()
 
   readonly property real padding: Style.space(16)
+  // The line under the list for the tip of the point under the pointer: its
+  // summary (plan-settings.md 4). Reserved, so the page never changes height for it.
+  readonly property real footHeight: Style.space(24)
   implicitWidth: Style.space(400)
-  implicitHeight: Math.min(maxHeight, headerHeight + column.implicitHeight + padding)
+  implicitHeight: Math.min(maxHeight, headerHeight + column.implicitHeight + footHeight + padding)
 
   readonly property color foreground: bar ? bar.notchForeground : "#ffffff"
   readonly property color accent: bar ? bar.notchAccent : "#ffffff"
@@ -101,9 +104,21 @@ Item {
 
   focus: true
   Keys.onEscapePressed: {
+    if (foot.shown || foot.pending) { foot.hide(); return }
     if (root.confirmRow !== "") { root.confirmRow = ""; return }
     root.closeRequested()
   }
+  onEnabledChanged: if (!enabled) foot.hide()
+
+  // dev/setup.sh: the foot line, and a pointer resting on a point.
+  function tipReport() { return Object.assign(foot.report(), { footHeight: foot.height }) }
+  function hoverTip(id) {
+    var found = points.filter(function(p) { return p.id === id })
+    if (found.length === 0) return "no-such-point"
+    foot.want(id, "hover", found[0].summary || "")
+    return "ok"
+  }
+  function unhoverTip() { foot.hide() }
 
   // --- header ---------------------------------------------------------------
 
@@ -165,11 +180,12 @@ Item {
     x: root.padding
     y: root.headerHeight
     width: parent.width - 2 * root.padding
-    height: parent.height - root.headerHeight - root.padding
+    height: parent.height - root.headerHeight - root.padding - root.footHeight
     contentWidth: width
     contentHeight: column.implicitHeight
     clip: true
     boundsBehavior: Flickable.StopAtBounds
+    onMovingChanged: if (moving) foot.hide()
 
     Column {
       id: column
@@ -262,6 +278,16 @@ Item {
 
   readonly property bool checking: setup ? setup.checking : false
 
+  NotchTip {
+    id: foot
+    x: root.padding
+    y: parent.height - root.padding - height
+    width: parent.width - 2 * root.padding
+    height: root.footHeight
+    color: root.dim
+    fontFamily: root.fontFamily
+  }
+
   // --- pieces ---------------------------------------------------------------
 
   component Heading: Text {
@@ -292,6 +318,8 @@ Item {
     Item {
       width: parent.width
       height: Math.max(Style.space(22), title.implicitHeight + summary.implicitHeight + Style.space(4))
+
+      HoverHandler { onHoveredChanged: hovered ? foot.want(pointRow.point.id, "hover", pointRow.point.summary || "") : foot.leave() }
 
       Text {
         id: mark
@@ -371,7 +399,7 @@ Item {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.openRow = pointRow.expanded ? "" : pointRow.point.id
+        onClicked: { foot.hide(); root.openRow = pointRow.expanded ? "" : pointRow.point.id }
       }
     }
 

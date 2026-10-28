@@ -39,11 +39,14 @@ Item {
   signal backRequested()
 
   readonly property real padding: Style.space(16)
+  // The line under the list for the tip of the entry under the pointer.
+  // Reserved, so the page never changes height for it.
+  readonly property real footHeight: Style.space(24)
   implicitWidth: Style.space(400)
   // The page's height with the list, and with the card; held at the taller
   // while the card shows or is still fading.
-  readonly property real listHeight: Math.min(maxHeight, headerHeight + list.implicitHeight + padding)
-  readonly property real cardHeight: Math.min(maxHeight, headerHeight + card.implicitHeight + padding)
+  readonly property real listHeight: Math.min(maxHeight, headerHeight + list.implicitHeight + footHeight + padding)
+  readonly property real cardHeight: Math.min(maxHeight, headerHeight + card.implicitHeight + footHeight + padding)
   readonly property bool holdCard: carding || cardOpacity > 0
   implicitHeight: holdCard ? Math.max(listHeight, cardHeight) : listHeight
   property real listOpacity: 1
@@ -89,7 +92,11 @@ Item {
   // One key, for real key presses and pluginsPress "key:<name>" alike.
   // Returns whether it was used.
   function handleKey(name) {
-    if (name === "escape") { cancelOrClose(); return true }
+    if (name === "escape") {
+      if (foot.shown || foot.pending) foot.hide()
+      else cancelOrClose()
+      return true
+    }
     if (carding) {
       var order = ["cancel"]
       if (confirmButton.visible && confirmButton.enabled) order.push("confirm")
@@ -121,12 +128,13 @@ Item {
     cardButton(name).forceActiveFocus()
   }
 
-  onEnabledChanged: if (enabled) { if (bar) bar.refreshPluginsIfStale(); applyFocusId() }
+  onEnabledChanged: { if (enabled) { if (bar) bar.refreshPluginsIfStale(); applyFocusId() } else foot.hide() }
   onFocusIdChanged: applyFocusId()
   // A card left open when the page closed is cancelled once the page has faded
   // out, so it never changes under the shrinking notch.
   onVisibleChanged: if (!visible && bar) bar.cancelPluginAction()
   onCardingChanged: {
+    foot.hide()
     toCard.stop(); toList.stop()
     if (!visible) {
       // Nothing on show: no fade.
@@ -205,6 +213,15 @@ Item {
     else if (item.y + item.height > flick.contentY + flick.height) flick.contentY = item.y + item.height - flick.height
   }
 
+  // An entry's tip: where its verified commit comes from. The notch's own row has none.
+  function tipFor(id) {
+    var listed = bar && bar.pluginsCatalogue ? (bar.pluginsCatalogue.plugins || []) : []
+    for (var i = 0; i < listed.length; i++)
+      if (listed[i].id === id && listed[i].url && listed[i].pin) return "Verified commit " + shortSha(listed[i].pin) + " of " + repoName(listed[i].url)
+    return ""
+  }
+  function tipReport() { return Object.assign(foot.report(), { footHeight: foot.height }) }
+
   function cancelOrClose() {
     if (carding) bar.cancelPluginAction()
     else closeRequested()
@@ -248,6 +265,8 @@ Item {
     if (n.indexOf("key:") === 0) return handleKey(n.slice(4)) ? "ok" : "no-such-button"
     if (n === "escape") { cancelOrClose(); return "ok" }
     if (n === "close") { closeRequested(); return "ok" }
+    if (n === "unhover") { foot.hide(); return "ok" }
+    if (n.indexOf("hover:") === 0) { foot.want(n.slice(6), "hover", tipFor(n.slice(6))); return "ok" }
     if (n === "refresh") { if (!refreshButton.enabled) return "disabled"; bar.refreshPlugins(); return "ok" }
     if (carding) {
       if (n === "cancel") { cancelButton.clicked(); return "ok" }
@@ -330,11 +349,12 @@ Item {
     x: root.padding
     y: root.headerHeight
     width: parent.width - 2 * root.padding
-    height: parent.height - root.headerHeight - root.padding
+    height: parent.height - root.headerHeight - root.padding - root.footHeight
     contentWidth: width
-    contentHeight: root.implicitHeight - root.headerHeight - root.padding
+    contentHeight: root.implicitHeight - root.headerHeight - root.padding - root.footHeight
     clip: true
     boundsBehavior: Flickable.StopAtBounds
+    onMovingChanged: if (moving) foot.hide()
 
     // The list: one row per entry, then the notch's own row, then why.
     Column {
@@ -560,6 +580,16 @@ Item {
     }
   }
 
+  NotchTip {
+    id: foot
+    x: root.padding
+    y: parent.height - root.padding - height
+    width: parent.width - 2 * root.padding
+    height: root.footHeight
+    color: root.secondary
+    fontFamily: root.fontFamily
+  }
+
   // One catalogue entry: name and version, what it is doing, and its buttons
   // on the right with the primary one last.
   component EntryRow: Item {
@@ -576,9 +606,11 @@ Item {
       color: row.selected ? root.selectedFill : "transparent"
     }
 
+    HoverHandler { onHoveredChanged: hovered ? foot.want(row.view.id, "hover", root.tipFor(row.view.id)) : foot.leave() }
+
     MouseArea {
       anchors.fill: parent
-      onClicked: root.selectedIndex = row.rowIndex
+      onClicked: { foot.hide(); root.selectedIndex = row.rowIndex }
     }
 
     Column {

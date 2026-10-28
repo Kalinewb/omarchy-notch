@@ -1,0 +1,680 @@
+#!/bin/bash
+# The notch's settings, as a file or a short code -- and what a code would change.
+#
+#   notch-config export [--file <path>]
+#   notch-config import <code|file|-> [--stage]
+#
+# `export` prints a code (notch1.<check>.<payload>), or writes a JSON file.
+# `import` reads a code, a saved file or standard input ("-"), and shows what it
+# would change on this machine: the panel's own rows and words, what it left out,
+# and which widgets it would reorder. `--stage` prints that as JSON and keeps the
+# document for Setup to apply. Nothing here changes shell.json: applying is
+# Setup's `config-import` fix, which snapshots first and can be undone.
+#
+# What it holds: the 50 keys of `bar.notch` the panel and the notch read (the
+# table below) and the order of the bar's widgets. Never plugin settings, paths,
+# or the keys that lean on a companion plugin (replaceMenu, replaceOsd,
+# suppressNativeToast). Import replaces those 50: a key the file lacks goes back
+# to its default. A code is never trusted: it is checked, inflated under a cap,
+# normalised against the table, and clamped to ceilings (export itself is
+# verbatim).
+#
+# Exit codes: 0 done or nothing to change, 1 failed, 2 rejected or refused.
+# A rejection says why on standard error, in one word: not-code, damaged,
+# newer, too-long or empty.
+#
+# Internal: `plan <staged>` (the preview as JSON, what Setup's apply re-runs) and
+# `table` (the key table). Sandboxing is notch-setup's: the same NOTCH_SETUP_*
+# overrides, and a verb that writes goes through the same guard.
+
+set -uo pipefail
+
+PROG=notch-config
+source "$(dirname -- "${BASH_SOURCE[0]}")/notch-lib.sh" || exit 1
+
+NOTCH_DIR="${NOTCH_SETUP_NOTCH_DIR:-$(realpath -m "$(dirname -- "${BASH_SOURCE[0]}")/.." 2>/dev/null)}"
+
+FORMAT="kalinewb.notch-config"
+CODE_MAX=12000      # characters in a code, and in what the clipboard may give
+FILE_MAX=65536      # bytes in a file, and in what a code may inflate to
+STAGE_DIR="$STATE/staged"
+
+# --- the key table ------------------------------------------------------------------
+#
+# Once, here. Per key its kind and limits, and the panel row it belongs to (the
+# row ids and labels are NotchSettings.qml's; dev/config.sh holds them equal), or
+# for a key with no row the short noun the preview uses. The ceilings are this
+# plan's, not Bar's: Bar only floors them, so a pasted width must not outgrow the
+# screen nor a height push every window off.
+
+read -r -d '' KEY_TABLE <<'JSON'
+{
+  "withheld": { "replaceMenu": "menu", "replaceOsd": "volume", "suppressNativeToast": "notifications" },
+  "rows": [
+    { "id": "atRest", "label": "At rest" },
+    { "id": "autoHide", "label": "Auto-hide" },
+    { "id": "glow", "label": "Charging glow" },
+    { "id": "openWith", "label": "Open with" },
+    { "id": "opensTo", "label": "Opens to" },
+    { "id": "notifications", "label": "Notifications" },
+    { "id": "notifyLight", "label": "Notification light" },
+    { "id": "menu", "label": "Menu" },
+    { "id": "volume", "label": "Volume and brightness" },
+    { "id": "width", "label": "Width" },
+    { "id": "onHover", "label": "On hover" },
+    { "id": "hidden", "label": "Hidden widgets" },
+    { "id": "openRow", "label": "Also in the widget row" },
+    { "id": "panels", "label": "Panels" },
+    { "id": "corners", "label": "Corners" },
+    { "id": "notifyTime", "label": "Notification time" },
+    { "id": "lightColours", "label": "Light colours" },
+    { "id": "peeks", "label": "Peeks" },
+    { "id": "glowSize", "label": "Glow size" },
+    { "id": "greenAbove", "label": "Green from" },
+    { "id": "lowBelow", "label": "Low battery at" },
+    { "id": "keybinds", "label": "Keybinds" },
+    { "id": "stayOpen", "label": "Keep open" },
+    { "id": "windowsToTop", "label": "Windows to the top" },
+    { "id": "updateCheck", "label": "Check for updates" }
+  ],
+  "keys": {
+    "compact":                  { "kind": "items", "values": ["clock", "date", "media", "battery"], "row": "atRest" },
+    "autoHide":                 { "kind": "bool", "row": "autoHide" },
+    "batteryGlow":              { "kind": "bool", "row": "glow" },
+    "glowStyle":                { "kind": "enum", "values": ["outline", "bottom"], "row": "glow" },
+    "openWith":                 { "kind": "triggers", "row": "openWith" },
+    "openAction":               { "kind": "enum", "values": ["widgets", "clock", "battery", "plugin", "settings", "menu"], "row": "opensTo" },
+    "openPlugin":               { "kind": "id", "row": "opensTo" },
+    "notifications":            { "kind": "bool", "row": "notifications" },
+    "notificationLight":        { "kind": "enum", "values": ["off", "notch", "top", "full"], "row": "notifyLight" },
+    "compactWidth":             { "kind": "num", "min": 0, "max": 2400, "row": "width" },
+    "hoverItems":               { "kind": "items", "values": ["clock", "date", "media", "battery"], "row": "onHover" },
+    "hoverPlugins":             { "kind": "ids", "row": "onHover" },
+    "hiddenPlugins":            { "kind": "ids", "row": "hidden" },
+    "expanded":                 { "kind": "items", "values": ["clock", "date", "media", "battery"], "row": "openRow" },
+    "hostedPanels":             { "kind": "ids", "row": "panels" },
+    "disabledIntegrations":     { "kind": "ids", "row": "panels" },
+    "bottomRadius":             { "kind": "num", "min": 0, "max": 96, "row": "corners" },
+    "filletRadius":             { "kind": "num", "min": 0, "max": 96, "row": "corners" },
+    "notificationStay":         { "kind": "bool", "row": "notifyTime" },
+    "notificationSeconds":      { "kind": "num", "min": 1, "max": 60, "round": true, "row": "notifyTime" },
+    "notificationLightColours": { "kind": "enum", "values": ["aurora", "blue", "white"], "row": "lightColours" },
+    "peekOnTrackChange":        { "kind": "bool", "row": "peeks" },
+    "batteryPeek":              { "kind": "bool", "row": "peeks" },
+    "glowScale":                { "kind": "num", "min": 0, "max": 2.5, "row": "glowSize" },
+    "greenAbove":               { "kind": "num", "min": 0, "max": 100, "row": "greenAbove" },
+    "lowBattery":               { "kind": "num", "min": 0, "max": 100, "row": "lowBelow" },
+    "openKey":                  { "kind": "key", "row": "keybinds" },
+    "settingsKey":              { "kind": "key", "row": "keybinds" },
+    "autoHideKey":              { "kind": "key", "row": "keybinds" },
+    "stayOpenKey":              { "kind": "key", "row": "keybinds" },
+    "stayOpen":                 { "kind": "bool", "row": "stayOpen" },
+    "windowsToTop":             { "kind": "bool", "row": "windowsToTop" },
+    "updateCheck":              { "kind": "bool", "row": "updateCheck" },
+    "settingsWith":             { "kind": "triggers", "noun": "Settings gesture" },
+    "menuWith":                 { "kind": "triggers", "noun": "Menu gesture" },
+    "menuKey":                  { "kind": "key", "noun": "Menu key" },
+    "stateKey":                 { "kind": "key", "noun": "Close key" },
+    "compactHeight":            { "kind": "num", "min": 0, "max": 120, "noun": "Height" },
+    "criticalBattery":          { "kind": "num", "min": 0, "max": 100, "noun": "Critical below" },
+    "color":                    { "kind": "colour", "noun": "Colour" },
+    "foreground":               { "kind": "colour", "noun": "Text colour" },
+    "chargingColor":            { "kind": "colour", "noun": "Charging colour" },
+    "fullColor":                { "kind": "colour", "noun": "Full colour" },
+    "lowColor":                 { "kind": "colour", "noun": "Low colour" },
+    "hoverDelay":               { "kind": "num", "min": 0, "max": 2000, "noun": "Hover delay" },
+    "collapseDelay":            { "kind": "num", "min": 0, "max": 10000, "noun": "Close delay" },
+    "peekDuration":             { "kind": "num", "min": 500, "max": 60000, "noun": "Peek time" },
+    "hoverAction":              { "kind": "legacy", "noun": "Hover action" },
+    "hoverPlugin":              { "kind": "id", "noun": "Hover widget" },
+    "expandOn":                 { "kind": "legacy", "noun": "Open on" }
+  }
+}
+JSON
+
+# --- small things -------------------------------------------------------------------
+
+work=""
+cleanup() { [[ -n $work ]] && rm -rf "$work"; }
+trap cleanup EXIT
+workdir() { [[ -n $work ]] || work=$(mktemp -d "${TMPDIR:-/tmp}/notch-config.XXXXXX"); }
+
+STAGE=0
+# reject <reason> [exit code]: one word on standard error; with --stage, as JSON
+# on standard output too, which is what a caller reading the staged form parses.
+reject() {
+  echo "$PROG: $1" >&2
+  (( STAGE )) && jq -nc --arg reason "$1" '{reason: $reason}'
+  exit "${2:-2}"
+}
+
+sha8() { sha256sum | cut -c1-8; }
+
+notch_version() { jq -r '.version // ""' "$NOTCH_DIR/manifest.json" 2>/dev/null; }
+
+# Staged files are only kept for an hour.
+prune_staged() { [[ -d $STAGE_DIR ]] && find "$STAGE_DIR" -maxdepth 1 -type f -name '*.json' -mmin +60 -delete 2>/dev/null; return 0; }
+
+# --- export -------------------------------------------------------------------------
+
+# The document: the table's keys that are set (verbatim, never clamped), and the
+# widget order as ids.
+export_document() {
+  local version; version=$(notch_version)
+  jq -S -c --argjson table "$KEY_TABLE" --arg format "$FORMAT" --arg notch "$version" '
+    def set($v): $v != null and $v != "";
+    (if (.bar | type) == "object" and (.bar.notch | type) == "object" then .bar.notch else {} end) as $n
+    | (if (.bar | type) == "object" and (.bar.layout | type) == "object" then .bar.layout else {} end) as $l
+    | { format: $format, version: 1, notch: $notch,
+        settings: ([ $table.keys | keys[] | select(. as $k | set($n[$k])) | {key: ., value: $n[.]} ] | from_entries),
+        layout: ([ ["left", "center", "right"][] | select(. as $r | ($l[$r] | type) == "array")
+                   | {key: ., value: [ $l[.][] | (if type == "object" then .id else . end)
+                                        | select(type == "string" and test("^[A-Za-z0-9._-]{1,128}$")) ]} ] | from_entries) }
+    | if (.layout | length) == 0 then del(.layout) else . end' < <(shell_config_or_empty)
+}
+shell_config_or_empty() { [[ -f $SHELL_JSON ]] && cat "$SHELL_JSON" || echo '{}'; }
+
+# notch1.<check>.<payload>
+make_code() {
+  local payload check
+  payload=$(printf '%s' "$1" | gzip -9 -n | base64 -w0 | tr '+/' '-_' | tr -d '=')
+  check=$(printf '%s' "$payload" | sha8)
+  printf 'notch1.%s.%s' "$check" "$payload"
+}
+
+cmd_export() {
+  local file=""
+  while (( $# )); do
+    case $1 in
+      --file) [[ $# -ge 2 ]] || { echo "$PROG: --file needs a path" >&2; exit 2; }; file=$2; shift 2 ;;
+      *) echo "$PROG: export: unknown option $1" >&2; exit 2 ;;
+    esac
+  done
+  if [[ -f $SHELL_JSON ]] && ! jq -e . "$SHELL_JSON" >/dev/null 2>&1; then
+    echo "$PROG: shell.json can't be read" >&2; exit 1
+  fi
+  local doc; doc=$(export_document) || { echo "$PROG: shell.json can't be read" >&2; exit 1; }
+  if [[ -z $file ]]; then
+    local code; code=$(make_code "$doc")
+    (( ${#code} > CODE_MAX )) && reject too-long
+    printf '%s\n' "$code"
+    return 0
+  fi
+  check_guard write || exit 2
+  file=${file/#\~\//$HOME_DIR/}
+  [[ $(realpath -m -- "$file") == $(realpath -m -- "$SHELL_JSON") ]] && reject "won't overwrite shell.json"
+  [[ -d $file ]] && reject "$file is a folder"
+  if [[ -e $file ]]; then
+    [[ -f $file ]] || reject "$file is not a file"
+    [[ $(head -c $((FILE_MAX + 1)) -- "$file" | jq -r '.format? // ""' 2>/dev/null) == "$FORMAT" ]] || reject "$file is not a notch-config file"
+  fi
+  local dir tmp; dir=$(dirname -- "$file")
+  [[ -d $dir ]] || { echo "$PROG: $dir does not exist" >&2; exit 1; }
+  tmp=$(mktemp "$dir/.notch-config.XXXXXX" 2>/dev/null) || { echo "$PROG: can't write in $dir" >&2; exit 1; }
+  if jq -S . <<<"$doc" >"$tmp" && chmod 644 "$tmp" && mv -f "$tmp" "$file"; then return 0; fi
+  rm -f "$tmp"; echo "$PROG: can't write $file" >&2; exit 1
+}
+
+# --- reading what was given ---------------------------------------------------------
+#
+# Sets DOC to the document (compact JSON) or rejects with one word. Only the
+# length decides the bomb defence: `head` closing the pipe early makes gzip exit
+# 141 under pipefail, so the status of the pipeline means nothing.
+
+# The reasons are step 1: not-code damaged newer too-long empty.
+validate_document() { # validate_document <file> -> the reason, or "ok"
+  jq -r --arg f "$FORMAT" '
+    if type != "object" or .format != $f or (.version | type) != "number" then "not-code"
+    elif .version >= 2 and .version == (.version | floor) then "newer"
+    elif .version != 1 then "not-code"
+    elif (.settings | type) != "object" then "not-code"
+    else "ok" end' "$1" 2>/dev/null || echo damaged
+}
+
+decode_code() { # decode_code <code text> <out file>
+  local code=$1 out=$2
+  # Whitespace, quotes and backticks anywhere; a trailing . , ; ) from a sentence.
+  code=$(printf '%s' "$code" | tr -d '[:space:]"`'"'")
+  while [[ -n $code && $code == *[.,\;\)] ]]; do code=${code%?}; done
+  [[ -n $code ]] || reject empty
+  (( ${#code} > CODE_MAX )) && reject too-long
+  [[ $code =~ ^notch([0-9]+)\.(.*)$ ]] || reject not-code
+  local version=${BASH_REMATCH[1]} rest=${BASH_REMATCH[2]}
+  [[ $version =~ ^[1-9][0-9]*$ ]] || reject not-code
+  (( ${#version} > 4 || version > 1 )) && reject newer
+  [[ -n $rest ]] || reject not-code
+  [[ $rest =~ ^([0-9a-f]{8})\.([A-Za-z0-9_-]+)$ ]] || reject damaged
+  local check=${BASH_REMATCH[1]} payload=${BASH_REMATCH[2]}
+  [[ $(printf '%s' "$payload" | sha8) == "$check" ]] || reject damaged
+  local pad=$(( (4 - ${#payload} % 4) % 4 ))
+  (( pad == 3 )) && reject damaged
+  printf '%s%s' "$payload" "$(printf '=%.0s' $(seq 1 $pad))" | tr -- '-_' '+/' | base64 -d 2>/dev/null \
+    | gzip -dc 2>/dev/null | head -c $((FILE_MAX + 1)) >"$out"
+  local size; size=$(wc -c <"$out")
+  (( size == 0 || size > FILE_MAX )) && reject damaged
+  jq -e 'type == "object"' "$out" >/dev/null 2>&1 || reject damaged
+}
+
+read_document() { # read_document <code|file|-> -> DOC
+  local arg=${1-} raw
+  workdir
+  raw="$work/raw"
+  local bare=${arg#"${arg%%[![:space:]\"\'\`]*}"}
+  if [[ -z ${arg//[[:space:]]/} ]]; then reject empty
+  elif [[ $arg == - ]]; then head -c $((FILE_MAX + 1)) >"$raw"
+  elif [[ $bare == notch* ]]; then printf '%s' "$arg" >"$raw"
+  else
+    arg=${arg/#\~\//$HOME_DIR/}
+    [[ -f $arg ]] || reject not-code
+    head -c $((FILE_MAX + 1)) -- "$arg" >"$raw" || reject not-code
+  fi
+  (( $(wc -c <"$raw") > FILE_MAX )) && reject too-long
+  local first; first=$(tr -d '[:space:]' <"$raw" | head -c 1)
+  [[ -n $first ]] || reject empty
+  if [[ $first == "{" ]]; then
+    jq -e . "$raw" >/dev/null 2>&1 || reject damaged
+    cp "$raw" "$work/doc"
+  else
+    # A short code in a text file, or on the clipboard.
+    decode_code "$(cat "$raw")" "$work/doc"
+  fi
+  local why; why=$(validate_document "$work/doc")
+  [[ $why == ok ]] || reject "$why"
+  DOC=$(jq -S -c '{format, version, settings} + (if (.layout | type) == "object" then {layout} else {} end)' "$work/doc")
+}
+
+# --- the plan -----------------------------------------------------------------------
+#
+# Everything the preview says is computed here, in jq, from the document, the
+# receiver's shell.json, and what this machine has installed.
+
+read -r -d '' PLAN_JQ <<'JQ'
+def rnd: . + 0.5 | floor;
+def fin: type == "number" and (isinfinite | not) and (isnan | not);
+def inl($l): . as $x | any($l[]; . == $x);
+def uniq_keep: reduce .[] as $x ([]; if index($x) == null then . + [$x] else . end);
+def printable: tostring | gsub("[^ -~]"; "?") | .[0:40];
+def clean_key:
+  split("+") | map(gsub("^\\s+|\\s+$"; "") | ascii_upcase) | map(select(. != ""))
+  | if all(test("^[A-Z0-9_]+$")) then join(" + ") else "" end;
+def trigger_names: ["hover", "click", "doubleClick", "longPress", "rightClick", "longRightClick", "middleClick", "scroll"];
+def builtin_ids: ["notch.clock", "notch.date", "notch.media", "notch.battery", "notch.settings", "notch.menu", "notch.update"];
+
+# ---- the table
+def lbl($k): $T.keys[$k] as $s
+  | if $s.row then ($T.rows | map(select(.id == $s.row))[0].label) else $s.noun end;
+def dangerous($k): $T.keys[$k].kind | IN("key", "ids", "id");
+
+# ---- normalising one key (step 2)
+def bad($why): {ok: false, notes: [{reason: $why}]};
+def good($v; $notes): {ok: true, v: $v, notes: $notes};
+def idok: type == "string" and test("^[A-Za-z0-9._-]{1,128}$");
+def canon: . as $id | ($was[$id] // $id);
+def onhand: . as $id | ($ok | any(. == $id));
+
+def chk_set($v; $allowed):
+  if ($v | type) != "array" then bad("invalid")
+  else ([$v[0:100][] | select(type == "string" and inl($allowed))]) as $g
+    | good($g | uniq_keep; if ($v[0:100] | length) > ($g | length) then [{reason: "invalid", count: (($v[0:100] | length) - ($g | length))}] else [] end) end;
+
+def chk_ids($v):
+  if ($v | type) != "array" then bad("invalid")
+  else ($v[0:100]) as $head
+    | ([$head[] | select(idok) | canon]) as $g
+    | ([$g[] | select(onhand)]) as $k
+    | good($k | uniq_keep;
+        [ (if ($v | length) > 100 then {reason: "too many", count: (($v | length) - 100)} else empty end),
+          (if ($head | length) > ($g | length) then {reason: "invalid", count: (($head | length) - ($g | length))} else empty end),
+          (if ($g | length) > ($k | length) then {reason: "not installed", count: (($g | length) - ($k | length))} else empty end) ])
+  end;
+
+def chk($k; $v):
+  $T.keys[$k] as $s
+  | if $s.kind == "bool" then (if ($v | type) == "boolean" then good($v; []) else bad("invalid") end)
+    elif $s.kind == "num" then
+      if ($v | fin) then
+        (if $s.round then ($v | rnd) else $v end) as $x
+        | if $x < $s.min then good($s.min; [{reason: "raised", from: ($v + 0), to: $s.min}])
+          elif $x > $s.max then good($s.max; [{reason: "capped", from: ($v + 0), to: $s.max}])
+          else good($x; []) end
+      else bad("invalid") end
+    elif $s.kind == "enum" then (if ($v | type) == "string" and ($v | inl($s.values)) then good($v; []) else bad("invalid") end)
+    elif $s.kind == "colour" then (if ($v | type) == "string" and ($v | test("^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$")) then good($v; []) else bad("invalid") end)
+    elif $s.kind == "key" then (if ($v | type) == "string" and ($v | clean_key) == $v then good($v; []) else bad("invalid") end)
+    elif $s.kind == "legacy" then (if ($v | type) == "string" and ($v | test("^[A-Za-z]{1,16}$")) then good($v; []) else bad("invalid") end)
+    elif $s.kind == "items" then chk_set($v; $s.values)
+    elif $s.kind == "triggers" then chk_set($v; trigger_names)
+    elif $s.kind == "ids" then chk_ids($v)
+    elif $s.kind == "id" then
+      if ($v | idok | not) then bad("invalid")
+      elif ($v | canon | onhand | not) then bad("not installed")
+      else good($v | canon; []) end
+    else bad("invalid") end;
+
+# The file's settings -> {norm, had, skipped}.
+def normalise($S; $recv):
+  reduce ($S | keys_unsorted[]) as $k ({norm: {}, had: [], skipped: [], unknown: 0};
+    if $T.keys | has($k) then
+      if $S[$k] == null or $S[$k] == "" then .
+      else chk($k; $S[$k]) as $r
+        | .had += [$k]
+        | (if $r.ok then .norm[$k] = $r.v else . end)
+        | .skipped += [$r.notes[] | {key: $k, label: lbl($k)} + .]
+      end
+    elif $T.withheld | has($k) then
+      .skipped += [{key: $k, label: ($T.rows | map(select(.id == $T.withheld[$k]))[0].label), reason: "not imported"}]
+    else
+      .unknown += 1
+      | if .unknown <= 10 then .skipped += [{key: ($k | printable), label: ($k | printable), reason: "unknown"}] else . end
+    end)
+  # Two equal colours would paint the notch's text on itself (Bar.qml: foreground
+  # and color), so neither is taken. An unset one is never compared.
+  | ((.norm.foreground // $recv.foreground) as $f | (.norm.color // $recv.color) as $c
+     | if ($f | type) == "string" and ($c | type) == "string" and ($f | test("^#[0-9A-Fa-f]{6}")) and ($c | test("^#[0-9A-Fa-f]{6}"))
+          and ($f[1:7] | ascii_downcase) == ($c[1:7] | ascii_downcase)
+          and ((.norm | has("foreground")) or (.norm | has("color")))
+       then [ "foreground", "color" ] else [] end) as $same
+  | .skipped += [ $same[] | . as $k | select($S[$k] != null and $S[$k] != "") | {key: $k, label: lbl($k), reason: "same colour"} ]
+  | .norm |= del(.[$same[]]);
+
+# ---- what a settings block means (effective values, as Bar.qml reads them)
+def eff($lay):
+  . as $c
+  | def u($k): $c[$k] | if . == null or . == "" then null else . end;
+  def num($k; $d): u($k) as $v
+    | if ($v | type) == "number" and ($v | fin) then $v
+      elif ($v | type) == "string" and ($v | test("^\\s*-?[0-9]+(\\.[0-9]+)?\\s*$")) then ($v | tonumber)
+      else $d end;
+  def items($k; $d): if ($c[$k] | type) == "array" then [$c[$k][] | tostring] else $d end;
+  def trig($k; $d): items($k; $d) | map(select(inl(trigger_names)));
+  def hex($k; $d): (u($k) // $d) | if type == "string" then ascii_upcase else . end;
+  def str($k): (u($k) // "") | tostring;
+  (u("autoHide") == true) as $ah
+  | ($lay | any(. == "omarchy.clock")) as $clock
+  | str("hoverAction") as $legacy
+  | trig("settingsWith"; ["longRightClick"]) as $sw
+  | (trig("menuWith"; []) | map(select(. != "hover" and . != "scroll" and (inl($sw) | not)))) as $mw
+  | (trig("openWith"; (if str("expandOn") == "click" then ["click"] else ["hover", "click"] end))
+     | map(select((inl($sw) | not) and (inl($mw) | not)))) as $ow
+  | {
+      compact: items("compact"; []),
+      autoHide: $ah,
+      batteryGlow: (u("batteryGlow") != false),
+      glowStyle: (if u("glowStyle") == "bottom" then "bottom" else "outline" end),
+      openWith: $ow, settingsWith: $sw, menuWith: $mw,
+      openAction: (str("openAction") | if inl(["widgets", "clock", "battery", "plugin", "settings", "menu"]) then . else "widgets" end),
+      openPlugin: str("openPlugin"),
+      notifications: (u("notifications") != false),
+      notificationLight: (str("notificationLight") | if . == "" then "off" else . end),
+      compactWidth: ([0, num("compactWidth"; 180)] | max),
+      hoverItems: (items("hoverItems"; (if $legacy == "clock" then ["clock", "date"] elif $legacy == "battery" then ["battery"] else [] end))
+                   | map(select(inl(["clock", "date", "media", "battery"])))),
+      hoverPlugins: (items("hoverPlugins"; (if $legacy == "plugin" and str("hoverPlugin") != "" then [str("hoverPlugin")] else [] end))),
+      hiddenPlugins: items("hiddenPlugins"; []),
+      expanded: items("expanded"; (if $clock then ["media"] else ["clock", "date", "media"] end)),
+      hostedPanels: items("hostedPanels"; []),
+      disabledIntegrations: items("disabledIntegrations"; []),
+      bottomRadius: ([0, num("bottomRadius"; 10)] | max),
+      filletRadius: ([0, num("filletRadius"; 10)] | max),
+      notificationStay: (u("notificationStay") == true),
+      notificationSeconds: (num("notificationSeconds"; 6) | rnd | [1, ., 60] | sort | .[1]),
+      notificationLightColours: (str("notificationLightColours") | if . == "" then "aurora" else . end),
+      peekOnTrackChange: (u("peekOnTrackChange") != false),
+      batteryPeek: (u("batteryPeek") != false),
+      glowScale: (num("glowScale"; 1) | [0, ., 2.5] | sort | .[1]),
+      greenAbove: (num("greenAbove"; 100) | [0, ., 100] | sort | .[1]),
+      lowBattery: num("lowBattery"; 20),
+      openKey: (str("openKey") | clean_key), settingsKey: (str("settingsKey") | clean_key),
+      autoHideKey: (str("autoHideKey") | clean_key), stayOpenKey: (str("stayOpenKey") | clean_key),
+      menuKey: (str("menuKey") | clean_key), stateKey: (str("stateKey") | clean_key),
+      stayOpen: (u("stayOpen") == true),
+      windowsToTop: ((u("windowsToTop") // $ah) == true),
+      updateCheck: (u("updateCheck") != false),
+      compactHeight: ([0, num("compactHeight"; 32)] | max),
+      criticalBattery: num("criticalBattery"; 10),
+      color: hex("color"; "#000000"), foreground: hex("foreground"; "automatic"),
+      chargingColor: hex("chargingColor"; "#FFB340"), fullColor: hex("fullColor"; "#30D158"), lowColor: hex("lowColor"; "#FF453A"),
+      hoverDelay: ([0, num("hoverDelay"; 60)] | max), collapseDelay: ([0, num("collapseDelay"; 350)] | max),
+      peekDuration: ([500, num("peekDuration"; 3500)] | max),
+      hoverAction: $legacy, hoverPlugin: str("hoverPlugin"), expandOn: str("expandOn")
+    }
+  # A list is a set to the panel: the order it was written in is not a change.
+  | with_entries(if (.value | type) == "array" and (.key | IN("compact", "hoverItems", "expanded", "openWith", "settingsWith", "menuWith", "hoverPlugins", "hiddenPlugins", "hostedPanels", "disabledIntegrations")) then .value |= sort else . end);
+
+# ---- the panel's state words (NotchSettings.qml)
+def item_names($sel): [["clock", "Time"], ["date", "Date"], ["media", "Media"], ["battery", "Battery"]]
+  | map(select(.[0] | inl($sel)) | .[1]);
+def picked($names; $none): if ($names | length) == 0 then $none
+  elif ($names | length) <= 3 then $names | join(", ") else "\($names | length) picked" end;
+def trigger_label: {hover: "Hover", click: "Click", doubleClick: "Double-click", longPress: "Long press", rightClick: "Right-click",
+                    longRightClick: "Long right-click", middleClick: "Middle-click", scroll: "Scroll"}[.];
+def trigger_names_of($sel; $order): picked([$order[] | select(inl($sel)) | trigger_label]; "Nothing");
+def onoff: if . then "On" else "Off" end;
+def px: "\(rnd) px";
+def pct: "\(rnd) %";
+def ms: "\(rnd) ms";
+def orone($none): if . == "" then $none else . end;
+
+def state($id; $e; $sup):
+  if $id == "atRest" then picked(item_names($e.compact); "Nothing")
+  elif $id == "autoHide" then $e.autoHide | onoff
+  elif $id == "glow" then (if $e.batteryGlow | not then "Off" elif $e.glowStyle == "bottom" then "Bottom" else "Outline" end)
+  elif $id == "openWith" then trigger_names_of($e.openWith; ["hover", "click", "doubleClick", "longPress", "rightClick", "middleClick", "scroll"])
+  elif $id == "opensTo" then
+    (if $e.openAction == "plugin" then ($e.openPlugin | orone("None"))
+     else {widgets: "Widgets", clock: "Clock", battery: "Battery", settings: "Settings", menu: "Menu"}[$e.openAction] end)
+  elif $id == "notifications" then (if $e.notifications | not then "Off" elif $sup then "Notch only" else "Notch + toast" end)
+  elif $id == "notifyLight" then ({off: "Off", notch: "Around the notch", top: "Top edge", full: "Full screen"}[$e.notificationLight] // $e.notificationLight)
+  elif $id == "width" then $e.compactWidth | px
+  elif $id == "onHover" then picked(item_names($e.hoverItems) + $e.hoverPlugins; "Nothing")
+  elif $id == "hidden" then (if ($e.hiddenPlugins | length) > 0 then "\($e.hiddenPlugins | length) hidden" else "None" end)
+  elif $id == "openRow" then picked(item_names($e.expanded); "Nothing")
+  elif $id == "panels" then
+    ([ (if ($e.hostedPanels | length) > 0 then "\($e.hostedPanels | length) hosted" else empty end),
+       (if ($e.disabledIntegrations | length) > 0 then "\($e.disabledIntegrations | length) off" else empty end) ]
+     | if length == 0 then "None" else join(", ") end)
+  elif $id == "corners" then
+    (if ($e.bottomRadius | rnd) == ($e.filletRadius | rnd) then ($e.bottomRadius | px)
+     else "\($e.bottomRadius | rnd) / \($e.filletRadius | rnd) px" end)
+  elif $id == "notifyTime" then (if $e.notificationStay then "Until I act" else "\($e.notificationSeconds) s" end)
+  elif $id == "lightColours" then ({aurora: "Aurora", blue: "Blue", white: "White"}[$e.notificationLightColours] // $e.notificationLightColours)
+  elif $id == "peeks" then
+    (if $e.peekOnTrackChange and $e.batteryPeek then "Both"
+     else picked([ (if $e.peekOnTrackChange then "New track" else empty end), (if $e.batteryPeek then "Plug-in and low battery" else empty end) ]; "Off") end)
+  elif $id == "glowSize" then ($e.glowScale * 100 | pct)
+  elif $id == "greenAbove" then $e.greenAbove | pct
+  elif $id == "lowBelow" then $e.lowBattery | pct
+  elif $id == "keybinds" then ([$e.openKey, $e.settingsKey, $e.autoHideKey, $e.stayOpenKey] | map(select(. != "")) | length) as $n
+    | (if $n > 0 then "\($n) set" else "None" end)
+  elif $id == "stayOpen" then $e.stayOpen | onoff
+  elif $id == "windowsToTop" then $e.windowsToTop | onoff
+  elif $id == "updateCheck" then $e.updateCheck | onoff
+  # keys with no row
+  elif $id == "hoverDelay" then $e.hoverDelay | ms
+  elif $id == "collapseDelay" then $e.collapseDelay | ms
+  elif $id == "peekDuration" then $e.peekDuration | ms
+  elif $id == "compactHeight" then $e.compactHeight | px
+  elif $id == "criticalBattery" then $e.criticalBattery | pct
+  elif $id | IN("color", "foreground", "chargingColor", "fullColor", "lowColor") then ($e[$id] | if . == "automatic" then "Automatic" else . end)
+  elif $id | IN("menuKey", "stateKey") then ($e[$id] | orone("None"))
+  elif $id | IN("settingsWith", "menuWith") then trigger_names_of($e[$id]; trigger_names) | if . == "Nothing" then "None" else . end
+  elif $id | IN("hoverAction", "hoverPlugin", "expandOn") then ($e[$id] | orone("None"))
+  else "" end;
+
+# Rows in the panel's order, then the keys with no row.
+def rowlist:
+  [ $T.rows[] | .id as $r | {id: $r, label: .label, keys: [$T.keys | to_entries[] | select(.value.row == $r) | .key]} | select(.keys | length > 0) ]
+  + [ $T.keys | to_entries[] | select(.value.noun) | {id: null, label: .value.noun, keys: [.key]} ];
+
+def changes($from; $to; $lay; $sup):
+  ($from | eff($lay)) as $ef | ($to | eff($lay)) as $et
+  | [ rowlist[] | . as $r
+      | ([ $r.keys[] | select($ef[.] != $et[.]) ]) as $moved
+      | select($moved | length > 0)
+      | (if $r.id then $r.id else $r.keys[0] end) as $sid
+      | state($sid; $ef; $sup) as $a | state($sid; $et; $sup) as $b
+      | { row: $r.id, label: $r.label, keys: $moved, from: $a,
+          to: (if $a == $b then ($b | if test("^[0-9]+ ") then sub("^(?<n>[0-9]+) .*"; "\(.n) other") else "other" end) else $b end),
+          danger: ($moved | any(dangerous(.))) } ]
+  | (map(select(.danger))) + (map(select(.danger | not)));
+
+# ---- the layout (step 5): reorder only, nothing added, nothing removed
+def entid: (if type == "object" then .id elif type == "string" then . else "" end) | if type == "string" then . else "" end;
+def numbered: reduce .[] as $x ({n: {}, out: []};
+  (.n[$x.id] // 0) as $k | .n[$x.id] = $k + 1 | .out += [$x + {key: "\($x.id)#\($k)"}]) | .out;
+# Positions (in $p) of one longest increasing run.
+def lis($p):
+  ($p | length) as $n
+  | if $n == 0 then [] else
+      (reduce range(0; $n) as $i ([]; . as $d
+         | . + [ ([range(0; $i) | select($p[.] < $p[$i]) | {len: $d[.].len, at: .}] | max_by(.len)) as $b
+                 | {len: (($b.len // 0) + 1), prev: ($b.at // null)} ])) as $d
+      | ($d | to_entries | max_by(.value.len) | .key) as $end
+      | [ $end | recurse(if $d[.].prev == null then empty else $d[.].prev end) ]
+    end;
+
+def plan_layout($cur; $fl):
+  if ($cur | type) != "object" or ($fl | type) != "object" then {layout: null, moves: [], skipped: []}
+  else
+    ([ ["left", "center", "right"][] | select(. as $r | ($fl[$r] | type) == "array") ]) as $present
+    | if ($present | length) == 0 then {layout: null, moves: [], skipped: []}
+      else
+        ([ $present[] as $r | ($cur[$r] | if type == "array" then . else [] end)
+           | to_entries[] | {r: $r, e: .value, id: (.value | entid)} ] | numbered) as $cc
+        | ([ $present[] as $r | $fl[$r][0:200] | to_entries[] | {r: $r, id: (.value | entid)} ] | numbered) as $ff
+        | ($cc | map(.key)) as $curkeys
+        | ($ff | map(. + {m: ((.id | idok) and (.key | inl($curkeys)))})) as $fm
+        | ($fm | map(select(.m) | .key)) as $paired
+        | (reduce $present[] as $r ({};
+            .[$r] = ([ $fm[] | select(.r == $r and .m) | .key as $k | $cc[] | select(.key == $k) ]
+                     + [ $cc[] | select(.r == $r and (.key | inl($paired) | not)) ]))) as $new
+        | { layout: (reduce $present[] as $r ($cur; .[$r] = ($new[$r] | map(.e)))),
+            moves: [ $present[] as $r
+                     | ($cc | map(select(.r == $r) | .key)) as $old
+                     | ($new[$r]) as $recs
+                     | ($recs | map(.key)) as $newk
+                     | ([ $newk[] | select(. as $k | $old | index($k) != null) ]) as $found
+                     | (lis([$found[] | . as $k | $old | index($k)]) | map($found[.])) as $keep
+                     | $recs[] | select(.key as $k | ($k | inl($keep) | not)) | {id: .id, region: $r} ],
+            skipped: ([ $fm[] | select(.m | not) | {key: "layout", label: (.id | printable), reason: (if .id | idok then "not in your bar" else "invalid" end)} ][0:20]) }
+      end
+  end;
+JQ
+
+read -r -d '' PLAN_MAIN <<'JQ'
+(if ($cfg.bar | type) == "object" and ($cfg.bar.notch | type) == "object" then $cfg.bar.notch else null end) as $before_n
+| (if ($cfg.bar | type) == "object" and ($cfg.bar.layout | type) == "object" then $cfg.bar.layout else null end) as $before_l
+| ($before_n // {}) as $recv
+| ($before_l | if . == null then [] else [(.left, .center, .right) | select(type == "array") | .[] | entid | select(. != "")] end) as $lay
+| normalise($doc.settings; $recv) as $nr
+# Replace, not merge: each of the table's keys takes the file's value, or goes
+# back to its default when the file lacks it. One the file has but normalising
+# dropped keeps the receiver's value.
+| (reduce ($T.keys | keys_unsorted[]) as $k ($recv;
+     if $nr.norm | has($k) then .[$k] = $nr.norm[$k]
+     elif $nr.had | any(. == $k) then .
+     else del(.[$k]) end)) as $new
+| plan_layout($before_l; $doc.layout) as $pl
+| { changes: changes($recv; $new; $lay; $recv.suppressNativeToast == true),
+    skipped: ($nr.skipped + $pl.skipped),
+    moves: $pl.moves, notch: $new, layout: $pl.layout,
+    before: {notch: $before_n, layout: $before_l} }
+JQ
+
+# plan_json <document json> -> the plan, with its hash.
+plan_json() {
+  local doc=$1 cfg known layout listed was
+  cfg=$(json_or "$(shell_config)" '{}')
+  jq -e 'type == "object"' >/dev/null 2>&1 <<<"$cfg" || cfg='{}'
+  known=$(plugin_list | jq -c '[.[]? | .id? | select(type == "string")]' 2>/dev/null) || known='[]'
+  layout=$(layout_ids | jq -R . | jq -sc .)
+  listed=$(catalogue_ids); listed=${listed:-[]}
+  was=$(jq -c '[.plugins[]? | select(.was) | {key: .was, value: .id}] | from_entries' "$NOTCH_DIR/plugins/catalogue.json" 2>/dev/null); was=${was:-{\}}
+  local plan
+  plan=$(jq -n -c --argjson T "$KEY_TABLE" --argjson doc "$doc" --argjson cfg "$cfg" \
+    --argjson ok "$(jq -nc --argjson a "${known:-[]}" --argjson b "${layout:-[]}" --argjson c "$listed" '$a + $b + $c + ["notch.clock", "notch.date", "notch.media", "notch.battery", "notch.settings", "notch.menu", "notch.update"] | unique')" \
+    --argjson was "$was" "$PLAN_JQ"$'\n'"$PLAN_MAIN") || return 1
+  local hash; hash=$(jq -S -c '{changes, moves, notch, layout}' <<<"$plan" | sha8)
+  jq -c --arg hash "$hash" '. + {hash: $hash}' <<<"$plan"
+}
+
+# The preview, as a person reads it.
+render_plan() {
+  jq -r '
+    def n($c; $one; $many): if $c == 1 then "1 \($one)" else "\($c) \($many)" end;
+    if (.changes | length) == 0 and (.moves | length) == 0 then "Nothing to change"
+    else
+      (if (.changes | length) > 0 then n(.changes | length; "change"; "changes") else empty end),
+      (.changes[] | "  \(.label)  \(.from) → \(.to)"),
+      (if (.moves | length) > 0 then "\(.moves | length) moved" else empty end)
+    end,
+    (if (.skipped | length) > 0 then
+       "Skipped \(.skipped | length)",
+       (.skipped[] | "  \(.label)  " + (if .from != null then "\(.from) → \(.to)  " else "" end) + (.reason))
+     else empty end)' <<<"$1"
+}
+
+# --- the verbs ----------------------------------------------------------------------
+
+cmd_plan() { # plan <staged file>
+  local file=${1-}
+  [[ -n $file && -f $file && ! -L $file ]] || reject "plan needs a staged file"
+  workdir
+  head -c $((FILE_MAX + 1)) -- "$file" >"$work/doc"
+  (( $(wc -c <"$work/doc") > FILE_MAX )) && reject too-long
+  [[ $(validate_document "$work/doc") == ok ]] || reject not-code
+  plan_json "$(jq -S -c '{format, version, settings} + (if (.layout | type) == "object" then {layout} else {} end)' "$work/doc")" \
+    || { echo "$PROG: can't plan" >&2; exit 1; }
+}
+
+cmd_import() {
+  local source="" given=0 yes=0 stage=0
+  while (( $# )); do
+    case $1 in
+      --yes) yes=1 ;;
+      --stage) stage=1; STAGE=1 ;;
+      -) source="-"; given=1 ;;
+      -*) echo "$PROG: import: unknown option $1" >&2; exit 2 ;;
+      *) (( given )) && { echo "$PROG: import takes one code or file" >&2; exit 2; }; source=$1; given=1 ;;
+    esac
+    shift
+  done
+  (( given )) || { echo "$PROG: import needs a code, a file or -" >&2; exit 2; }
+  if (( yes )); then
+    echo "$PROG: applying is Setup's config-import fix, which is not built yet" >&2
+    exit 2
+  fi
+  if (( stage )); then check_guard write || exit 2; prune_staged; fi
+  DOC=""
+  read_document "$source"
+  local plan; plan=$(plan_json "$DOC") || { echo "$PROG: can't read shell.json" >&2; exit 1; }
+  if (( stage )); then
+    if [[ $(jq -r '(.changes | length) + (.moves | length)' <<<"$plan") == 0 ]]; then
+      jq -c . <<<"$plan"; return 0
+    fi
+    local hash path tmp; hash=$(jq -r .hash <<<"$plan")
+    ( umask 077; mkdir -p "$STAGE_DIR" ) && chmod 700 "$STAGE_DIR" || { echo "$PROG: can't stage" >&2; exit 1; }
+    path="$STAGE_DIR/$hash.json"
+    tmp=$(umask 077; mktemp "$STAGE_DIR/.partial.XXXXXX") || { echo "$PROG: can't stage" >&2; exit 1; }
+    printf '%s\n' "$DOC" >"$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$path" || { rm -f "$tmp"; echo "$PROG: can't stage" >&2; exit 1; }
+    jq -c --arg staged "$path" '. + {staged: $staged}' <<<"$plan"
+    return 0
+  fi
+  render_plan "$plan"
+}
+
+usage() { sed -n '2,5p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+
+main() {
+  [[ $# -ge 1 ]] || usage
+  local verb=$1; shift
+  case $verb in
+    export) cmd_export "$@" ;;
+    import) cmd_import "$@" ;;
+    plan) cmd_plan "$@" ;;
+    table) printf '%s\n' "$KEY_TABLE" ;;
+    -h|--help|help) usage ;;
+    *) usage ;;
+  esac
+}
+main "$@"

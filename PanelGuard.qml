@@ -375,7 +375,8 @@ Item {
       settleTimer.restart()
       return
     }
-    var res = { state: v.pass ? "pass" : (v.measured === 0 ? "nothing" : "fail"), pass: v.pass,
+    // Out of time and still nothing drawn: the same "cannot prove" as never settling.
+    var res = { state: v.pass ? "pass" : (v.measured === 0 ? "unsettled" : "fail"), pass: v.pass, why: v.measured === 0 ? "nothing painted" : undefined,
                 detail: PS.detail(v.failing), worst: v.worst, failing: v.failing,
                 rects: r.out, found: rects.length, seen: r.found.seen, capped: r.found.capped, painted: v.measured,
                 image: { w: r.W, h: r.H }, scale: r.sx }

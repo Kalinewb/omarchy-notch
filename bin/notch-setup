@@ -253,7 +253,7 @@ short_summary() { # short_summary <title>
     "The bar is hidden") echo "The bar toggle is off, so the notch isn't drawn" ;;
     "The notch failed to load") echo "The shell couldn't load it and fell back to another bar" ;;
     "Hyprland reports config errors") echo "Config errors switch off fixes that write Hyprland files" ;;
-    "Removing the OSD companion would leave no OSD"|"Removing the menu companion would leave no menu") echo "Omarchy hasn't noted this companion" ;;
+    "Removing the OSD companion leaves no OSD"|"Removing the menu companion leaves no menu") echo "Omarchy hasn't noted this companion" ;;
     "The OSD companion is switched off") echo "Volume and brightness still show Omarchy's own card" ;;
     "The OSD companion isn't installed") echo "The notch never sees an OSD call" ;;
     "Notifications show in the notch only") echo "The companion keeps Omarchy's toast off screen" ;;
@@ -261,7 +261,7 @@ short_summary() { # short_summary <title>
     "The notifications companion is switched off") echo "Omarchy's toast still shows alongside the notch" ;;
     "The notifications companion isn't installed") echo "Omarchy's toast still shows; the notch installs it itself" ;;
     "The menu companion is switched off") echo "The menu still opens in Omarchy's own window" ;;
-    "Couldn't tell whether the menu companion loaded") echo "From a terminal this looks the same either way" ;;
+    "Couldn't tell if the menu companion loaded") echo "From a terminal this looks the same either way" ;;
     "The menu companion isn't installed") echo "The notch couldn't install it by itself" ;;
     "Couldn't read your keybinds") echo "Couldn't check: is lua installed?" ;;
     "Menu keys go through Omarchy") echo "Every menu key runs omarchy-menu" ;;
@@ -279,9 +279,9 @@ short_summary() { # short_summary <title>
     "The bar layer can animate") echo "Omarchy's no_anim rule for the bar isn't in effect" ;;
     "A layer rule animates the notch") echo "It fights the notch's own movement" ;;
     "The notch can't update itself") echo "This copy isn't a git checkout" ;;
-    "Face ID will move to its new name") echo "Nothing to do until its 3.0 update" ;;
-    "Face ID was renamed, but your settings still use the old name") echo "It may be missing from the bar" ;;
-    "OLED Corners pop in when the screen changes") echo "Hyprland animates their layer on every monitor change" ;;
+    "Face ID will be renamed soon") echo "Nothing to do until its 3.0 update" ;;
+    "Face ID's settings use its old name") echo "It may be missing from the bar" ;;
+    "Corners pop in on screen change") echo "Hyprland animates their layer on every monitor change" ;;
   esac
 }
 
@@ -388,7 +388,7 @@ detect_osd_companion() {
     # "broken". Installed and enabled is the whole of what Setup can tell.
     active|inactive)
       if ! restore_noted "$OSD_COMPANION"; then
-        point osd-companion fix "Removing the OSD companion would leave no OSD" \
+        point osd-companion fix "Removing the OSD companion leaves no OSD" \
           "Omarchy brings omarchy.osd back only for a companion it has noted, and it hasn't noted this one." \
           "$(strings "Fix adds $OSD_COMPANION to Omarchy's cloneSourceRestores in shell.json." "Undo takes it out again.")" \
           '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
@@ -445,7 +445,7 @@ detect_menu_replace_companion() {
     return
   fi
   if [[ $state == active || $state == inactive ]] && ! restore_noted "$COMPANION"; then
-    point menu-replace-companion fix "Removing the menu companion would leave no menu" \
+    point menu-replace-companion fix "Removing the menu companion leaves no menu" \
       "Omarchy brings omarchy.menu back only for a companion it has noted, and it hasn't noted this one." \
       "$(strings "Fix adds $COMPANION to Omarchy's cloneSourceRestores in shell.json." "Undo takes it out again.")" \
       '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
@@ -464,7 +464,7 @@ detect_menu_replace_companion() {
       # currently shut" look identical. The notch overrides this with what its
       # own bridge knows (SetupService.menuCompanionPoint); this is what is left
       # when there is no notch to ask.
-      point menu-replace-companion unknown "Couldn't tell whether the menu companion loaded" \
+      point menu-replace-companion unknown "Couldn't tell if the menu companion loaded" \
         "It is installed and enabled. Omarchy only builds a menu plugin's entry point while the menu is open, so from a terminal this looks the same whether it works or not." \
         "$(strings "Open the notch's menu: if it opens in the notch, it works." "If it does not, run \`omarchy plugin validate $PLUGINS/$COMPANION\` and restart the shell.")" ;;
     *)
@@ -874,7 +874,7 @@ detect_face_renamed() {
   local face
   if ! face=$(renamed_face); then
     if [[ -d $PLUGINS/$FACE_WAS ]]; then
-      point face-renamed info "Face ID will move to its new name" \
+      point face-renamed info "Face ID will be renamed soon" \
         "Face ID is installed as $FACE_WAS. Its 3.0 update moves it to $FACE by itself; nothing to do until then."
     else
       point face-renamed ok "Face ID's name is current" "No Face ID under its old name."
@@ -882,7 +882,7 @@ detect_face_renamed() {
     return
   fi
   if [[ -d $PLUGINS/$FACE && -d $PLUGINS/$FACE_WAS ]] || [[ $face == "$PLUGINS/$FACE_WAS" ]] || names_old_face; then
-    point face-renamed fix "Face ID was renamed, but your settings still use the old name" \
+    point face-renamed fix "Face ID's settings use its old name" \
       "Face ID is $FACE now, but $( [[ -d $PLUGINS/$FACE && -d $PLUGINS/$FACE_WAS ]] && echo "a $FACE_WAS folder is still beside it" || echo "the bar or a profile still names $FACE_WAS"), so it may be missing from the bar." \
       "$(strings "Fix runs Face's own \`omarchy-face-rename --finish\`, which moves what is left to the new name and restarts the shell." "Undo runs its \`--rollback\`, which puts everything back as it was.")" \
       '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low true)"
@@ -903,7 +903,7 @@ detect_oled_corners_still() {
                      and (.layerRule.rule | test("no_anim=true")))' <<<"$scan" >/dev/null 2>&1; then
     point oled-corners-still ok "OLED Corners stay still" "A no_anim rule keeps Hyprland from animating them."
   else
-    point oled-corners-still fix "OLED Corners pop in when the screen changes" \
+    point oled-corners-still fix "Corners pop in on screen change" \
       "Hyprland animates the corners' layer every time a monitor changes, so they visibly fade in instead of just being there." \
       "$(strings "Fix appends a marked block to ~/.config/hypr/looknfeel.lua with Omarchy's own no_anim rule for omarchy-oled-corners, as OLED Corners' README suggests." "Nothing in the block mentions the notch, so it keeps working without it.")" \
       '[]' "$(fixspec block "Fix" "$(strings "$HYPR/looknfeel.lua")" "$(strings "hyprctl reload")" low false)"
@@ -1515,7 +1515,7 @@ do_fix() {
   local title; title=$(jq -r .title <<<"$detected")
   if [[ $point != layout-empty-widget ]]; then
     if [[ $severity != fix ]]; then
-      finish failed 4 "There is nothing to fix: this isn't happening here."
+      finish failed 4 "Nothing to fix here."
       return 4
     fi
     local disabled; disabled=$(jq -r '.fix.disabledReason // ""' <<<"$detected")
@@ -1527,7 +1527,7 @@ do_fix() {
   if [[ $kind == block ]]; then
     local errors; errors=$(hypr_config_errors)
     if [[ $(jq '[.[] | select(. != null and . != "")] | length' <<<"$errors") != 0 ]]; then
-      finish failed 2 "Hyprland already reports config errors, so a fix couldn't be verified."
+      finish failed 2 "Hyprland has config errors: fix them first."
       return 2
     fi
   fi
@@ -1554,7 +1554,7 @@ do_fix() {
   phase applying
   if ! apply_fix "$point" "$arg" "$name"; then
     [[ -n $name ]] && rollback "$name"
-    finish rolled-back 1 "Couldn't apply the fix. Nothing was changed."
+    finish rolled-back 1 "Couldn't apply: nothing changed."
     return 1
   fi
   [[ -n $name ]] && { record_after "$name"; meta_state "$name" applied; }
@@ -1565,7 +1565,7 @@ do_fix() {
   phase verifying
   if ! verify_fix "$point" "$arg"; then
     [[ -n $name ]] && rollback "$name"
-    finish rolled-back 1 "The fix didn't take. Everything was put back."
+    finish rolled-back 1 "Didn't take: put back."
     return 1
   fi
   [[ -n $name ]] && meta_state "$name" verified
@@ -1703,7 +1703,7 @@ do_restore() {
 
   if [[ $mode == block-only ]]; then
     if ! remove_block "$dir"; then
-      finish failed 1 "Couldn't find the notch's block in the file."
+      finish failed 1 "Notch block not found."
       return 1
     fi
   elif [[ $kind == ipc ]] && [[ $(jq '.undo | length' "$dir/meta.json") != 0 ]]; then
@@ -1774,7 +1774,7 @@ do_restore() {
     fi
   done
   if (( bad )); then
-    finish failed 1 "The files didn't come back as they were; run Restore again."
+    finish failed 1 "Files differ: run Restore again."
     return 1
   fi
   meta_state "$name" restored

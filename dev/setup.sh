@@ -402,7 +402,7 @@ shell_set '.bar.notch.replaceMenu = true'
 plugins_add 'map(select(.id != "kalinewb.notch-menu")) + [{"id": "kalinewb.notch-menu", "enabled": true, "active": true, "kinds": ["menu"]}]'
 pre=$(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)
 p=$(run_setup detect --json --only menu-replace-companion | jq -c '.points[0]')
-check "64. the menu companion without Omarchy's restore flag is a fix, in plain words" "fix Removing the menu companion would leave no menu" \
+check "64. the menu companion without Omarchy's restore flag is a fix, in plain words" "fix Removing the menu companion leaves no menu" \
   "$(jq -r '"\(.severity) \(.title)"' <<<"$p")"
 reset_calls
 rc=0; run_setup fix menu-replace-companion >/dev/null 2>&1 || rc=$?
@@ -435,7 +435,7 @@ check "70. without OLED Corners there is nothing to keep still" "ok" "$(run_setu
 plugins_add '. + [{"id": "kalinewb.oled-corners", "enabled": true, "active": true, "kinds": ["service"]}]'
 layer_before=$(run_setup detect --json --only layer-rules | jq -c '.points[0]')
 pre=$(sha256sum "$HYPR_SB/looknfeel.lua" | cut -d' ' -f1)
-check "71. with it, they pop in: a fix that writes a block to looknfeel.lua" "fix OLED Corners pop in when the screen changes block looknfeel.lua" \
+check "71. with it, they pop in: a fix that writes a block to looknfeel.lua" "fix Corners pop in on screen change block looknfeel.lua" \
   "$(run_setup detect --json --only oled-corners-still | jq -r '.points[0] | "\(.severity) \(.title) \(.fix.kind) \(.fix.files[0] | split("/") | last)"')"
 reset_calls
 rc=0; run_setup fix oled-corners-still >/dev/null 2>&1 || rc=$?
@@ -455,7 +455,7 @@ jq '.id = "kalinewb.face" | .version = "3.0.0"' "$PLUGINS_SB/graveklar.face/mani
 shell_set '.bar.layout.right += [{"id": "graveklar.face"}] | .plugins = [{"id": "graveklar.face-lock"}]'
 pre=$(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)
 p=$(run_setup detect --json --only face-renamed | jq -c '.points[0]')
-check "77. a 3.x Face in the old folder, with settings naming the old ids: a fix, in plain words" "fix Face ID was renamed, but your settings still use the old name true" \
+check "77. a 3.x Face in the old folder, with settings naming the old ids: a fix, in plain words" "fix Face ID's settings use its old name true" \
   "$(jq -r '"\(.severity) \(.title) \(.fix.destroysNotch)"' <<<"$p")"
 : >"$sb/rename.log"
 rc=0; run_setup fix face-renamed --arg 0123456789abcdef0123456789abcdef01234567 >/dev/null 2>&1 || rc=$?

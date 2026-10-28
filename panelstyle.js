@@ -128,15 +128,6 @@ function ratio255(la, lb) {
   return la >= lb ? (la + 0.05) / (lb + 0.05) : (lb + 0.05) / (la + 0.05)
 }
 
-// Rec. 601-ish distance between two pixels, 0..765: cheap, only used to ask
-// "do these two differ" and "which differs most", never as a contrast.
-function dist(data, i, other, j) {
-  var d = data[i] - other[j]; if (d < 0) d = -d
-  var e = data[i + 1] - other[j + 1]; if (e < 0) e = -e
-  var f = data[i + 2] - other[j + 2]; if (f < 0) f = -f
-  return d + e + f
-}
-
 // ---------------------------------------------------------------- measuring
 
 // Below this distance (of 765) two pixels are the same paint: renderer noise
@@ -149,6 +140,26 @@ var SAME = 6
 // is why `CORE` is a share of the strongest pixel and not a fixed colour.
 var CORE = 0.9
 
+// A luminance histogram that remembers one pixel per bin, so the median of a
+// few thousand pixels costs one pass and no array: the shell's engine has no
+// typed-array sort, and a comparator sort is most of the budget.
+function Histo() {
+  this.n = 0
+  this.count = new Uint32Array(1024)
+  this.at = new Int32Array(1024)
+}
+Histo.prototype.add = function (l, i) {
+  var bin = (l * 1023) | 0
+  if (this.count[bin]++ === 0) this.at[bin] = i
+  this.n++
+}
+// {at, bin} of the median: the first pixel seen in its bin.
+Histo.prototype.median = function () {
+  var half = this.n >> 1, seen = 0, bin
+  for (bin = 0; bin < 1024; bin++) { seen += this.count[bin]; if (seen > half) break }
+  return this.at[bin < 1024 ? bin : 1023]
+}
+
 // Text. `a` is the rect as drawn, `b` the same rect with every found item
 // hidden (both over the notch colour). The ink is the core of what differs
 // most; the backdrop is every pixel of `b`, and the ratio is the ink against
@@ -157,79 +168,136 @@ var CORE = 0.9
 // a contrast failure and does not count.
 //
 // stride > 1 reads every stride-th pixel along both axes.
+//
+// Written for the shell's JavaScript engine, which is slow per operation:
+// one pass for the differences, the luminances only of the core, and the
+// worst backdrop found as the nearest luminance on each side of the ink
+// (the ratio is monotonic on either side of it) with a one-pixel cache.
 function textRatio(a, b, stride) {
   stride = stride || 1
   var da = a.data, db = b.data, w = a.w, h = a.h
-  var maxD = 0
-  for (var y = 0; y < h; y += stride) {
-    for (var x = 0; x < w; x += stride) {
-      var i = (y * w + x) * 4
-      var d = dist(da, i, db, i)
+  var diff = new Uint16Array(w * h)
+  var maxD = 0, x, y, p, i, d
+  for (y = 0; y < h; y += stride) {
+    for (x = 0; x < w; x += stride) {
+      p = y * w + x; i = p << 2
+      d = da[i] - db[i]; if (d < 0) d = -d
+      var e = da[i + 1] - db[i + 1]; d += e < 0 ? -e : e
+      e = da[i + 2] - db[i + 2]; d += e < 0 ? -e : e
+      diff[p] = d
       if (d > maxD) maxD = d
     }
   }
   if (maxD <= SAME) return { painted: false, ratio: 21, maxDiff: maxD, ink: null, back: null }
   // the core: median luminance of the pixels within CORE of the strongest
-  var core = [], coreAt = []
+  var cut = maxD * CORE, core = new Histo(), cr = -1, cg = -1, cb = -1, cl = 0
   for (y = 0; y < h; y += stride) {
     for (x = 0; x < w; x += stride) {
-      i = (y * w + x) * 4
-      if (dist(da, i, db, i) >= maxD * CORE) { core.push(lum255(da[i], da[i + 1], da[i + 2])); coreAt.push(i) }
+      p = y * w + x
+      if (diff[p] >= cut) {
+        i = p << 2
+        if (da[i] !== cr || da[i + 1] !== cg || da[i + 2] !== cb) { cr = da[i]; cg = da[i + 1]; cb = da[i + 2]; cl = lum255(cr, cg, cb) }
+        core.add(cl, i)
+      }
     }
   }
-  var order = core.map(function (v, k) { return k }).sort(function (p, q) { return core[p] - core[q] })
-  var mid = coreAt[order[order.length >> 1]]
-  var ink = [da[mid], da[mid + 1], da[mid + 2]]
-  var li = lum255(ink[0], ink[1], ink[2])
+  var mid = core.median()
+  var ink = [da[mid], da[mid + 1], da[mid + 2]], li = lum255(ink[0], ink[1], ink[2])
+  // the backdrop pixels nearest the ink's luminance, below and above it
+  var below = -1, above = 99, belowAt = -1, aboveAt = -1
+  var pr = -1, pg = -1, pb = -1
+  for (y = 0; y < h; y += stride) {
+    for (x = 0; x < w; x += stride) {
+      i = (y * w + x) << 2
+      var r = db[i], g = db[i + 1], bl = db[i + 2]
+      if (r === pr && g === pg && bl === pb) continue
+      pr = r; pg = g; pb = bl
+      var lb = lum255(r, g, bl)
+      if (lb <= li) { if (lb > below) { below = lb; belowAt = i } }
+      else if (lb < above) { above = lb; aboveAt = i }
+    }
+  }
   var worst = 99, wi = 0
-  for (y = 0; y < h; y += stride) {
-    for (x = 0; x < w; x += stride) {
-      i = (y * w + x) * 4
-      var r = ratio255(li, lum255(db[i], db[i + 1], db[i + 2]))
-      if (r < worst) { worst = r; wi = i }
-    }
-  }
-  return { painted: true, ratio: worst, maxDiff: maxD, ink: ink, back: [db[wi], db[wi + 1], db[wi + 2]], core: core.length }
+  if (belowAt >= 0) { worst = ratio255(li, below); wi = belowAt }
+  if (aboveAt >= 0) { var ra = ratio255(li, above); if (ra < worst) { worst = ra; wi = aboveAt } }
+  return { painted: true, ratio: worst, maxDiff: maxD, ink: ink, back: [db[wi], db[wi + 1], db[wi + 2]], core: core.n }
 }
 
-// A mark. `a` is the rect as drawn; `ring` is the backdrop around it, as a
-// {w, h, data} strip list flattened to one pixel region (the ring 3 px
-// outside the rect, from the grab with the text hidden). The backdrop's
-// colour is the ring's median; the ink is the median of the rect's pixels
-// that differ from it, so a filled button, an outline, a ring and a thin
-// icon are all "the pixels that are not the backdrop". Nothing differing
-// is a mark that cannot be seen: ratio 1.
-function markRatio(a, ring, stride) {
+// Pixels from a mark's own edge that are always read, however sparse the rest.
+var EDGE = 3
+
+// A mark. `a` is the rect and `ring` the backdrop around it, as one flat
+// pixel region (the ring 3 px outside the rect), both from the grab with the
+// text hidden, so a label on a button is not part of the button. The
+// backdrop's colour is the ring's median; the ink is the median of the strongest
+// half (by count) of the rect's pixels that differ from it, so a filled
+// button, an outline, a ring and a thin icon are all "the pixels that are not
+// the backdrop", and anti-aliased rim pixels are not the ink. Nothing
+// differing is a mark that cannot be seen: ratio 1.
+//
+// `band` (device pixels, 0 for none) is for an OUTLINE -- a mark whose fill is
+// transparent and whose border is the mark: only that many pixels in from the
+// edge are the ink. Without it the interior of a card with an outline would
+// outweigh the outline itself.
+//
+// `core` (text read without a grab B, "light" mode): the ink is the core of the
+// strongest difference, as in `textRatio`, and the backdrop is the ring alone.
+function markRatio(a, ring, stride, band, core) {
   stride = stride || 1
-  var da = a.data
-  var rl = []
-  for (var k = 0; k < ring.data.length; k += 4 * stride) rl.push(lum255(ring.data[k], ring.data[k + 1], ring.data[k + 2]))
-  if (!rl.length) return { painted: false, ratio: 21, ink: null, back: null }
-  var sorted = rl.slice().sort(function (p, q) { return p - q })
-  var back = sorted[sorted.length >> 1]
-  // the backdrop pixel nearest the ring's median luminance stands for "what
-  // is around it" when asking which of the rect's pixels differ
-  var bi = 0, bd = 9
-  for (k = 0; k < rl.length; k++) { var dd = Math.abs(rl[k] - back); if (dd < bd) { bd = dd; bi = k * stride * 4 } }
-  var bg = [ring.data[bi], ring.data[bi + 1], ring.data[bi + 2]]
-  var diff = []
-  for (var y = 0; y < a.h; y += stride) {
-    for (var x = 0; x < a.w; x += stride) {
-      var i = (y * a.w + x) * 4
-      var d = Math.abs(da[i] - bg[0]) + Math.abs(da[i + 1] - bg[1]) + Math.abs(da[i + 2] - bg[2])
-      if (d > SAME) diff.push({ i: i, l: lum255(da[i], da[i + 1], da[i + 2]), d: d })
+  band = band || 0
+  var da = a.data, rd = ring.data, n = rd.length >> 2, k, i
+  if (!n) return { painted: false, ratio: 21, ink: null, back: null }
+  var m = Math.ceil(n / stride), rl = new Float64Array(m), rh = new Histo(), pr = -1, pg = -1, pb = -1, pl = 0
+  for (k = 0, i = 0; k < m; k++, i += 4 * stride) {
+    if (rd[i] !== pr || rd[i + 1] !== pg || rd[i + 2] !== pb) { pr = rd[i]; pg = rd[i + 1]; pb = rd[i + 2]; pl = lum255(pr, pg, pb) }
+    rl[k] = pl
+    rh.add(pl, i)
+  }
+  // a ring pixel of the median luminance stands for "what is around it"
+  var bi = rh.median()
+  var bg0 = rd[bi], bg1 = rd[bi + 1], bg2 = rd[bi + 2]
+  var w = a.w, h = a.h, diff = new Uint16Array(w * h), hist = new Uint32Array(766), total = 0, x, y, p, d
+  var edge = EDGE * stride, full
+  for (y = 0; y < h; y += (band || y < edge || y >= h - edge) ? 1 : stride) {
+    full = y < band || y >= h - band || (!band && (y < edge || y >= h - edge))
+    for (x = 0; x < w; x += band ? (full || x < band || x >= w - band ? 1 : w - 2 * band) : ((full || x < edge || x >= w - edge) ? 1 : stride)) {
+      p = y * w + x; i = p << 2
+      d = da[i] - bg0; if (d < 0) d = -d
+      var e = da[i + 1] - bg1; d += e < 0 ? -e : e
+      e = da[i + 2] - bg2; d += e < 0 ? -e : e
+      diff[p] = d
+      if (d > SAME) { hist[d]++; total++ }
     }
   }
-  if (!diff.length) return { painted: true, ratio: 1, ink: null, back: bg, nInk: 0 }
-  // a mark's ink is its body, not its anti-aliased rim: the median of the
-  // pixels in the strongest half of the difference
-  diff.sort(function (p, q) { return q.d - p.d })
-  var top = diff.slice(0, Math.max(1, Math.ceil(diff.length / 2)))
-  top.sort(function (p, q) { return p.l - q.l })
-  var m = top[top.length >> 1]
+  if (!total) return { painted: true, ratio: 1, ink: null, back: [bg0, bg1, bg2], nInk: 0 }
+  // the difference at which half of the differing pixels are stronger
+  var cut = 765, above = 0
+  if (core) {
+    cut = 765
+    while (cut > SAME && hist[cut] === 0) cut--
+    cut = Math.max(SAME + 1, Math.floor(cut * CORE))
+  } else {
+    while (cut > SAME && above + hist[cut] < total / 2) { above += hist[cut]; cut-- }
+  }
+  var body = new Histo(), cr = -1, cg = -1, cb = -1, cl = 0
+  for (y = 0; y < h; y += (band || y < edge || y >= h - edge) ? 1 : stride) {
+    full = y < band || y >= h - band || (!band && (y < edge || y >= h - edge))
+    for (x = 0; x < w; x += band ? (full || x < band || x >= w - band ? 1 : w - 2 * band) : ((full || x < edge || x >= w - edge) ? 1 : stride)) {
+      p = y * w + x
+      if (diff[p] >= cut) {
+        i = p << 2
+        if (da[i] !== cr || da[i + 1] !== cg || da[i + 2] !== cb) { cr = da[i]; cg = da[i + 1]; cb = da[i + 2]; cl = lum255(cr, cg, cb) }
+        body.add(cl, i)
+      }
+    }
+  }
+  var mi = body.median(), li = lum255(da[mi], da[mi + 1], da[mi + 2])
+  var below = -1, over = 99
+  for (k = 0; k < m; k++) { var l = rl[k]; if (l <= li) { if (l > below) below = l } else if (l < over) over = l }
   var worst = 99
-  for (k = 0; k < rl.length; k++) { var r = ratio255(m.l, rl[k]); if (r < worst) worst = r }
-  return { painted: true, ratio: worst, ink: [da[m.i], da[m.i + 1], da[m.i + 2]], back: bg, nInk: diff.length }
+  if (below >= 0) worst = ratio255(li, below)
+  if (over < 99) { var ra = ratio255(li, over); if (ra < worst) worst = ra }
+  return { painted: true, ratio: worst, ink: [da[mi], da[mi + 1], da[mi + 2]], back: [bg0, bg1, bg2], nInk: body.n }
 }
 
 // ---------------------------------------------------------------- the walk
@@ -264,6 +332,10 @@ function textRectOf(item) {
 //                         fades the panel in, so before the reveal every
 //                         descendant reads visible=false): then `visible`
 //                         says nothing and the pixels decide what was drawn
+//   opts.trustEnabled     the same for `enabled`: the host is disabled until
+//                         it is shown, and `enabled` reads the EFFECTIVE value,
+//                         so a disabled control cannot be told from one under
+//                         a disabled host. Then it is measured like any other
 //
 // Skipped: disabled items (WCAG 1.4.3, and their subtree), empty text, zero
 // size, and anything with an effective opacity of 0. A mark is only what
@@ -273,6 +345,7 @@ function findRects(root, opts) {
   opts = opts || {}
   var cap = opts.cap || 400
   var trust = opts.trustVisible !== false
+  var trustEnabled = opts.trustEnabled !== false
   var map = opts.map || function (item, x, y) {
     for (var p = item; p && p !== root; p = p.parent) { x += p.x || 0; y += p.y || 0 }
     return { x: x, y: y }
@@ -285,12 +358,16 @@ function findRects(root, opts) {
     var op = opacity * (item.opacity === undefined ? 1 : item.opacity)
     if (op <= 0.01) return
     if (!isRoot && trust && item.visible === false) return
-    if (item.enabled === false) return
+    if (trustEnabled && item.enabled === false) return
     var kids = item.children || []
     var own = null
     if (!isRoot) {
       if (isText(item)) own = { role: "text", rect: textRectOf(item), empty: item.text === "" }
-      else if (item.uiMark === true) own = { role: "ui", rect: { x: 0, y: 0, w: item.width, h: item.height }, empty: false }
+      else if (item.uiMark === true) {
+        // a transparent Rectangle with a border is an outline: the border is the mark
+        var bw = item.border && item.border.width > 0 && item.color && item.color.a === 0 ? item.border.width : 0
+        own = { role: "ui", rect: { x: 0, y: 0, w: item.width, h: item.height }, empty: false, band: bw }
+      }
     }
     if (own && !own.empty && own.rect.w > 0 && own.rect.h > 0) {
       seen++
@@ -298,7 +375,7 @@ function findRects(root, opts) {
       var x0 = Math.max(0, Math.min(p.x, q.x)), y0 = Math.max(0, Math.min(p.y, q.y))
       var x1 = Math.min(W, Math.max(p.x, q.x)), y1 = Math.min(H, Math.max(p.y, q.y))
       if (x1 > x0 && y1 > y0 && out.length < cap) {
-        out.push({ item: item, role: own.role, x: x0, y: y0, w: x1 - x0, h: y1 - y0,
+        out.push({ item: item, role: own.role, band: own.band || 0, x: x0, y: y0, w: x1 - x0, h: y1 - y0,
                    name: String(item.objectName || (own.role === "text" ? item.text : "mark")).slice(0, 32) })
       }
     }
@@ -334,11 +411,15 @@ function laidOut(history, frames) {
 
 // ---------------------------------------------------------------- verdict
 
-// How far below the floor a measured ratio may read and still pass: the
-// anti-aliased edge of thin text never reaches full ink, so a colour that is
-// 4.56:1 on paper reads a little under it in pixels. Settled by
-// docs/panelstyle-phase1.md.
-var TOLERANCE = { text: 0.0, ui: 0.0 }
+// How far below the floor a measured ratio may read and still pass. Thin
+// text never reaches full ink in pixels (an anti-aliased stem of a regular
+// 8-12 px face peaks at 85-95 % coverage), so a colour that is 4.56:1 on
+// paper reads 4.2-4.4 as pixels, and a light 10 px face 3.9. 0.4 lets a
+// colour `lift`ed to 4.5 pass at regular weight from 8 px up, and lets bold or
+// large text 4.1 pass: the leak is the price of not knowing the font.
+// Marks are flat paint and read exact. The sweep that sets this is
+// docs/panelstyle-phase1.md (fixture `antialias`).
+var TOLERANCE = { text: 0.4, ui: 0.0 }
 
 function verdict(results) {
   var worst = null, failing = null, measured = 0
@@ -359,9 +440,13 @@ function detail(failing) {
 
 // ---------------------------------------------------------------- limits
 
-// Every second pixel along each axis above this many.
-var STRIDE_ABOVE = 200000
-function strideFor(w, h) { return w * h > STRIDE_ABOVE ? 2 : 1 }
+// How sparsely a rect of w x h pixels is read: every stride-th pixel along
+// each axis, so a rect costs about 24 000 samples however large it is (the
+// shell's engine does roughly 5 000 pixels a millisecond, dev/panelstyle.sh).
+// Text is read evenly; a mark is always read in full at its edge
+// (`markRatio`), where outlines live.
+var SAMPLES = 24000
+function strideFor(w, h) { return Math.max(1, Math.min(8, Math.ceil(Math.sqrt(w * h / SAMPLES) - 1e-9))) }
 
 // The inset a contract-2 panel's clip wrapper takes at the left, right and
 // bottom so a full-bleed fill stays inside the notch's bottom corner arcs: the

@@ -205,6 +205,10 @@ function label(text, props) { return item(Object.assign({ text, contentWidth: 40
   check("36. a text's rect is in the root's coordinates (vertically centred in its item), as wide as its glyphs", "14,17,40,10", [hello.x, hello.y, hello.w, hello.h].join(","))
   const pre = PS.findRects(item({ width: 200, height: 100, visible: false }, [label("x", { visible: false, y: 5 }), label("y", { y: 20 })]), { trustVisible: false })
   check("37. before the reveal visible says nothing: both are found and the pixels decide", "x,y", pre.rects.map((r) => r.name).join(","))
+  const rectKinds = PS.findRects(item({ width: 200, height: 100 }, [item({ uiMark: true, border: { width: 2 }, color: { a: 0 }, y: 10 }), item({ uiMark: true, border: { width: 2 }, color: { a: 1 }, y: 40 }), item({ uiMark: true, y: 70 })]))
+  check("36b. a transparent bordered mark is an outline with its border width; a filled one or a bare one is not", "2 0 0", rectKinds.rects.map((r) => r.band).join(" "))
+  const preDisabled = PS.findRects(item({ width: 200, height: 100, enabled: false }, [label("p", { enabled: false })]), { trustEnabled: false })
+  check("37b. under a disabled host `enabled` says nothing either: the text is found", "p", preDisabled.rects.map((r) => r.name).join(","))
   const centred = PS.findRects(item({ width: 200, height: 100 }, [label("c", { width: 100, height: 40, horizontalAlignment: 4, verticalAlignment: 128 })]))
   check("38. a centred text's rect is where its glyphs are, not the item it fills", "30,15,40,10", [centred.rects[0].x, centred.rects[0].y, centred.rects[0].w, centred.rects[0].h].join(","))
   const many = item({ width: 100, height: 4000 }, Array.from({ length: 500 }, (_, i) => label("t" + i, { y: i * 8 })))
@@ -231,6 +235,24 @@ function label(text, props) { return item(Object.assign({ text, contentWidth: 40
   const bad = PS.verdict([{ name: "title", role: "text", ratio: 12, painted: true }, { name: "hint", role: "text", ratio: 2.61, painted: true }])
   check("47. a text under 4.5 fails and is named", "false hint 2.6:1 < 4.5", `${bad.pass} ${PS.detail(bad.failing)}`)
   check("48. a mark is held to 3, not 4.5", "true false", `${PS.verdict([{ name: "m", role: "ui", ratio: 3.2, painted: true }]).pass} ${PS.verdict([{ name: "m", role: "ui", ratio: 2.9, painted: true }]).pass}`)
+  check("48b. text reading 4.2 passes on the anti-aliasing tolerance, 4.0 does not", "true false", `${PS.verdict([{ name: "t", role: "text", ratio: 4.2, painted: true }]).pass} ${PS.verdict([{ name: "t", role: "text", ratio: 4.0, painted: true }]).pass}`)
   check("49. nothing measured is not a pass", "false", String(PS.verdict([]).pass))
 }
-check("50. stride is 1 up to 200 k pixels and 2 above", "1 1 2", [PS.strideFor(400, 500), PS.strideFor(200, 1000), PS.strideFor(401, 500)].join(" "))
+check("50. a rect is read in full up to 24 000 pixels, then every 2nd, 3rd ... up to 8th", "1 1 2 2 3 8", [PS.strideFor(160, 150), PS.strideFor(24000, 1), PS.strideFor(24001, 1), PS.strideFor(300, 320), PS.strideFor(400, 500), PS.strideFor(4000, 4000)].join(" "))
+{
+  // a sparse read of a big outlined button still sees its 1 px outline (the edge is always read in full)
+  const big = region(400, 240, [0, 0, 0]), ring = region(400, 8, [0, 0, 0])
+  for (let x = 0; x < 400; x++) { put(big, x, 0, [128, 128, 128]); put(big, x, 239, [128, 128, 128]) }
+  for (let y = 0; y < 240; y++) { put(big, 0, y, [128, 128, 128]); put(big, 399, y, [128, 128, 128]) }
+  const st = PS.strideFor(400, 240)
+  check("51. a 400x240 outline is read every " + st + "th pixel and still reads as its border", fx(PS.contrast("#808080", "#000000")), fx(PS.markRatio(big, ring, st).ratio))
+  // an outline over a coloured card: the band is the ink, not the card
+  const card = region(400, 240, [26, 42, 68])
+  for (let x = 0; x < 400; x++) { put(card, x, 0, [128, 128, 128]); put(card, x, 1, [128, 128, 128]); put(card, x, 239, [128, 128, 128]); put(card, x, 238, [128, 128, 128]) }
+  for (let y = 0; y < 240; y++) { for (const x of [0, 1, 398, 399]) put(card, x, y, [128, 128, 128]) }
+  check("51b. an outline over a coloured fill is read in its band (without one it reads as the fill)", fx(PS.contrast("#808080", "#000000")) + " " + fx(PS.contrast("#1a2a44", "#000000")),
+        fx(PS.markRatio(card, ring, st, 3).ratio) + " " + fx(PS.markRatio(card, ring, st, 0).ratio))
+  // and a 1 px line on an odd row inside text is not the mark's business; text stride-2 reads a bold glyph
+  const fill = region(400, 240, [58, 130, 247])
+  check("52. a big fill read every " + st + "th pixel reads as its fill", fx(PS.contrast("#3a82f7", "#000000")), fx(PS.markRatio(fill, ring, st).ratio))
+}

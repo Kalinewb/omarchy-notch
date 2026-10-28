@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "acme.guard",
+  "name": "Acme Guard",
+  "version": "0.1.0",
+  "description": "Panels for the pixel guard prototype (dev/panelstyle.sh).",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "surface": "SurfaceIntegration.qml"
+  },
+  "surface": {
+    "contract": 1
+  }
+}

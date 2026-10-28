@@ -659,8 +659,9 @@ Item {
     kind: "switch"
     stateText: checked ? "On" : "Off"
     onChosen: function(v) { root.set(keys[0], v) }
-    Switch {
+    NotchSwitch {
       id: toggleSwitch
+      panel: root
       checked: toggle.checked
       onToggled: toggle.apply(!checked)
     }
@@ -836,65 +837,6 @@ Item {
         keyLine.stop()
       }
       onActiveFocusChanged: if (!activeFocus && keyLine.recording) keyLine.recording = false
-    }
-  }
-
-  // Omarchy's ToggleSwitch, with the notch's colours and radius. `toggled`
-  // fires before `checked` changes, as ToggleSwitch's does. The knob settles
-  // on the controls' spring; a press dips to 0.97.
-  component Switch: Item {
-    id: toggle
-    property bool checked: false
-    signal toggled()
-    readonly property int trackHeight: Math.max(22, Math.round(Style.spacing.controlHeight * 0.55))
-    readonly property int trackWidth: Math.round(trackHeight * 1.9)
-    readonly property int knobSize: Math.max(6, Math.round(trackHeight * 0.72))
-    readonly property int knobInset: Math.max(1, Math.round((trackHeight - knobSize) / 2))
-    implicitWidth: trackWidth
-    implicitHeight: trackHeight
-    scale: switchMouse.pressed ? 0.97 : 1
-    Behavior on scale {
-      NumberAnimation {
-        duration: root.still ? 0 : switchMouse.pressed ? 60 : root.settleMs
-        easing.type: switchMouse.pressed ? Easing.OutCubic : Easing.BezierSpline
-        easing.bezierCurve: root.settleCurve
-      }
-    }
-
-    // Fills are the text colour at the theme's alpha (NotchButton.qml).
-    readonly property string borderState: toggle.checked ? "selected" : (switchMouse.containsMouse ? "hover-cursor" : "normal")
-    readonly property color trackColor: track.color
-    readonly property color knobColor: knob.color
-
-    BorderSurface {
-      id: track
-      anchors.fill: parent
-      radius: root.radiusFor(Math.min(width, height))
-      color: Util.alpha(root.foreground, toggle.checked ? Style.selectedFillAlpha : Style.normalFillAlpha)
-      borderSpec: ({ color: Util.alpha(root.foreground, toggle.checked ? Style.selectedBorderAlpha : (switchMouse.containsMouse ? Style.hoverBorderAlpha : Style.normalBorderAlpha)),
-                     widths: Border.controlSpec(toggle.borderState, root.foreground, root.foreground).widths,
-                     gradient: { colors: [], angle: 0, enabled: false } })
-      Behavior on color { ColorAnimation { duration: root.still ? 0 : 90 } }
-
-      Rectangle {
-        id: knob
-        width: toggle.knobSize
-        height: toggle.knobSize
-        radius: root.radiusFor(Math.min(width, height))
-        x: toggle.checked ? track.width - width - toggle.knobInset : toggle.knobInset
-        anchors.verticalCenter: parent.verticalCenter
-        color: toggle.checked ? root.foreground : Qt.darker(root.foreground, 1.25)
-        Behavior on x { NumberAnimation { duration: root.settleMs; easing.type: Easing.BezierSpline; easing.bezierCurve: root.settleCurve } }
-        Behavior on color { ColorAnimation { duration: root.still ? 0 : 90 } }
-      }
-    }
-
-    MouseArea {
-      id: switchMouse
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: toggle.toggled()
     }
   }
 }

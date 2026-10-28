@@ -1,0 +1,55 @@
+# The strings the diet took off the screen (plan-wizard.md 2.2), as they stood
+# at 89d989c: one per line, the pieces of a joined literal on their own. dev/strings.sh
+# fails if one is back in dev/, bin/ or README.md. Keep this list short: add only
+# what a later change must not bring back.
+The plugin folder has local edits: update by hand.
+Not a git install, so it can't update itself.
+Hover opens the notch (see Behaviour), so these are not shown.
+Keybind to close and reopen where you were
+On while the notch auto-hides. Switch it off to keep windows below the notch.
+The battery glow is switched off, so the preview has nothing to show.
+Glow size is off, so the preview has nothing to show. Raise Glow size to see it.
+px, too small to see. Raise Glow size to see the preview.
+Previewing: while the settings are open the glow sits under the panel's bottom edge. It stops when the settings close.
+A plugin that integrates opens its own panel inside the notch, on the notch's colour and motion. Switching one off gives that plugin its own window back at once.
+That didn't work. Nothing was changed.
+Put the files back as they were before the fix.
+Nothing on disk changes. A snapshot isn't needed.
+The companion is installed, enabled and talking to this notch.
+Your theme keeps its colours out of the notch
+Its style tokens resolve to the text colour, so a panel the notch draws paints white.
+Your theme tints panels drawn inside the notch
+When a plugin's panel opens inside the notch, its hover highlights, selection and outlines come out in your theme's colour instead of white. The notch's own switches and buttons are unaffected. Nothing to press: it is decided by
+colour(s) your theme pins, which the notch cannot override for itself alone.
+The notch paints in white only, but a plugin's own panel asks Omarchy's Style helpers for its fills, and these tokens tell the helper to use the theme's colour instead of the white it was handed. Those helpers are shared with the whole desktop, so the notch cannot change them just for itself.
+Fix restarts the shell, which loads every plugin again.
+The notch closes while that happens and this page comes back with the result.
+The job stopped before it finished. Check Snapshots.
+Only these plugins can be installed here, each at the commit the marketplace verified. Anything that needs your password is set up in the plugin's own panel.
+Plugins run unsandboxed inside your shell. It's turned on when it lands.
+Its folder is deleted. You can install it again here.
+'s Setup then asks for your password once, to update its system files.
+The shell may need a restart to load every file.
+needs setting up in its own panel.
+Renamed. The shell restarts to load it.
+That plugin can't be installed from the notch.
+Another plugin job or a notch update is running.
+wasn't installed from git, so it can't update here.
+is busy. Try again when it has finished.
+The notch was updated while this card was open. Open it again.
+is installed under its old name. Update it instead.
+was updated, but its rename didn't finish. Setup can finish it.
+is newer than the verified version, so it stays as it is.
+It didn't start. Another plugin job or a notch update may be running.
+Removing the OSD companion would leave no OSD
+Removing the menu companion would leave no menu
+Couldn't tell whether the menu companion loaded
+Face ID will move to its new name
+Face ID was renamed, but your settings still use the old name
+OLED Corners pop in when the screen changes
+There is nothing to fix: this isn't happening here.
+Hyprland already reports config errors, so a fix couldn't be verified.
+Couldn't apply the fix. Nothing was changed.
+The fix didn't take. Everything was put back.
+Couldn't find the notch's block in the file.
+The files didn't come back as they were; run Restore again.

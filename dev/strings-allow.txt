@@ -1,0 +1,10 @@
+# Literals dev/strings.sh would flag that no one reads on a screen.
+# file<TAB>exact literal<TAB>reason. A literal that no longer exists fails the check.
+Bar.qml	autoHide toggle	IPC method name of the auto-hide keybind
+Bar.qml	menu root	IPC method name of the menu keybind
+Bar.qml	stayOpen toggle	IPC method name of the keep-open keybind
+Bar.qml	no notch	IPC reply when no notch window exists
+Bar.qml	declined:no such widget	IPC reply tag of hostPanel
+Bar.qml	unknown action	IPC error tag of the plugins call
+Bar.qml	nothing to restore	IPC reply of the test stash
+NotchSetup.qml	d MMM HH:mm	Qt date format of a snapshot's time

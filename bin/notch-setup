@@ -517,7 +517,7 @@ detect_menu_keys_bypass() {
     return
   fi
   local disabled=""
-  (( late > 0 )) && disabled="$(jq -r '[.[] | select(.late) | .source] | unique | join(", ")' <<<"$items") loads after bindings.lua, so a block appended there can't override it. Change it in that file."
+  (( late > 0 )) && disabled="$(jq -r '[.[] | select(.late) | .source] | unique | join(", ")' <<<"$items") loads after bindings.lua: change it there."
   point menu-keys-bypass fix "Menu keys skip the menu toggle" \
     "$keys open the notch's menu directly, so \"Replace the Omarchy menu\" can't switch them back." \
     "$(strings "Fix appends a marked block to ~/.config/hypr/bindings.lua that puts each key back on Omarchy's own default, which the menu companion then routes to the notch." "Nothing in the block mentions the notch, so it keeps working if the notch is gone.")" \

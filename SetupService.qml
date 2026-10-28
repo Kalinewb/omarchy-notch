@@ -97,7 +97,7 @@ Item {
     if (!bar || !bar.menuCompanion || !bar.notchReplaceMenu) return null
     if (bar.menuCompanion.companionState !== "active") return null
     return { id: "menu-replace-companion", severity: "ok", title: "The menu opens in the notch",
-             summary: "Installed, enabled and talking to this notch.",
+             summary: "",
              detail: [], items: [], fix: null, handoff: null }
   }
 
@@ -117,17 +117,13 @@ Item {
       if (role !== "foreground" && role !== "text" && role !== "transparent" && role !== "") off.push({ arg: key, summary: key + " = \"" + tokens[key] + "\"" })
     }
     if (!off.length) {
-      return { id: "theme-tokens", severity: "ok", title: "Your theme keeps its colours out of the notch",
-               summary: "Panels the notch draws stay white",
-               detail: ["Its style tokens resolve to the text colour, so a panel the notch draws paints white."], items: [], fix: null, handoff: null }
+      return { id: "theme-tokens", severity: "ok", title: "Your theme doesn't tint the notch",
+               summary: "", detail: [], items: [], fix: null, handoff: null }
     }
     return {
       id: "theme-tokens", severity: "info",
-      title: "Your theme tints panels drawn inside the notch",
-      summary: "Plugin panels in the notch take your theme's colours",
-      detail: ["When a plugin's panel opens inside the notch, its hover highlights, selection and outlines come out in your theme's colour instead of white. The notch's own switches and buttons are unaffected. Nothing to press: it is decided by " + off.length + " colour(s) your theme pins, which the notch cannot override for itself alone.",
-               "The notch paints in white only, but a plugin's own panel asks Omarchy's Style helpers for its fills, and these tokens tell the helper to use the theme's colour instead of the white it was handed. Those helpers are shared with the whole desktop, so the notch cannot change them just for itself.",
-               "If it bothers you: set them to \"foreground\" in the theme's shell.toml [style] section, or pick a theme that leaves them at the default. That changes them everywhere, not only in the notch. Text is unaffected either way."],
+      title: "Your theme tints panels in the notch",
+      summary: "", detail: [],
       items: off, fix: null, handoff: null
     }
   }
@@ -142,9 +138,8 @@ Item {
     var items = []
     for (var i = 0; i < ids.length; i++) items.push({ arg: ids[i], summary: ids[i] + " drew nothing" })
     return [{ id: "layout-empty-widget", severity: "fix", title: "A widget in the bar is empty",
-              summary: ids.length + (ids.length === 1 ? " widget" : " widgets") + " loaded but drew nothing",
-              detail: ["Fix restarts the shell, which loads every plugin again.",
-                       "The notch closes while that happens and this page comes back with the result."],
+              summary: ids.length === 1 ? "1 widget drew nothing" : ids.length + " widgets drew nothing",
+              detail: [],
               items: items,
               fix: { kind: "runtime", label: "Fix", files: [], reload: [], risk: "medium",
                      destroysNotch: true, disabledReason: "" },
@@ -336,7 +331,7 @@ Item {
           root.windowDeadline = Date.now() + 5000
           var copy = JSON.parse(JSON.stringify(root.job || {}))
           copy.phase = "failed"
-          copy.message = "The job stopped before it finished. Check Snapshots."
+          copy.message = "Job stopped: check Snapshots."
           root.job = copy
         }
       }

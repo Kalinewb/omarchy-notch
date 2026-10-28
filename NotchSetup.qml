@@ -196,7 +196,7 @@ Item {
       Text {
         visible: !root.available
         width: parent.width
-        wrapMode: Text.WordWrap
+        elide: Text.ElideRight
         text: "Setup isn't available in this notch."
         color: root.dim
         font.family: root.fontFamily
@@ -216,7 +216,7 @@ Item {
       Text {
         visible: root.available && root.attention.length === 0 && !root.checking
         width: parent.width
-        wrapMode: Text.WordWrap
+        elide: Text.ElideRight
         text: "Nothing needs attention."
         color: root.dim
         font.family: root.fontFamily
@@ -242,7 +242,7 @@ Item {
           model: root.showHealthy ? root.healthy : []
           Text {
             width: column.width
-            wrapMode: Text.WordWrap
+            elide: Text.ElideRight
             text: "· " + modelData.title
             color: root.dim
             font.family: root.fontFamily
@@ -262,16 +262,6 @@ Item {
           model: root.showSnapshots && root.setup ? root.setup.snapshots : []
           SnapshotRow { snapshot: modelData }
         }
-      }
-
-      Text {
-        width: parent.width
-        wrapMode: Text.WordWrap
-        text: "From a terminal: notch-setup detect"
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        topPadding: Style.space(10)
       }
     }
   }
@@ -300,8 +290,9 @@ Item {
     bottomPadding: Style.space(2)
   }
 
-  // One detected point: a title, a line of explanation, and at most one button.
-  // Clicking it unfolds what was found and which files a fix would touch.
+  // One detected point: a title, a state when there is one, and at most one
+  // button. Its summary is the tip; clicking unfolds what was found. The long
+  // account stays in `notch-setup detect` and the wiki, not on the page.
   component PointRow: Column {
     id: pointRow
     property var point: ({})
@@ -317,7 +308,7 @@ Item {
 
     Item {
       width: parent.width
-      height: Math.max(Style.space(22), title.implicitHeight + summary.implicitHeight + Style.space(4))
+      height: Math.max(Style.space(22), title.implicitHeight + (stateLine.visible ? stateLine.implicitHeight : 0) + Style.space(4))
 
       HoverHandler { onHoveredChanged: hovered ? foot.want(pointRow.point.id, "hover", pointRow.point.summary || "") : foot.leave() }
 
@@ -344,23 +335,27 @@ Item {
         font.pixelSize: Style.font.bodySmall
       }
 
+      // What the job says, else a fix that restarts the shell warns of it.
       Text {
-        id: summary
+        id: stateLine
         anchors.left: mark.right
         anchors.right: action.left
         anchors.rightMargin: Style.space(8)
         anchors.top: title.bottom
+        visible: text !== ""
         text: {
           switch (pointRow.state_) {
             case "working": return "Fixing…"
             case "fixed": return "Fixed."
-            case "failed": return String(root.job.message || "That didn't work. Nothing was changed.")
-            case "conflict": return String(root.job.message || "Those files changed since the fix.")
+            case "failed": return String(root.job.message || "Didn't work: nothing changed.")
+            case "conflict": return String(root.job.message || "Files changed since the fix.")
             case "locked": return "The session is locked."
           }
-          return pointRow.point.summary || ""
+          if (pointRow.point.fix && (pointRow.point.fix.disabledReason || "") !== "") return String(pointRow.point.fix.disabledReason)
+          if (pointRow.fixable && pointRow.point.fix.destroysNotch === true) return "Restarts the shell: notch closes."
+          return ""
         }
-        wrapMode: Text.WordWrap
+        elide: Text.ElideRight
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -403,7 +398,7 @@ Item {
       }
     }
 
-    // The detail, and the confirmation, share one growing box: the panel
+    // The items, and the confirmation, share one growing box: the panel
     // resizes on the notch's own timing rather than jumping.
     Item {
       width: parent.width
@@ -430,44 +425,21 @@ Item {
           }
         }
 
-        Repeater {
-          model: pointRow.point.detail || []
-          Text {
-            width: detail.width
-            wrapMode: Text.WordWrap
-            text: String(modelData)
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-          }
-        }
-
-        Text {
-          visible: (pointRow.point.fix && (pointRow.point.fix.disabledReason || "")) !== ""
-          width: detail.width
-          wrapMode: Text.WordWrap
-          text: pointRow.point.fix ? "No fix here: " + pointRow.point.fix.disabledReason : ""
-          color: root.accent
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-
         // Are you sure? Named files, and what is kept.
         Column {
+          id: confirm
+          readonly property var fixFiles: (pointRow.point.fix && pointRow.point.fix.files) || []
           visible: pointRow.confirming || (root.confirmRow === pointRow.point.id && root.confirmKind === "restore")
           width: detail.width
           spacing: Style.space(4)
           topPadding: Style.space(4)
 
+          // Which files a fix changes; what a snapshot does is the Fix button's tip.
           Text {
+            visible: root.confirmKind !== "restore" && confirm.fixFiles.length > 0
             width: parent.width
-            wrapMode: Text.WordWrap
-            text: {
-              if (root.confirmKind === "restore") return "Put the files back as they were before the fix."
-              var files = (pointRow.point.fix && pointRow.point.fix.files) || []
-              if (!files.length) return "Nothing on disk changes. A snapshot isn't needed."
-              return "This changes " + files.join(", ") + ". A snapshot is taken first."
-            }
+            elide: Text.ElideRight
+            text: "Changes " + confirm.fixFiles.join(", ")
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -493,6 +465,10 @@ Item {
               text: root.confirmKind === "restore" ? "Undo" : "Fix"
               fontFamily: root.fontFamily
               horizontalPadding: Style.space(10)
+              HoverHandler {
+                onHoveredChanged: hovered ? foot.want("confirm", "hover", root.confirmKind === "restore" ? "Puts files back as they were"
+                  : confirm.fixFiles.length > 0 ? "Snapshots those files first, then changes them" : "Changes nothing on disk, so no snapshot") : foot.leave()
+              }
               onClicked: {
                 if (root.confirmKind === "restore") {
                   var name = String(root.job.snapshot || "")
@@ -652,10 +628,10 @@ Item {
           case "reloading": return what + ": reloading…"
           case "verifying": return what + ": checking…"
           case "done": return what + " done."
-          case "conflict": return "Couldn't undo: " + String(j.message || "those files changed.")
+          case "conflict": return j.message ? "Couldn't undo: " + String(j.message) : "Couldn't undo: files changed."
           case "locked-out": return "The session is locked, so nothing ran."
           case "failed":
-          case "rolled-back": return "Couldn't " + what.toLowerCase() + ": " + String(j.message || "it didn't take.")
+          case "rolled-back": return j.message ? "Couldn't " + what.toLowerCase() + ": " + String(j.message) : "Couldn't " + what.toLowerCase() + ": it didn't take."
         }
         return ""
       }

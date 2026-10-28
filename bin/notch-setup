@@ -243,9 +243,58 @@ session_locked() { runnable SESSION_LOCKED && "${SESSION_LOCKED[@]}" >/dev/null 
 # Each emits one JSON object. `severity` is fix, action, warn, info, ok or
 # unknown; `fix` is null when there is nothing to press.
 
+# A summary is also the page's tip, one line of at most 60 characters. Where the
+# plain account runs longer, this is its short form, keyed by the point's title;
+# the account itself becomes the first line of the detail, so nothing is lost.
+# Anything else that still runs over (a list of ids, say) is cut at a word.
+TIP_MAX=60
+short_summary() { # short_summary <title>
+  case $1 in
+    "The bar is hidden") echo "The bar toggle is off, so the notch isn't drawn" ;;
+    "The notch failed to load") echo "The shell couldn't load it and fell back to another bar" ;;
+    "Hyprland reports config errors") echo "Config errors switch off fixes that write Hyprland files" ;;
+    "Removing the OSD companion would leave no OSD"|"Removing the menu companion would leave no menu") echo "Omarchy hasn't noted this companion" ;;
+    "The OSD companion is switched off") echo "Volume and brightness still show Omarchy's own card" ;;
+    "The OSD companion isn't installed") echo "The notch never sees an OSD call" ;;
+    "Notifications show in the notch only") echo "The companion keeps Omarchy's toast off screen" ;;
+    "The notifications companion isn't running") echo "It stands in for omarchy.notifications but isn't loaded" ;;
+    "The notifications companion is switched off") echo "Omarchy's toast still shows alongside the notch" ;;
+    "The notifications companion isn't installed") echo "Omarchy's toast still shows; the notch installs it itself" ;;
+    "The menu companion is switched off") echo "The menu still opens in Omarchy's own window" ;;
+    "Couldn't tell whether the menu companion loaded") echo "From a terminal this looks the same either way" ;;
+    "The menu companion isn't installed") echo "The notch couldn't install it by itself" ;;
+    "Couldn't read your keybinds") echo "Couldn't check: is lua installed?" ;;
+    "Menu keys go through Omarchy") echo "Every menu key runs omarchy-menu" ;;
+    "Menu keys call the notch directly") echo "These keys will skip the toggle once the menu is replaced" ;;
+    "Menu keys skip the menu toggle") echo "\"Replace the Omarchy menu\" can't switch them back" ;;
+    "Leftover notch keybinds") echo "Hyprland keeps binds the notch no longer asks for" ;;
+    "The notch's settings name a missing plugin") echo "Plugins named in the settings aren't installed" ;;
+    "Old backup files in your config") echo "Old .bak files are sitting in your config" ;;
+    "Only the notch can check this") echo "Empty bar widgets show only inside the running notch" ;;
+    *" needs setup") echo "Installed, but its own setup isn't finished" ;;
+    "Profiles keybinds point at a missing script") echo "Reinstall Profiles or delete the keys from bindings.lua" ;;
+    "Test shells are running") echo "A test run is in progress; nothing to do" ;;
+    "Upstream is unchanged") echo "Every file the notch copies is as it was ported" ;;
+    "Omarchy changed upstream") echo "Only a developer needs to act on this" ;;
+    "The bar layer can animate") echo "Omarchy's no_anim rule for the bar isn't in effect" ;;
+    "A layer rule animates the notch") echo "It fights the notch's own movement" ;;
+    "The notch can't update itself") echo "This copy isn't a git checkout" ;;
+    "Face ID will move to its new name") echo "Nothing to do until its 3.0 update" ;;
+    "Face ID was renamed, but your settings still use the old name") echo "It may be missing from the bar" ;;
+    "OLED Corners pop in when the screen changes") echo "Hyprland animates their layer on every monitor change" ;;
+  esac
+}
+
 point() { # point <id> <severity> <title> <summary> <detail json> <items json> <fix json> <handoff json>
-  jq -nc --arg id "$1" --arg severity "$2" --arg title "$3" --arg summary "$4" \
-    --argjson detail "${5:-[]}" --argjson items "${6:-[]}" --argjson fix "${7:-null}" --argjson handoff "${8:-null}" \
+  local summary=$4 detail=${5:-[]} short
+  if (( ${#summary} > TIP_MAX )); then
+    detail=$(jq -c --arg s "$summary" '[$s] + .' <<<"$detail")
+    short=$(short_summary "$3")
+    summary=$(jq -rn --arg s "${short:-$summary}" --argjson max "$TIP_MAX" \
+      '$s | if length > $max then (.[0:$max - 1] | sub(" +[^ ]*$"; "")) + "…" else . end')
+  fi
+  jq -nc --arg id "$1" --arg severity "$2" --arg title "$3" --arg summary "$summary" \
+    --argjson detail "$detail" --argjson items "${6:-[]}" --argjson fix "${7:-null}" --argjson handoff "${8:-null}" \
     '{id: $id, severity: $severity, title: $title, summary: $summary, detail: $detail, items: $items, fix: $fix, handoff: $handoff}'
 }
 

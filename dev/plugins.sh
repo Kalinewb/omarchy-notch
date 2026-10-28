@@ -722,6 +722,22 @@ runner=$(np state | jq -r '[.entries[].state] | join(" ")')
 check "plugins status: three entries plus the notch, in the runner's states" "3 self $runner" \
   "$(field '"\(.entries | length) \(.self.state) \([.entries[].state] | join(" "))"' "$s")"
 
+# The foot line: an entry's tip is where its verified commit comes from.
+tip_id=kalinewb.profiles
+page_height=$(ipc geometry | jq -r .plugins.size.height)
+ipc pluginsPress hover:$tip_id >/dev/null
+check "a pointer on an entry: its tip is pending at once, not yet shown" "true false" "$(ipc geometry | jq -r '.plugins.tip | "\(.pending) \(.shown)"')"
+for _ in $(seq 1 40); do [[ $(ipc geometry | jq -r '.plugins.tip.shown') == true ]] && break; sleep 0.1; done
+want=$(jq -r --arg id $tip_id '.plugins[] | select(.id == $id) | "Verified commit \(.pin[0:7]) of \(.url | sub("^[a-z]+://(github\\.com/)?"; "") | sub("\\.git$"; ""))"' "$sb/catalogue.json")
+check "…then shown, from the pointer: the catalogue's pin and repository" "true hover $want" "$(ipc geometry | jq -r '.plugins.tip | "\(.shown) \(.source) \(.text)"')"
+check "…the page is as tall with it as without, the foot a reserved line" "$page_height true" \
+  "$(ipc geometry | jq -r '.plugins.size.height') $(ipc geometry | jq -r '.plugins.tip.footHeight > 0')"
+ipc pluginsPress hover:kalinewb.notch >/dev/null
+check "the notch's own row has no tip to give: none shows" "false false" "$(ipc geometry | jq -r '.plugins.tip | "\(.shown) \(.pending)"')"
+ipc pluginsPress hover:$tip_id >/dev/null
+ipc pluginsPress key:escape >/dev/null
+check "Escape closes a tip first: the page stays" "false true" "$(ipc geometry | jq -r '"\(.plugins.tip.shown or .plugins.tip.pending) \(.plugins.open)"')"
+
 check "confirm with no card: no-such-button, and nothing ran" "no-such-button false" "$(ipc pluginsPress confirm) $(exists "$job_file")"
 ipc pluginsPress install:kalinewb.profiles >/dev/null
 until_true 100 '.confirm.ready'

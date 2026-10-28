@@ -164,6 +164,18 @@ report=$(run_setup detect --json)
 ids=$(jq -r '[.points[].id] | join(" ")' <<<"$report")
 expected_ids="bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion osd-companion notifications-companion menu-keys-bypass notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids plugin-face face-renamed plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift layer-rules oled-corners-still notch-not-git"
 check "1. detect reports the 23 points in order, schema 1" "1 23 $expected_ids" "$(jq -r .schema <<<"$report") $(jq '.points | length' <<<"$report") $ids"
+short_forms=$(python3 - "$SCRIPT" <<'PY'
+import re, sys
+src = open(sys.argv[1]).read()
+body = re.search(r"short_summary\(\) \{.*?\n\}\n", src, re.S).group(0)
+forms = re.findall(r'\) echo "((?:[^"\\]|\\.)*)" ;;', body)
+print(len(forms), max(len(f.replace('\\"', '"')) for f in forms))
+PY
+)
+check "1a. a point's summary is its tip: every short form in notch-setup is at most 60 characters" "true" \
+  "$([[ ${short_forms% *} -gt 20 && ${short_forms#* } -le 60 ]] && echo true || echo "false ($short_forms)")"
+check "1c. every summary the healthy fixture produces fits the tip: 60 characters at most" "true" \
+  "$(jq -r '[.points[].summary | length] | max <= 60' <<<"$report")"
 check "1b. a healthy fixture needs no attention" "0" "$(jq '.counts.fix + .counts.action + .counts.warn' <<<"$report")"
 
 before=$(tree_hash "$HOME_SB"); before_count=$(find "$HOME_SB" -type f | wc -l)
@@ -186,6 +198,8 @@ jq '. + [{"id": "kalinewb.notch-menu", "enabled": true, "active": true, "kinds":
 p=$(run_setup detect --json --only menu-keys-bypass | jq -c '.points[0]')
 check "3. a bypass bind is a fix, named by key and source" "fix SUPER + SPACE bindings.lua" \
   "$(jq -r '.severity' <<<"$p") $(jq -r '.items[0].arg' <<<"$p") $(jq -r '.items[0].source' <<<"$p" | xargs basename)"
+check "3b. …and the account too long for a tip moved into its detail, the summary now short" "true true" \
+  "$(jq -r '(.summary | length <= 60) as $s | (.detail[0] | length > 60) as $d | "\($s) \($d)"' <<<"$p")"
 check "4. the keycode bind is found too" "2" "$(jq '.items | length' <<<"$p")"
 check "5. the menu family is read out of Omarchy's own utilities.lua" "12" \
   "$(grep -cP '^o\.bind\("\K[^"]+(?=".*"omarchy-menu toggle)' "$OMARCHY_SB/default/hypr/bindings/utilities.lua")"
@@ -630,6 +644,21 @@ g=$(ipc geometry)
 check "40. view setup opens the page, top edge on the screen edge, square top corners" \
   "expanded true true 0 0" \
   "$(jq -r '.state' <<<"$g") $(jq -r '.setup.open' <<<"$g") $(jq -r '.setup.height > 32 and (.target.height == .setup.height)' <<<"$g") $(jq -r '.bar.y' <<<"$g") $(jq -r '.radii.topLeft' <<<"$g")"
+
+# The foot line: a point's tip is its summary, after the pointer rests on it.
+tip_id=$(jq -r '[.points[] | select(.severity == "fix")][0].id' <<<"$status")
+tip_text=$(jq -r --arg id "$tip_id" '.points[] | select(.id == $id) | .summary' <<<"$status")
+rest_height=$(ipc geometry | jq -r .setup.height)
+ipc setup hover "$tip_id" >/dev/null
+check "40b. a pointer on a point: its tip is pending at once, not yet shown" "true false" \
+  "$(ipc setup status "" | jq -r '.tip | "\(.pending) \(.shown)"')"
+for _ in $(seq 1 40); do [[ $(ipc setup status "" | jq -r '.tip.shown') == true ]] && break; sleep 0.1; done
+check "40c. …then shown, and it is the point's summary" "true hover $tip_text" \
+  "$(ipc setup status "" | jq -r '.tip | "\(.shown) \(.source) \(.text)"')"
+check "40d. …the page is as tall with it as without, the foot a reserved line, the text uncut" "$rest_height true false" \
+  "$(ipc geometry | jq -r .setup.height) $(ipc setup status "" | jq -r '.tip.footHeight > 0') $(ipc setup status "" | jq -r '.tip.truncated')"
+ipc setup unhover "" >/dev/null
+check "40e. unhover: gone" "false false" "$(ipc setup status "" | jq -r '.tip | "\(.shown) \(.pending)"')"
 
 d=$(ipc design)
 check "43. every rounded thing on the page uses the notch's radius" "0" "$(python3 -c '

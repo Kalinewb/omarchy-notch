@@ -32,17 +32,20 @@ var knots = [
 
 // Interior slopes by Fritsch–Butland (a weighted harmonic mean of the two
 // neighbouring secants): monotone, and zero wherever the curve would turn.
-// The end slopes are zero by construction.
-function slopes() {
+// The end slopes are zero by construction. notiflight.js uses the same routine
+// for its own knots.
+function slopesOf(list) {
   var m = [0]
-  for (var i = 1; i < knots.length - 1; i++) {
-    var h0 = knots[i].d - knots[i - 1].d, h1 = knots[i + 1].d - knots[i].d
-    var s0 = (knots[i].a - knots[i - 1].a) / h0, s1 = (knots[i + 1].a - knots[i].a) / h1
+  for (var i = 1; i < list.length - 1; i++) {
+    var h0 = list[i].d - list[i - 1].d, h1 = list[i + 1].d - list[i].d
+    var s0 = (list[i].a - list[i - 1].a) / h0, s1 = (list[i + 1].a - list[i].a) / h1
     m.push(s0 * s1 <= 0 ? 0 : 3 * (h0 + h1) / ((2 * h1 + h0) / s0 + (h1 + 2 * h0) / s1))
   }
   m.push(0)
   return m
 }
+
+function slopes() { return slopesOf(knots) }
 
 var m = slopes()
 
@@ -96,16 +99,7 @@ var softKnots = [
   { d: 1, a: 0 }
 ]
 
-function softSlopes() {
-  var m = [0]
-  for (var i = 1; i < softKnots.length - 1; i++) {
-    var h0 = softKnots[i].d - softKnots[i - 1].d, h1 = softKnots[i + 1].d - softKnots[i].d
-    var s0 = (softKnots[i].a - softKnots[i - 1].a) / h0, s1 = (softKnots[i + 1].a - softKnots[i].a) / h1
-    m.push(s0 * s1 <= 0 ? 0 : 3 * (h0 + h1) / ((2 * h1 + h0) / s0 + (h1 + 2 * h0) / s1))
-  }
-  m.push(0)
-  return m
-}
+function softSlopes() { return slopesOf(softKnots) }
 var softM = softSlopes()
 
 // Opacity at `d` px for a diffuse glow of peak `peak` reaching zero at `size`.

@@ -24,6 +24,8 @@
 #   8   every key the notch reads is decided: on a row, or listed as rowless
 #   9   the keyboard: the row cursor on all six controls, Escape's order, the
 #       recorder suspending it, the cursor row always inside the view
+#   10  the badges and the header: counts only above 0, only on header buttons, the
+#       buttons overlapping neither the title nor each other
 #   11  the settings panel's height is the one thing the contract may change
 
 set -uo pipefail
@@ -50,8 +52,9 @@ ln -s "$REPO" "$root/notch"
 cp "$REPO/dev/harness/settings-shell.qml" "$root/shell.qml"
 
 ipc() { quickshell ipc -p "$root" call "${TARGET:-notch}" "$@" 2>/dev/null; }
+XENV=()   # more environment for the next start, set by the check that wants it
 start() {
-  env NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 NOTCH_HARNESS_CONFIG="$1" quickshell -p "$root" -n >>"$root/qs.log" 2>&1 &
+  env NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 "${XENV[@]}" NOTCH_HARNESS_CONFIG="$1" quickshell -p "$root" -n >>"$root/qs.log" 2>&1 &
   qs_pid=$!
   for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
   sleep 0.5
@@ -399,6 +402,90 @@ ipc settingsPress key:escape >/dev/null
 settle '.panel.open == false' || true
 check "…then the panel" "false" "$(tip .panel.open)"
 stop
+
+# ---------------------------------------------------------------------------
+# 10  Badges and the header
+# ---------------------------------------------------------------------------
+echo; echo "${BOLD}10  Badges and header${RESET}"
+# Header buttons must overlap neither the title nor each other, and stay inside
+# the panel's padding (368 px at 100 % scale).
+header_fits='.panel as $p | $p.header | sort_by(.x) | . as $h
+  | ([range(1; length) | select($h[.].x < $h[. - 1].x + $h[. - 1].width - 0.5)] | length == 0)
+    and (($h | last | .x + .width) <= $p.width - 16 + 0.5) and all($h[]; .width > 0)'
+header_names='[.panel.header[].name] | join(",")'
+badge_text='[.panel.badges[] | "\(.name)=\(.count)"] | join(",")'
+button_text() { echo "[.panel.header[] | select(.name == \"$1\") | .text] | first"; }
+no_row_badge='[.panel.rows[] | select(((.label + " " + .state) | test(" · [0-9]+$")) or (.helper | test("[0-9]+ (new|issue|update)"))) | .id] + [.panel.sections[] | select(test("[0-9]"))] | join(" ")'
+
+start '{"batteryPeek":false}'
+open_panel || true
+rep=$(report)
+check "nothing to report: no badge, and the header is the title and the close button" "0 title,close" "$(jq -r "\"\(.panel.badges | length) \(${header_names})\"" <<<"$rep")"
+check "…no row or section carries a count" "" "$(jq -r "$no_row_badge" <<<"$rep")"
+check "…Guided setup stays hidden until Bar.openWizard exists, and its press does nothing" "$(grep -q 'function openWizard' "$REPO/Bar.qml" && echo ok || echo no-such-button)" "$(ipc settingsPress header:guide)"
+check "…the header fits: nothing overlaps, all inside the padding" "true" "$(jq -r "$header_fits" <<<"$rep")"
+stop
+
+# A notch whose Setup runs against a sandbox (the hooks of dev/setup.sh) that
+# has exactly two things to put right: a Hyprland config error and an old backup.
+sbx="$root/setup-sandbox"
+mkdir -p "$sbx/bin" "$sbx/notch" "$sbx/home/.config/hypr" "$sbx/home/.config/omarchy/plugins" "$sbx/home/.local/state/omarchy/toggles"
+printf '#!/bin/bash\ncase "$1" in configerrors) echo '"'"'["line 3: unexpected symbol"]'"'"' ;; *) echo "[]" ;; esac\n' >"$sbx/bin/hyprctl"
+printf '#!/bin/bash\nexit 0\n' >"$sbx/bin/quiet"
+chmod +x "$sbx/bin/hyprctl" "$sbx/bin/quiet"
+: >"$sbx/home/.config/hypr/hyprland.lua.bak.1700000000"
+SETUP_ENV=(NOTCH_FORCE_SETUP=1 NOTCH_SETUP_SANDBOX="$sbx" NOTCH_SETUP_STATUS="$sbx/run/setup.json" NOTCH_SETUP_NOTCH_DIR="$sbx/notch"
+  NOTCH_SETUP_HYPRCTL="$sbx/bin/hyprctl" NOTCH_SETUP_OMARCHY_SHELL="$sbx/bin/quiet" NOTCH_SETUP_OMARCHY="$sbx/bin/quiet"
+  NOTCH_SETUP_OMARCHY_VERSION="$sbx/bin/quiet" NOTCH_SETUP_TOGGLE_BAR="$sbx/bin/quiet" NOTCH_SETUP_QS="$sbx/bin/quiet"
+  NOTCH_SETUP_KILL="$sbx/bin/quiet" NOTCH_SETUP_LUA="$sbx/bin/quiet" NOTCH_SETUP_SESSION_LOCKED="$sbx/bin/quiet"
+  NOTCH_SETUP_RESTART_SHELL="$sbx/bin/quiet")
+XENV=("${SETUP_ENV[@]}")
+start '{"batteryPeek":false}'
+ipc setup check "" >/dev/null
+ipc settings >/dev/null
+settle '.panel.badges | length > 0' || true
+rep=$(report)
+check "two issues in the sandbox: one badge, Setup · 2" "setup=2 title,setup,close Setup · 2" \
+  "$(jq -r "[($badge_text), ($header_names), ($(button_text setup))] | join(\" \")" <<<"$rep")"
+check "…the header still fits" "true" "$(jq -r "$header_fits" <<<"$rep")"
+check "…and still no row or section carries a count" "" "$(jq -r "$no_row_badge" <<<"$rep")"
+stop
+
+# The notch's own update: a git checkout one commit behind its origin. The
+# plugin half of the count reads 0 here, as it does until Plugins has been visited.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
+upd="$root/update-sandbox"
+git init -q --bare "$upd/origin.git"
+git clone -q "$upd/origin.git" "$upd/plugin" 2>/dev/null
+git clone -q "$upd/origin.git" "$upd/work" 2>/dev/null
+echo '{"version":"1.0.0"}' >"$upd/work/manifest.json"
+git -C "$upd/work" add manifest.json; git -C "$upd/work" commit -qm one; git -C "$upd/work" push -q origin HEAD 2>/dev/null
+git -C "$upd/plugin" pull -q origin HEAD 2>/dev/null
+echo '{"version":"1.0.1"}' >"$upd/work/manifest.json"
+git -C "$upd/work" commit -qam two; git -C "$upd/work" push -q origin HEAD 2>/dev/null
+UPDATE_ENV=(NOTCH_FORCE_UPDATES=1 NOTCH_UPDATE_DIR="$upd/plugin" NOTCH_UPDATE_STATE_DIR="$upd/state" NOTCH_UPDATE_RESTART=none NOTCH_UPDATE_FIRST_CHECK_MS=200)
+XENV=("${UPDATE_ENV[@]}")
+start '{"batteryPeek":false}'
+ipc settings >/dev/null
+settle '.panel.badges | length > 0' || true
+rep=$(report)
+check "an update available: Updates · 1, a header button" "updates=1 title,updates,close Updates · 1" \
+  "$(jq -r "[($badge_text), ($header_names), ($(button_text updates))] | join(\" \")" <<<"$rep")"
+check "…the header fits, and no row or section carries it" "true " "$(jq -r "\"\(${header_fits}) \(${no_row_badge})\"" <<<"$rep")"
+res=$(ipc settingsPress header:updates); sleep 0.9
+check "…pressing it opens Plugins" "ok true" "$res $(ipc geometry | jq -r '.plugins.open')"
+stop
+# Both at once: the widest header, three buttons and the title in 368 px.
+XENV=("${SETUP_ENV[@]}" "${UPDATE_ENV[@]}")
+start '{"batteryPeek":false}'
+ipc setup check "" >/dev/null
+ipc settings >/dev/null
+settle '(.panel.badges | length) == 2' || true
+rep=$(report)
+check "both at once: Updates · 1 then Setup · 2" "updates=1,setup=2 title,updates,setup,close" "$(jq -r "[($badge_text), ($header_names)] | join(\" \")" <<<"$rep")"
+check "…with both badges the header still fits: the title is overlapped by nothing" "true" "$(jq -r "$header_fits" <<<"$rep")"
+stop
+XENV=()
 
 # ---------------------------------------------------------------------------
 # 11  Contract

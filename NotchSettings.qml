@@ -152,7 +152,7 @@ Item {
       }),
       sections: groups.map(function(g) { return g.title }),
       advanced: { open: advanced.open },
-      contentHeight: settingsFlick.contentHeight, viewHeight: settingsFlick.height, footHeight: foot.height,
+      contentHeight: settingsFlick.contentHeight, viewHeight: settingsFlick.height, footHeight: foot.height, width: root.width,
       header: [{ name: "title", text: "Notch", x: root.padding, width: Number(titleText.width.toFixed(1)) }].concat(header),
       badges: [{ name: "updates", count: updates }, { name: "setup", count: issues }].filter(function(b) { return b.count > 0 })
     }, nav.report())

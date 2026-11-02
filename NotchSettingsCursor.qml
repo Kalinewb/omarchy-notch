@@ -65,6 +65,7 @@ QtObject {
     var held = lines(here)
     if (name === "escape") {
       if (tip.pending || tip.shown) { tip.hide(); return true }
+      if (typeof panel.cancelPending === "function" && panel.cancelPending()) return true
       var open = panel.rows().filter(function(r) { return r.open && r.visible })
       var one = open.filter(function(r) { return r.rid === at })[0] || open[0]
       if (one) { one.open = false; sub = -1; paint() }

@@ -161,4 +161,48 @@ TestCase {
     verify(lines.length >= 4, "option lines: " + lines.length)
     compare(lines.filter(function(l) { return !l.Accessible.checkable }).length, 0)
   }
+
+  // --- Reset asks twice (fix 5) ---------------------------------------------------
+
+  function resetButton(page) { return page.rows().filter(function(r) { return r.rid === "reset" })[0].targets()[0] }
+  function pressReset(page) { page.press("hover:reset"); page.press("key:space") }
+
+  function test_reset_asks_before_it_deletes() {
+    var page = settings()
+    page.press("advanced")
+    wait(300)
+    compare(resetButton(page).text, "Reset")
+    pressReset(page)
+    compare(resetButton(page).text, "Sure?", "the button turns into the question")
+    compare(bar.configEdits, 0, "nothing deleted by the first press")
+    verify(bar.config.bar.notch !== undefined)
+    pressReset(page)
+    compare(bar.configEdits, 1, "the second press deletes")
+    compare(bar.config.bar.notch, undefined)
+    compare(resetButton(page).text, "Reset", "and the button is itself again")
+  }
+  function test_escape_takes_the_reset_question_back() {
+    var page = settings()
+    page.press("advanced")
+    wait(300)
+    var closed = 0
+    page.closeRequested.connect(function() { closed++ })
+    pressReset(page)
+    compare(resetButton(page).text, "Sure?")
+    page.press("key:escape")
+    compare(resetButton(page).text, "Reset", "Escape answers no")
+    compare(closed, 0, "and the panel stays open")
+    pressReset(page)
+    compare(bar.configEdits, 0, "a press after that asks again")
+  }
+  function test_the_reset_question_lapses_after_three_seconds() {
+    var page = settings()
+    page.press("advanced")
+    wait(300)
+    pressReset(page)
+    wait(3300)
+    compare(resetButton(page).text, "Reset")
+    pressReset(page)
+    compare(bar.configEdits, 0, "a press after the question lapsed asks again")
+  }
 }

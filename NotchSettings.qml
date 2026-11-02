@@ -104,6 +104,7 @@ Item {
     refreshHostable()
     advanced.open = false
     rows().forEach(function(row) { row.open = false })
+    cancelPending()
     nav.reset()
   }
   Component.onCompleted: refreshHostable()
@@ -122,6 +123,18 @@ Item {
     if (!integration && list.indexOf(id) !== -1) bar.releaseHostedPanel()
     set(key, toggled(list, id))
   }
+
+  // Reset asks twice: the first press turns the button into "Sure?" for three
+  // seconds, in place, and only a second press inside that time deletes.
+  property bool resetSure: false
+  Timer { id: resetTimer; interval: 3000; onTriggered: root.resetSure = false }
+  function resetAsk() {
+    if (!resetSure) { resetSure = true; resetTimer.restart(); return }
+    cancelPending()
+    resetAll()
+  }
+  // The cursor's Escape asks first whether something waits for an answer.
+  function cancelPending() { var waiting = resetSure; resetSure = false; resetTimer.stop(); return waiting }
 
   function resetAll() {
     if (!bar || !bar.shell || typeof bar.shell.mutateShellConfig !== "function") return
@@ -472,10 +485,10 @@ Item {
           buttons: ActionButton { text: "Import"; onClicked: root.bar.importSettings() }
         }
 
-        // Deletes `bar.notch` with no undo.
+        // Deletes `bar.notch` with no undo, so it asks twice (resetAsk).
         ButtonRow {
           rid: "reset"; label: "Reset to defaults"
-          buttons: ActionButton { text: "Reset"; onClicked: root.resetAll() }
+          buttons: ActionButton { text: root.resetSure ? "Sure?" : "Reset"; selected: root.resetSure; onClicked: root.resetAsk() }
         }
       }
     }

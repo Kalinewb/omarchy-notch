@@ -389,7 +389,11 @@ ipc settingsPress hover:reset >/dev/null
 ipc settingsPress key:space >/dev/null
 sleep 0.3
 cfg=$(TARGET=settingstest ipc config)
-check "Space presses a Button: Reset ran, and the settings are gone" "true" "$([[ $cfg != *autoHide* && $cfg != *glowStyle* ]] && echo true || echo false)"
+check "Space on Reset only asks: the settings are still there" "true" "$([[ $cfg == *autoHide* && $cfg == *glowStyle* ]] && echo true || echo false)"
+ipc settingsPress key:space >/dev/null
+sleep 0.3
+cfg=$(TARGET=settingstest ipc config)
+check "…the second Space is the Button's answer: Reset ran, and the settings are gone" "true" "$([[ $cfg != *autoHide* && $cfg != *glowStyle* ]] && echo true || echo false)"
 ipc settingsPress hover:atRest >/dev/null
 ipc settingsPress key:space >/dev/null
 ipc settingsPress hover:glow >/dev/null

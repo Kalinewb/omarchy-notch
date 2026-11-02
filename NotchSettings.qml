@@ -510,6 +510,10 @@ Item {
       id: heading
       width: parent.width
       height: Style.space(group.fold ? 30 : 26)
+      Accessible.role: group.fold ? Accessible.Button : Accessible.StaticText
+      Accessible.name: group.title
+      Accessible.expanded: group.fold && group.open
+      Accessible.onPressAction: if (group.fold) group.open = !group.open
       CursorFill { visible: group.fold && nav.at === group.rid }
 
       Text {
@@ -574,6 +578,12 @@ Item {
 
     width: parent ? parent.width : 0
     opacity: dimmed ? 0.45 : 1
+    // A screen reader hears the label and its tip; a Pick says whether it is unfolded, and
+    // the control inside a row (switch, stepper, button) speaks for itself.
+    Accessible.role: kind === "pick" || kind === "pickMany" ? Accessible.ComboBox : Accessible.ListItem
+    Accessible.name: label
+    Accessible.description: Tips.t[rid] || ""
+    Accessible.expanded: foldable && open
     onOpenChanged: { foot.hide(); if (open) Qt.callLater(function() { nav.reveal(row) }) }
 
     // The lines the cursor walks inside this row: its buttons, or its open fold's.
@@ -676,15 +686,17 @@ Item {
 
   component ToggleRow: SettingRow {
     id: toggle
-    property bool checked: false
     readonly property color trackColor: toggleSwitch.trackColor
     readonly property color knobColor: toggleSwitch.knobColor
+    property bool checked: false
     kind: "switch"
     stateText: checked ? "On" : "Off"
     onChosen: function(v) { root.set(keys[0], v) }
     NotchSwitch {
       id: toggleSwitch
       panel: root
+      name: toggle.label
+      description: Tips.t[toggle.rid] || ""
       checked: toggle.checked
       onToggled: toggle.apply(!checked)
     }
@@ -751,6 +763,9 @@ Item {
     height: Style.space(26)
     leftAlign: true
     selected: on
+    Accessible.role: Accessible.RadioButton
+    Accessible.checkable: true
+    Accessible.checked: on
     foreground: root.foreground
     accent: root.accent
     radius: root.radiusFor(Math.min(width, height))

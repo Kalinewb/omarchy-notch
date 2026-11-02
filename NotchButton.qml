@@ -23,6 +23,8 @@ import qs.Ui
 // Alphas and border widths come from `qs.Commons.Style` tokens; colours
 // come from `foreground` alone.
 //
+// Reads as a Button to a screen reader, named by its text.
+//
 // Emits `hovered(bool)` so panels with their own keyboard cursor model
 // can update state on mouse enter/leave.
 BorderSurface {
@@ -72,6 +74,11 @@ BorderSurface {
   signal hovered(bool isHovered)
 
   activeFocusOnTab: focusable
+  Accessible.role: Accessible.Button
+  Accessible.name: text !== "" ? text : iconText
+  Accessible.description: tooltipText
+  Accessible.focusable: focusable
+  Accessible.onPressAction: root.clicked()
   Keys.onReturnPressed: if (focusable) root.clicked()
   Keys.onEnterPressed: if (focusable) root.clicked()
   Keys.onSpacePressed: if (focusable) root.clicked()

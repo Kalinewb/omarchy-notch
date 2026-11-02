@@ -10,6 +10,9 @@ Item {
   // The settings panel: its colours, radius and the controls' spring.
   property var panel: null
   property bool checked: false
+  // What a screen reader says: the row's label, and its tip.
+  property string name: ""
+  property string description: ""
   signal toggled()
   readonly property int trackHeight: Math.max(22, Math.round(Style.spacing.controlHeight * 0.55))
   readonly property int trackWidth: Math.round(trackHeight * 1.9)
@@ -17,6 +20,13 @@ Item {
   readonly property int knobInset: Math.max(1, Math.round((trackHeight - knobSize) / 2))
   implicitWidth: trackWidth
   implicitHeight: trackHeight
+  Accessible.role: Accessible.CheckBox
+  Accessible.name: name
+  Accessible.description: description
+  Accessible.checkable: true
+  Accessible.checked: checked
+  Accessible.onToggleAction: toggled()
+  Accessible.onPressAction: toggled()
   scale: switchMouse.pressed ? 0.97 : 1
   Behavior on scale {
     NumberAnimation {

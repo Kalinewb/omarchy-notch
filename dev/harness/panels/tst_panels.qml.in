@@ -113,4 +113,52 @@ TestCase {
     verify(buttons(page).length >= 4, "buttons on show: " + buttons(page).length)
     compare(unfocusable(page), "", "buttons Tab skips")
   }
+
+  // --- Accessible metadata (fix 4) ---------------------------------------------
+
+  function switches(page) { return walk(page).filter(function(i) { return i.trackHeight !== undefined && i.knobSize !== undefined }) }
+
+  function test_every_row_has_a_name_and_a_description() {
+    var page = settings()
+    var bare = page.rows().filter(function(r) { return !r.Accessible.name || !r.Accessible.description || r.Accessible.name !== r.label })
+    compare(bare.map(function(r) { return r.rid }).join(" "), "", "rows with no name or no tip")
+    compare(page.rows().length, 28)
+  }
+  function test_a_switch_says_what_it_is_and_whether_it_is_on() {
+    bar.notchAutoHide = true
+    var page = settings()
+    wait(50)
+    var on = switches(page).filter(function(s) { return s.Accessible.name === "Auto-hide" })
+    compare(on.length, 1)
+    compare(on[0].Accessible.role, Accessible.CheckBox)
+    verify(on[0].Accessible.checkable)
+    verify(on[0].Accessible.checked)
+    verify(on[0].Accessible.description.length > 0)
+    var off = switches(page).filter(function(s) { return s.Accessible.name === "Menu" })[0]
+    verify(!off.Accessible.checked)
+    var unnamed = switches(page).filter(function(s) { return s.Accessible.name === "" })
+    compare(unnamed.length, 0)
+  }
+  function test_every_button_is_named_by_its_text() {
+    var pages = [settings(), setupPage(), pluginsPage()]
+    pages[1].openRow = "hypr"
+    wait(300)
+    var bad = []
+    pages.forEach(function(page) {
+      buttons(page).forEach(function(b) {
+        if (b.Accessible.role !== Accessible.Button || b.Accessible.name !== b.text || b.text === "") bad.push(b.text)
+      })
+    })
+    compare(bad.join("|"), "", "buttons a screen reader cannot name")
+  }
+  function test_a_fold_says_whether_it_is_open() {
+    var page = settings()
+    page.rows().filter(function(r) { return r.rid === "atRest" })[0].open = true
+    var row = page.rows().filter(function(r) { return r.rid === "atRest" })[0]
+    wait(300)
+    verify(row.Accessible.expanded)
+    var lines = walk(row).filter(function(i) { return i.leftAlign === true })
+    verify(lines.length >= 4, "option lines: " + lines.length)
+    compare(lines.filter(function(l) { return !l.Accessible.checkable }).length, 0)
+  }
 }

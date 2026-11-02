@@ -12,7 +12,8 @@
 #
 #   1   the shape: rows are a label and one of six controls, in sections one deep;
 #       the retired components, wraps and captions are gone from the source
-#   2   the ratchet: 9 visible rows by default, 19 behind Advanced, 32 in all, a
+#   2   the ratchet: 8 visible rows by default (9 when plan-glow.md P4 shows Notification
+#       light), 19 behind Advanced, 32 in all, a
 #       file that only shrinks; the default view fits without scrolling
 #   3   the tips: one per row id, short, one sentence, none that repeats its label
 #   4   Advanced is closed on open, opens on press, and is closed again on reopen
@@ -155,7 +156,7 @@ check "…and so are wrapped text, captions and a reduced-motion key" "0 0 0" \
 echo; echo "${BOLD}2  Ratchet and fit${RESET}"
 vmax=$(jq -r .visibleMax "$BASE")
 visible=$(jq -r '[.panel.rows[] | select(.section != "Advanced" and .visible)] | length' <<<"$rep")
-check "visible by default is 9, and at most the baseline's $vmax" "9 true" "$visible $( (( visible <= vmax )) && echo true || echo false )"
+check "visible by default is 8 (Notification light is hidden until the glow work), and at most the baseline's $vmax" "8 true" "$visible $( (( visible <= vmax )) && echo true || echo false )"
 check "Advanced has at most $(jq -r .advancedMax "$BASE") rows, the panel at most $(jq -r .totalMax "$BASE")" "true" \
   "$(jq -r --argjson b "$(cat "$BASE")" '([.panel.rows[] | select(.section == "Advanced")] | length) <= $b.advancedMax and (.panel.rows | length) <= $b.totalMax' <<<"$rep")"
 check "with Advanced closed the list fits: contentHeight is at most viewHeight" "true" "$(jq -r '.panel.contentHeight <= .panel.viewHeight and .panel.viewHeight > 0' <<<"$rep")"
@@ -164,7 +165,7 @@ echo; echo "${BOLD}4  Advanced${RESET}"
 adv_visible='[.panel.rows[] | select(.section == "Advanced" and .visible)] | length'
 check "Advanced is closed when the panel opens, and none of its rows shows" "false 0" "$(jq -r "\"\(.panel.advanced.open) \($adv_visible)\"" <<<"$rep")"
 ipc settingsPress advanced >/dev/null; settle ".panel.advanced.open == true and ($adv_visible) > 0" || true
-check "the press opens it: all its rows show but the three with no target here (Panels, Share, Use)" "true 16" "$(report | jq -r "\"\(.panel.advanced.open) \($adv_visible)\"")"
+check "the press opens it: all its rows show but the four with no target here (Panels, Share, Use, Light colours)" "true 15" "$(report | jq -r "\"\(.panel.advanced.open) \($adv_visible)\"")"
 check "…and the long list scrolls rather than stretching the panel" "true" "$(report | jq -r '.panel.contentHeight > .panel.viewHeight')"
 ipc settings >/dev/null; sleep 0.8; open_panel || true
 settle '.panel.advanced.open == false' || true
@@ -329,19 +330,19 @@ move() {
   ipc settingsPress "key:$1" >/dev/null
   settle ".panel.cursor == \"$2\" and .panel.cursorTop >= -0.5 and .panel.cursorBottom <= .panel.viewHeight + 0.5" || miss+="$1:$2(got $(tip .panel.cursor)) "
 }
-MAIN="atRest autoHide glow openWith opensTo notifications notifyLight menu volume"
+MAIN="atRest autoHide glow openWith opensTo notifications menu volume"
 for id in $MAIN advanced; do move down $id; done
-check "Down walks the nine main rows and reaches the Advanced line, each inside the view" "" "$miss"
+check "Down walks the eight main rows and reaches the Advanced line, each inside the view" "" "$miss"
 ipc settingsPress key:space >/dev/null
 settle '.panel.advanced.open == true' || true
 check "Space on the Advanced line opens it" "true" "$(tip .panel.advanced.open)"
 miss=""
-ADV="width onHover hidden openRow corners notifyTime lightColours peeks glowSize greenAbove lowBelow keybinds stayOpen windowsToTop updateCheck reset"
+ADV="width onHover hidden openRow corners notifyTime peeks glowSize greenAbove lowBelow keybinds stayOpen windowsToTop updateCheck reset"
 for id in $ADV; do move down $id; done
-check "…and Down goes on through its 16 rows to the last, scrolling to keep each in the view" "" "$miss"
+check "…and Down goes on through its 15 rows to the last, scrolling to keep each in the view" "" "$miss"
 check "…the list did scroll" "true" "$(tip '.panel.contentHeight > .panel.viewHeight')"
 miss=""
-for id in updateCheck windowsToTop stayOpen keybinds lowBelow greenAbove glowSize peeks lightColours notifyTime corners openRow hidden onHover width advanced volume; do move up $id; done
+for id in updateCheck windowsToTop stayOpen keybinds lowBelow greenAbove glowSize peeks notifyTime corners openRow hidden onHover width advanced volume; do move up $id; done
 check "Up walks back to the Advanced line and the main rows" "" "$miss"
 act() { # act <key> <lastWrite> <what>
   ipc settingsPress "key:$1" >/dev/null

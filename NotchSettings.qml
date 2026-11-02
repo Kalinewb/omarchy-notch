@@ -291,6 +291,7 @@ Item {
 
         PickRow {
           rid: "notifyLight"; label: "Notification light"; keys: ["notificationLight"]
+          visible: false  // nothing reads it yet: plan-glow.md P4 turns this row on
           options: root.opts("off=Off;notch=Around the notch;top=Top edge;full=Full screen")
           selected: [root.bar ? String(root.bar.notchSetting("notificationLight", "off")) : "off"]
           onChosen: function(v) { root.set("notificationLight", v) }
@@ -392,6 +393,7 @@ Item {
 
         PickRow {
           rid: "lightColours"; label: "Light colours"; keys: ["notificationLightColours"]
+          visible: false  // with Notification light: plan-glow.md P4
           dimmed: !root.bar || root.bar.notchSetting("notificationLight", "off") === "off"
           options: root.opts("aurora=Aurora;blue=Blue;white=White")
           selected: [root.bar ? String(root.bar.notchSetting("notificationLightColours", "aurora")) : "aurora"]

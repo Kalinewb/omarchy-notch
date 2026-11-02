@@ -69,6 +69,8 @@ for f in files:
 print(" ".join(bad))
 PY
 )"
+check "no text under 11 px: the pages draw none in Style.font.caption (the ratchet is 0)" "0" \
+  "$(cat NotchSettings.qml NotchSetup.qml NotchUpdate.qml plugins/*.qml | grep -c 'Style.font.caption' || true)"
 check "the equaliser's three callers give it Bar.reducedMotion (its dancing follows animate)" "3" "$(grep -c 'animate:.*!root.reducedMotion' Bar.qml)"
 
 echo

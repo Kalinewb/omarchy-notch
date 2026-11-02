@@ -259,7 +259,7 @@ Item {
         text: "From a terminal: notch-setup detect"
         color: root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
         topPadding: Style.space(10)
       }
     }
@@ -286,7 +286,7 @@ Item {
     width: column.width
     color: root.dim
     font.family: root.fontFamily
-    font.pixelSize: Style.font.caption
+    font.pixelSize: Style.font.bodySmall
     font.bold: true
     topPadding: Style.space(10)
     bottomPadding: Style.space(2)
@@ -355,7 +355,7 @@ Item {
         wrapMode: Text.WordWrap
         color: root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
       }
 
       ActionButton {
@@ -413,7 +413,7 @@ Item {
             text: "• " + (modelData.summary || modelData.arg || "")
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Style.font.bodySmall
           }
         }
 
@@ -425,7 +425,7 @@ Item {
             text: String(modelData)
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Style.font.bodySmall
           }
         }
 
@@ -436,7 +436,7 @@ Item {
           text: pointRow.point.fix ? "No fix here: " + pointRow.point.fix.disabledReason : ""
           color: root.accent
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: Style.font.bodySmall
         }
 
         // Are you sure? Named files, and what is kept.
@@ -457,7 +457,7 @@ Item {
             }
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Style.font.bodySmall
           }
 
           Row {
@@ -513,7 +513,7 @@ Item {
         elide: Text.ElideRight
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
       }
 
       Text {
@@ -528,7 +528,7 @@ Item {
         }
         color: root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
       }
 
       Row {
@@ -614,7 +614,7 @@ Item {
       color: (root.job.phase === "failed" || root.job.phase === "rolled-back" || root.job.phase === "conflict")
              ? root.accent : root.dim
       font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: Style.font.bodySmall
     }
 
     ActionButton {
@@ -648,7 +648,7 @@ Item {
         text: fold.title + (fold.open ? "  ▾" : "  ▸")
         color: root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
         font.bold: true
       }
 

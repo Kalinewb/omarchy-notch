@@ -378,7 +378,7 @@ Item {
         }
         color: root.secondary
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
       }
     }
 
@@ -512,7 +512,7 @@ Item {
           onActiveFocusChanged: if (activeFocus) root.cardFocus = "review"
           bordered: false
           foreground: root.secondary
-          fontSize: Style.font.caption
+          fontSize: Style.font.bodySmall
           horizontalPadding: Style.space(4)
           onClicked: root.bar.reviewPluginInTerminal(root.confirm.id)
         }
@@ -609,7 +609,7 @@ Item {
           text: String(row.view.version || "")
           color: root.secondary
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: Style.font.bodySmall
         }
       }
 

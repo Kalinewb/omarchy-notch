@@ -83,7 +83,7 @@ labels = {
   "atRest": "At rest", "autoHide": "Auto-hide", "glow": "Charging glow", "openWith": "Open with", "opensTo": "Opens to",
   "notifications": "Notifications", "notifyLight": "Notification light", "menu": "Menu", "volume": "Volume and brightness",
   "width": "Width", "onHover": "On hover", "hidden": "Hidden widgets", "openRow": "Also in the widget row", "panels": "Panels",
-  "corners": "Corners", "notifyTime": "Notification time", "lightColours": "Light colours", "peeks": "Peeks",
+  "corners": "Corners", "notifyTime": "Notification time", "lightColours": "Light colours", "peeks": "Track and charger pop-ups",
   "glowSize": "Glow size", "greenAbove": "Green from", "lowBelow": "Low battery at", "keybinds": "Keybinds",
   "stayOpen": "Keep open", "windowsToTop": "Windows to the top", "updateCheck": "Check for updates",
   "share": "Share settings", "importer": "Use someone's settings", "reset": "Reset to defaults"}

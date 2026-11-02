@@ -123,17 +123,12 @@ Item {
     set(key, toggled(list, id))
   }
 
-  // Reset asks twice: the first press turns the button into "Sure?" for three
-  // seconds, in place, and only a second press inside that time deletes.
+  // Reset asks twice: a first press turns the button into "Sure?" for three seconds, in place.
   property bool resetSure: false
   Timer { id: resetTimer; interval: 3000; onTriggered: root.resetSure = false }
-  function resetAsk() {
-    if (!resetSure) { resetSure = true; resetTimer.restart(); return }
-    cancelPending()
-    resetAll()
-  }
-  // The cursor's Escape asks first whether something waits for an answer.
+  // Whether a question was waiting (the cursor's Escape answers no to it).
   function cancelPending() { var waiting = resetSure; resetSure = false; resetTimer.stop(); return waiting }
+  function resetAsk() { if (cancelPending()) resetAll(); else { resetSure = true; resetTimer.restart() } }
 
   function resetAll() {
     if (!bar || !bar.shell || typeof bar.shell.mutateShellConfig !== "function") return
@@ -412,13 +407,10 @@ Item {
           onChosen: function(v) { root.set("notificationLightColours", v) }
         }
 
-        PickRow {
-          rid: "peeks"; label: "Peeks"; many: true; keys: ["peekOnTrackChange", "batteryPeek"]
-          none: "Off"
-          options: root.opts("peekOnTrackChange=New track;batteryPeek=Plug-in and low battery")
-          selected: !root.bar ? [] : (root.bar.notchPeekOnTrackChange ? ["peekOnTrackChange"] : []).concat(root.bar.notchBatteryPeek ? ["batteryPeek"] : [])
-          summary: selected.length === 2 ? "Both" : ""
-          onChosen: function(v) { root.set(v, selected.indexOf(v) === -1) }
+        // One switch for both pop-ups: on when either is, and a press sets both.
+        ToggleRow {
+          rid: "peeks"; label: "Track and charger pop-ups"; keys: ["peekOnTrackChange", "batteryPeek"]
+          checked: !!root.bar && (root.bar.notchPeekOnTrackChange || root.bar.notchBatteryPeek)
         }
 
         // Relative to the resting notch's size (100 % reaches 32 px on the
@@ -589,9 +581,7 @@ Item {
     }
 
     width: parent ? parent.width : 0
-    opacity: dimmed ? 0.45 : 1
-    // A screen reader hears the label and its tip; a Pick says whether it is unfolded, and
-    // the control inside a row (switch, stepper, button) speaks for itself.
+    // A screen reader hears the label and its tip; the control inside a row speaks for itself.
     Accessible.role: kind === "pick" || kind === "pickMany" ? Accessible.ComboBox : Accessible.ListItem
     Accessible.name: label
     Accessible.description: Tips.t[rid] || ""
@@ -619,6 +609,8 @@ Item {
         text: row.label
         elide: Text.ElideRight
         color: root.dim
+        // A dimmed row dims its label alone: its state still reads at full strength.
+        opacity: row.dimmed ? 0.45 : 1
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
@@ -638,7 +630,7 @@ Item {
         width: Math.min(implicitWidth, parent.width * 0.6)
         horizontalAlignment: Text.AlignRight
         elide: Text.ElideRight
-        text: row.stateText + (row.open ? "  ▴" : "  ▾")
+        text: row.stateText + (row.open ? "  ▾" : "  ▸")
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
@@ -703,7 +695,8 @@ Item {
     property bool checked: false
     kind: "switch"
     stateText: checked ? "On" : "Off"
-    onChosen: function(v) { root.set(keys[0], v) }
+    // The switch sets every key it stands for.
+    onChosen: function(v) { root.setMany(keys.reduce(function(all, k) { all[k] = v; return all }, {})) }
     NotchSwitch {
       id: toggleSwitch
       panel: root

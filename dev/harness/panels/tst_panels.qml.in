@@ -457,4 +457,51 @@ TestCase {
     var seen = tabWalk(page, 3)
     compare(seen.join("|"), "‹ Settings|Plugins|✕", "Tab walks the header")
   }
+
+  // --- Peeks, the chevron, the dimmed row (fix 10) ----------------------------------
+
+  function rowOf(page, id) { return page.rows().filter(function(r) { return r.rid === id })[0] }
+  function textsOf(row, wanted) { return walk(row).filter(function(i) { return i.text !== undefined && i.font !== undefined && wanted(String(i.text)) }) }
+
+  function test_the_two_pop_ups_are_one_switch_that_sets_both() {
+    var page = settings()
+    var row = rowOf(page, "peeks")
+    compare(row.kind, "switch")
+    compare(row.label, "Track and charger pop-ups")
+    page.press("set:peeks:false")
+    compare(JSON.stringify(bar.writes[bar.writes.length - 1]), JSON.stringify({ peekOnTrackChange: false, batteryPeek: false }))
+    page.press("set:peeks:true")
+    compare(JSON.stringify(bar.writes[bar.writes.length - 1]), JSON.stringify({ peekOnTrackChange: true, batteryPeek: true }))
+    bar.notchPeekOnTrackChange = false
+    bar.notchBatteryPeek = false
+    verify(!row.checked, "off when neither is on")
+    bar.notchBatteryPeek = true
+    verify(row.checked, "on when either is")
+  }
+  function test_one_chevron_closed_points_right_open_points_down() {
+    var page = settings()
+    var row = rowOf(page, "atRest")
+    compare(textsOf(row, function(t) { return t.indexOf("▸") !== -1 }).length, 1, "closed: right")
+    compare(textsOf(row, function(t) { return t.indexOf("▾") !== -1 || t.indexOf("▴") !== -1 }).length, 0)
+    row.open = true
+    wait(50)
+    compare(textsOf(row, function(t) { return t.indexOf("▾") !== -1 }).length, 1, "open: down")
+    compare(textsOf(row, function(t) { return t.indexOf("▴") !== -1 }).length, 0, "and never up")
+    page.press("advanced")
+    wait(300)
+    var heading = walk(page).filter(function(i) { return i.text !== undefined && String(i.text).indexOf("Advanced") === 0 })[0]
+    verify(heading.text.indexOf("▾") !== -1, "an open fold points down, as a Pick does")
+  }
+  function test_a_dimmed_row_dims_its_label_and_keeps_its_state_at_full_strength() {
+    var page = settings()
+    page.press("advanced")
+    wait(300)
+    var row = rowOf(page, "onHover")
+    verify(row.dimmed, "hover opens the notch, so On hover is dimmed")
+    compare(row.opacity, 1, "the row itself is not faded")
+    var label = textsOf(row, function(t) { return t === "On hover" })[0]
+    var state = textsOf(row, function(t) { return t.indexOf("Hover opens") === 0 })[0]
+    compare(label.opacity, 0.45)
+    compare(state.opacity, 1)
+  }
 }

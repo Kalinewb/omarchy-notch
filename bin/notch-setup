@@ -2,7 +2,8 @@
 # What's stopping the notch from working the way you want -- and, where it is
 # safe, how to put it right.
 #
-#   notch-setup detect [--json] [--local] [--only <id>]
+#   notch-setup detect [--json] [--local] [--all] [--only <id>]
+#   notch-setup auto
 #   notch-setup fix <point> [--arg <value>] [--dry-run] [--status <file>] [--reopen]
 #   notch-setup snapshots [--json]
 #   notch-setup show <snapshot> [--diff]
@@ -11,10 +12,12 @@
 #   notch-setup prune
 #   notch-setup ack <status file>
 #
-# The notch's Setup page is a view over `detect`, and its buttons run the verbs
-# above. The commands exist in their own right because some of what they find
-# (the bar is hidden, the notch isn't the active bar, the notch failed to load)
-# means there is no page to press a button in.
+# The notch's Setup page ("Needs attention") is a view over `detect`, and its
+# buttons run the verbs above. `detect` lists only what a person has to act on
+# (see ADMISSION below); `detect --all` is the developer's view, with every
+# point and every state, including the ones that mean there is no page to press
+# a button in (the bar is hidden, the notch isn't the active bar, the notch
+# failed to load). `auto` repairs the notch's own litter without asking.
 #
 # Nothing here is privileged: no sudo, no pkexec, and no plugin's setup verbs.
 # Before a fix changes a file, every file it touches is copied into
@@ -243,59 +246,34 @@ session_locked() { runnable SESSION_LOCKED && "${SESSION_LOCKED[@]}" >/dev/null 
 # Each emits one JSON object. `severity` is fix, action, warn, info, ok or
 # unknown; `fix` is null when there is nothing to press.
 
-# A summary is also the page's tip, one line of at most 60 characters. Where the
-# plain account runs longer, this is its short form, keyed by the point's title;
-# the account itself becomes the first line of the detail, so nothing is lost.
-# Anything else that still runs over (a list of ids, say) is cut at a word.
-TIP_MAX=60
-short_summary() { # short_summary <title>
+# Who sees a point (the audit's admission rule, dev/attention.sh holds the
+# wording to it). A point is on the page only when it is true now, the check
+# cannot be wrong, the notch cannot put it right silently, and the user can act
+# in one press or one sentence.
+#   page  listed when it needs attention, in plain words
+#   auto  repaired by `auto`, quietly, with a snapshot under Earlier fixes
+#   dev   only `detect --all`, in a terminal
+admission_of() {
   case $1 in
-    "The bar is hidden") echo "The bar toggle is off, so the notch isn't drawn" ;;
-    "The notch failed to load") echo "The shell couldn't load it and fell back to another bar" ;;
-    "Hyprland reports config errors") echo "Config errors switch off fixes that write Hyprland files" ;;
-    "Removing the OSD companion would leave no OSD"|"Removing the menu companion would leave no menu") echo "Omarchy hasn't noted this companion" ;;
-    "The OSD companion is switched off") echo "Volume and brightness still show Omarchy's own card" ;;
-    "The OSD companion isn't installed") echo "The notch never sees an OSD call" ;;
-    "Notifications show in the notch only") echo "The companion keeps Omarchy's toast off screen" ;;
-    "The notifications companion isn't running") echo "It stands in for omarchy.notifications but isn't loaded" ;;
-    "The notifications companion is switched off") echo "Omarchy's toast still shows alongside the notch" ;;
-    "The notifications companion isn't installed") echo "Omarchy's toast still shows; the notch installs it itself" ;;
-    "The menu companion is switched off") echo "The menu still opens in Omarchy's own window" ;;
-    "Couldn't tell whether the menu companion loaded") echo "From a terminal this looks the same either way" ;;
-    "The menu companion isn't installed") echo "The notch couldn't install it by itself" ;;
-    "Couldn't read your keybinds") echo "Couldn't check: is lua installed?" ;;
-    "Menu keys go through Omarchy") echo "Every menu key runs omarchy-menu" ;;
-    "Menu keys call the notch directly") echo "These keys will skip the toggle once the menu is replaced" ;;
-    "Menu keys skip the menu toggle") echo "\"Replace the Omarchy menu\" can't switch them back" ;;
-    "Leftover notch keybinds") echo "Hyprland keeps binds the notch no longer asks for" ;;
-    "The notch's settings name a missing plugin") echo "Plugins named in the settings aren't installed" ;;
-    "Old backup files in your config") echo "Old .bak files are sitting in your config" ;;
-    "Only the notch can check this") echo "Empty bar widgets show only inside the running notch" ;;
-    *" needs setup") echo "Installed, but its own setup isn't finished" ;;
-    "Profiles keybinds point at a missing script") echo "Reinstall Profiles or delete the keys from bindings.lua" ;;
-    "Test shells are running") echo "A test run is in progress; nothing to do" ;;
-    "Upstream is unchanged") echo "Every file the notch copies is as it was ported" ;;
-    "Omarchy changed upstream") echo "Only a developer needs to act on this" ;;
-    "The bar layer can animate") echo "Omarchy's no_anim rule for the bar isn't in effect" ;;
-    "A layer rule animates the notch") echo "It fights the notch's own movement" ;;
-    "The notch can't update itself") echo "This copy isn't a git checkout" ;;
-    "Face ID will move to its new name") echo "Nothing to do until its 3.0 update" ;;
-    "Face ID was renamed, but your settings still use the old name") echo "It may be missing from the bar" ;;
-    "OLED Corners pop in when the screen changes") echo "Hyprland animates their layer on every monitor change" ;;
+    menu-replace-companion|osd-companion|menu-keys-bypass|layout-empty-widget|plugin-face|plugin-profiles|face-renamed|profiles-binds-path|oled-corners-still) echo page ;;
+    notifications-companion|settings-stale-ids|stray-backups|stale-notch-binds|layout-missing-plugin) echo auto ;;
+    *) echo dev ;;
+  esac
+}
+# A migration or a transitional row carries the date its code goes.
+removeby_of() {
+  case $1 in
+    face-renamed) echo 2027-06-01 ;;
+    oled-corners-still) echo 2027-03-01 ;;
   esac
 }
 
 point() { # point <id> <severity> <title> <summary> <detail json> <items json> <fix json> <handoff json>
-  local summary=$4 detail=${5:-[]} short
-  if (( ${#summary} > TIP_MAX )); then
-    detail=$(jq -c --arg s "$summary" '[$s] + .' <<<"$detail")
-    short=$(short_summary "$3")
-    summary=$(jq -rn --arg s "${short:-$summary}" --argjson max "$TIP_MAX" \
-      '$s | if length > $max then (.[0:$max - 1] | sub(" +[^ ]*$"; "")) + "…" else . end')
-  fi
-  jq -nc --arg id "$1" --arg severity "$2" --arg title "$3" --arg summary "$summary" \
-    --argjson detail "$detail" --argjson items "${6:-[]}" --argjson fix "${7:-null}" --argjson handoff "${8:-null}" \
-    '{id: $id, severity: $severity, title: $title, summary: $summary, detail: $detail, items: $items, fix: $fix, handoff: $handoff}'
+  jq -nc --arg id "$1" --arg severity "$2" --arg title "$3" --arg summary "$4" \
+    --arg admit "$(admission_of "$1")" --arg removeBy "$(removeby_of "$1")" \
+    --argjson detail "${5:-[]}" --argjson items "${6:-[]}" --argjson fix "${7:-null}" --argjson handoff "${8:-null}" \
+    '{id: $id, severity: $severity, title: $title, summary: $summary, admit: $admit, detail: $detail, items: $items, fix: $fix, handoff: $handoff}
+     + (if $removeBy != "" then {removeBy: $removeBy} else {} end)'
 }
 
 fixspec() { # fixspec <kind> <label> <files json> <reload json> <risk> <destroysNotch> [disabledReason]
@@ -797,17 +775,15 @@ detect_upstream_drift() {
     items=$(jq -c --arg p "$path" --arg s "${got:-missing}" '. + [{arg: $p, summary: "\($p) changed"}]' <<<"$items")
   done < <(jq -r '.files // {} | to_entries[] | "\(.key) \(.value)"' "$record")
   local count; count=$(jq 'length' <<<"$items")
-  local detail='[]'
-  if [[ -n $live && -n $recorded && $live != "$recorded" ]]; then
-    detail=$(strings "Recorded against Omarchy $recorded; this machine runs $live.")
-  fi
-  if (( count == 0 )) && [[ $detail == '[]' ]]; then
+  if (( count == 0 )); then
     point upstream-drift ok "Upstream is unchanged" "Every Omarchy file the notch copies from is the one it was ported against."
   else
+    local detail='[]'
+    [[ -n $live && -n $recorded && $live != "$recorded" ]] && detail=$(strings "Recorded against Omarchy $recorded; this machine runs $live.")
     detail=$(jq -c --argjson d "$detail" --argjson items "$items" --arg o "$OMARCHY_DIR" '
       $d + [ $items[] | "diff -u \($o)/shell/\(.arg) <this repo>/dev/upstream/\(.arg)" ]' <<<'null')
     point upstream-drift info "Omarchy changed upstream" \
-      "$count file(s) the notch was ported from have changed. Only a developer needs to act on this." \
+      "$count file(s) the notch was ported from have changed." \
       "$detail" "$items"
   fi
 }
@@ -834,17 +810,15 @@ detect_layer_rules() {
   fi
 }
 
+# Whether this copy is a git checkout is a question about a folder, not the
+# network (the update card owns what to do about it).
 detect_notch_not_git() {
-  local script="$NOTCH_DIR/bin/notch-update" state=""
-  [[ -x $script ]] && state=$(NOTCH_UPDATE_DIR="$NOTCH_DIR" timeout 5 "$script" check 2>/dev/null | jq -r '.state // ""')
-  if [[ $state == not-git ]]; then
+  if [[ -e $NOTCH_DIR/.git ]]; then
+    point notch-not-git ok "The notch can update itself" "It is a git checkout."
+  else
     point notch-not-git info "The notch can't update itself" \
       "This copy isn't a git checkout, so it can't tell when a new version is out." \
       "$(strings "Run \`./install.sh --swap-to-git\` once from the dev checkout.")"
-  elif [[ -z $state ]]; then
-    point notch-not-git unknown "Couldn't check for updates" "Couldn't check: bin/notch-update didn't answer."
-  else
-    point notch-not-git ok "The notch can update itself" "It is a git checkout ($state)."
   fi
 }
 
@@ -951,11 +925,12 @@ detect_point() {
 }
 
 detect() {
-  local only="" json=0
+  local only="" json=0 all=0
   while (( $# )); do
     case $1 in
       --json) json=1 ;;
       --local) LOCAL_ONLY=1 ;;
+      --all) all=1 ;;
       --only) only=${2:-}; shift ;;
       *) echo "notch-setup: unknown option $1" >&2; return 2 ;;
     esac
@@ -969,18 +944,24 @@ detect() {
     local out; out=$(detect_point "$id") || { echo "notch-setup: no such point: $id" >&2; return 2; }
     lines+="$out"$'\n'
   done
+  # One point asked for by name is the developer's view of that point.
+  [[ -n $only ]] && all=1
   local report
-  report=$(jq -sc --argjson schema "$SCHEMA" --argjson checkedAt "$(now_ms)" --argjson local "$LOCAL_ONLY" \
+  report=$(jq -sc --argjson schema "$SCHEMA" --argjson checkedAt "$(now_ms)" --argjson local "$LOCAL_ONLY" --argjson all "$all" \
     --arg omarchyVersion "$(omarchy_version)" --arg notchVersion "$(notch_version)" \
     --arg barId "$(setting .bar.id)" --arg replaceMenu "$(setting .bar.notch.replaceMenu)" \
     --argjson barHidden "$([[ -f $TOGGLES/bar-off ]] && echo true || echo false)" \
     --argjson hyprErrors "$(jq '[.[] | select(. != null and . != "")] | length' <<<"$(hypr_config_errors)")" '
-    { schema: $schema, checkedAt: $checkedAt, local: ($local == 1),
-      omarchyVersion: $omarchyVersion, notchVersion: $notchVersion,
-      context: { barId: $barId, barHidden: $barHidden, replaceMenu: ($replaceMenu == "true"), hyprErrors: $hyprErrors },
-      counts: ( reduce .[] as $p ({fix: 0, action: 0, warn: 0, info: 0, ok: 0, unknown: 0};
-                 .[$p.severity] = (.[$p.severity] // 0) + 1) ),
-      points: . }' <<<"$lines")
+    def needs: .severity == "fix" or .severity == "action" or .severity == "warn";
+    . as $found
+    | ( if $all == 1 then $found else [ $found[] | select(.admit == "page" and needs) ] end ) as $shown
+    | { schema: $schema, checkedAt: $checkedAt, local: ($local == 1), all: ($all == 1),
+        omarchyVersion: $omarchyVersion, notchVersion: $notchVersion,
+        context: { barId: $barId, barHidden: $barHidden, replaceMenu: ($replaceMenu == "true"), hyprErrors: $hyprErrors },
+        counts: ( reduce $shown[] as $p ({fix: 0, action: 0, warn: 0, info: 0, ok: 0, unknown: 0};
+                   .[$p.severity] = (.[$p.severity] // 0) + 1) ),
+        auto: [ $found[] | select(.admit == "auto" and .severity == "fix" and ((.fix.disabledReason // "") == "")) | .id ],
+        points: $shown }' <<<"$lines")
   if (( json )); then printf '%s\n' "$report"; else print_table "$report"; fi
 }
 
@@ -988,14 +969,24 @@ print_table() {
   local report=$1
   jq -r '
     def mark: {fix: "!", action: ">", warn: "!", info: "i", ok: " ", unknown: "?"}[.] // " ";
-    "Setup — \(.counts.fix + .counts.action + .counts.warn) need attention, \(.counts.ok) fine, \(.counts.unknown) not checked",
-    "",
-    ( .points[] | select(.severity != "ok")
-      | " \(.severity | mark) \(.title)\n     \(.summary)"
-        + (if .fix != null and (.fix.disabledReason // "") == "" then "\n     fix: notch-setup fix \(.id)" else "" end)
-        + (if (.fix.disabledReason // "") != "" then "\n     (no fix: \(.fix.disabledReason))" else "" end) ),
-    "",
-    "All good: \([.points[] | select(.severity == "ok") | .id] | join(", "))"' <<<"$report"
+    if .all then
+      "Every point — \(.counts.fix + .counts.action + .counts.warn) need attention, \(.counts.ok) fine, \(.counts.unknown) not checked",
+      "",
+      ( .points[] | select(.severity != "ok")
+        | " \(.severity | mark) [\(.admit)] \(.title)\n     \(.summary)"
+          + (if .fix != null and (.fix.disabledReason // "") == "" then "\n     fix: notch-setup fix \(.id)" else "" end)
+          + (if (.fix.disabledReason // "") != "" then "\n     (no fix: \(.fix.disabledReason))" else "" end) ),
+      "",
+      "All good: \([.points[] | select(.severity == "ok") | .id] | join(", "))"
+    elif (.points | length) == 0 then "Everything is working."
+    else
+      "Needs attention — \(.points | length)",
+      "",
+      ( .points[] | " ! \(.title)\n     \(.summary)"
+          + (if .fix != null and (.fix.disabledReason // "") == "" then "\n     fix: notch-setup fix \(.id)" else "" end) ),
+      "",
+      "Every point and state: notch-setup detect --all"
+    end' <<<"$report"
 }
 
 # --- the status file ----------------------------------------------------------------

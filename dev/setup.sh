@@ -160,23 +160,13 @@ echo "${BOLD}bin/notch-setup${RESET}  ${DIM}sandbox $sb${RESET}"
 # --- detection -----------------------------------------------------------------------
 
 reset_calls
-report=$(run_setup detect --json)
+report=$(run_setup detect --json --all)
 ids=$(jq -r '[.points[].id] | join(" ")' <<<"$report")
 expected_ids="bar-off notch-not-bar notch-failed hypr-config-errors menu-replace-companion osd-companion notifications-companion menu-keys-bypass notch-key-collision stale-notch-binds layout-missing-plugin layout-empty-widget settings-stale-ids plugin-face face-renamed plugin-profiles profiles-binds-path stray-instances stray-backups upstream-drift layer-rules oled-corners-still notch-not-git"
-check "1. detect reports the 23 points in order, schema 1" "1 23 $expected_ids" "$(jq -r .schema <<<"$report") $(jq '.points | length' <<<"$report") $ids"
-short_forms=$(python3 - "$SCRIPT" <<'PY'
-import re, sys
-src = open(sys.argv[1]).read()
-body = re.search(r"short_summary\(\) \{.*?\n\}\n", src, re.S).group(0)
-forms = re.findall(r'\) echo "((?:[^"\\]|\\.)*)" ;;', body)
-print(len(forms), max(len(f.replace('\\"', '"')) for f in forms))
-PY
-)
-check "1a. a point's summary is its tip: every short form in notch-setup is at most 60 characters" "true" \
-  "$([[ ${short_forms% *} -gt 20 && ${short_forms#* } -le 60 ]] && echo true || echo "false ($short_forms)")"
-check "1c. every summary the healthy fixture produces fits the tip: 60 characters at most" "true" \
-  "$(jq -r '[.points[].summary | length] | max <= 60' <<<"$report")"
-check "1b. a healthy fixture needs no attention" "0" "$(jq '.counts.fix + .counts.action + .counts.warn' <<<"$report")"
+check "1. detect --all reports the 23 points in order, schema 1" "1 23 $expected_ids" "$(jq -r .schema <<<"$report") $(jq '.points | length' <<<"$report") $ids"
+check "1b. a healthy fixture needs no attention: the default view lists no point, and the terminal says so" "0 0 Everything is working." \
+  "$(run_setup detect --json | jq '.points | length') $(jq '.counts.fix + .counts.action + .counts.warn' <<<"$report") $(run_setup detect)"
+check "1c. every point says who sees it: page, auto or dev" "true" "$(jq -r 'all(.points[]; .admit == "page" or .admit == "auto" or .admit == "dev")' <<<"$report")"
 
 before=$(tree_hash "$HOME_SB"); before_count=$(find "$HOME_SB" -type f | wc -l)
 run_setup detect --json >/dev/null
@@ -198,8 +188,6 @@ jq '. + [{"id": "kalinewb.notch-menu", "enabled": true, "active": true, "kinds":
 p=$(run_setup detect --json --only menu-keys-bypass | jq -c '.points[0]')
 check "3. a bypass bind is a fix, named by key and source" "fix SUPER + SPACE bindings.lua" \
   "$(jq -r '.severity' <<<"$p") $(jq -r '.items[0].arg' <<<"$p") $(jq -r '.items[0].source' <<<"$p" | xargs basename)"
-check "3b. …and the account too long for a tip moved into its detail, the summary now short" "true true" \
-  "$(jq -r '(.summary | length <= 60) as $s | (.detail[0] | length > 60) as $d | "\($s) \($d)"' <<<"$p")"
 check "4. the keycode bind is found too" "2" "$(jq '.items | length' <<<"$p")"
 check "5. the menu family is read out of Omarchy's own utilities.lua" "12" \
   "$(grep -cP '^o\.bind\("\K[^"]+(?=".*"omarchy-menu toggle)' "$OMARCHY_SB/default/hypr/bindings/utilities.lua")"

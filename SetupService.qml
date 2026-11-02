@@ -38,38 +38,26 @@ Item {
   property real checkedAt: 0
   property real lastFullCheck: 0
 
-  // The script's list, with the notch's own findings laid over it: a point the
-  // script also knows about is replaced in place, keeping the script's order,
-  // and one only the notch can see is appended. Appending matters -- a point
-  // with no counterpart in the script used to be dropped, which meant it could
-  // never appear at all.
+  // What needs attention: the script's list, with the notch's own findings
+  // laid over it. Only the notch can see an empty bar widget, and only its
+  // bridge knows a menu helper is talking to it (below).
   readonly property var points: {
     var base = (report && report.points) ? report.points : []
-    var mine = inProcessPoints()
-    if (!mine.length) return base
-    var used = ({})
-    var merged = []
+    var out = []
     for (var i = 0; i < base.length; i++) {
-      var replacement = null
-      for (var j = 0; j < mine.length; j++) {
-        if (mine[j].id !== base[i].id) continue
-        replacement = mine[j]
-        used[mine[j].id] = true
-      }
-      merged.push(replacement || base[i])
+      var id = base[i].id
+      if (id === "layout-empty-widget") continue
+      if (id === "menu-replace-companion" && menuHelperWorks()) continue
+      // The notch is still trying to set a helper up by itself: not a problem yet.
+      if ((id === "menu-replace-companion" || id === "osd-companion") && helperWorking(id)) continue
+      out.push(base[i])
     }
-    for (var k = 0; k < mine.length; k++) if (!used[mine[k].id]) merged.push(mine[k])
-    return merged
+    var empty = emptyWidgetPoint()
+    if (empty) out.push(empty)
+    return out
   }
 
-  readonly property int issueCount: {
-    var n = 0
-    for (var i = 0; i < points.length; i++) {
-      var severity = points[i].severity
-      if (severity === "fix" || severity === "action" || severity === "warn") n++
-    }
-    return n
-  }
+  readonly property int issueCount: points.length
 
   readonly property bool jobRunning: {
     var phase = (job || {}).phase || ""
@@ -79,80 +67,32 @@ Item {
 
   // --- what only this notch can check -------------------------------------------------
 
-  // A widget in the layout that drew nothing. The notch heals this once by
-  // itself; what's left after that is worth telling the user about.
-  function inProcessPoints() {
-    var points = emptyWidgetPoint()
-    points.push(themeTokensPoint())
-    var companion = menuCompanionPoint()
-    if (companion) points.push(companion)
-    return points
-  }
-
   // Omarchy creates a menu plugin's entry point when the menu is opened and
   // drops it again afterwards, so `active: false` in the plugin list means
-  // "the menu is shut" far more often than "it failed to load".
-  // bin/notch-setup runs outside the shell and has nothing better to go on, so
-  // it reported a perfectly good companion as broken. The notch does know: its
-  // bridge either has the companion's facade or it does not. This corrects the
-  // script's verdict, and only ever downwards -- when the notch is not happy
-  // either, the script's point stands as it is.
-  function menuCompanionPoint() {
-    if (!bar || !bar.menuCompanion || !bar.notchReplaceMenu) return null
-    if (bar.menuCompanion.companionState !== "active") return null
-    return { id: "menu-replace-companion", severity: "ok", title: "The menu opens in the notch",
-             summary: "Installed, enabled and talking to this notch.",
-             detail: [], items: [], fix: null, handoff: null }
+  // "the menu is shut" far more often than "it failed to load". The notch does
+  // know: its bridge either has the companion's facade or it does not.
+  function menuHelperWorks() {
+    return !!bar && !!bar.menuCompanion && !!bar.notchReplaceMenu && bar.menuCompanion.companionState === "active"
+  }
+  function helperWorking(id) {
+    var helper = !bar ? null : id === "osd-companion" ? bar.osdCompanion : bar.menuCompanion
+    return !!helper && helper.statusKey === "working"
   }
 
-  // A theme can pin selection, hover and focus fills to a colour of its own
-  // (`selected-color = "accent"`, or a hex, in its style section -- Catppuccin
-  // Latte pins all four to #4c4f69). A panel the notch hosts hands Style's
-  // helpers the notch's white, but such a token makes the helper ignore what
-  // it was handed -- the one way a theme colour still gets inside the notch.
-  // Only the notch can see the resolved tokens.
-  function themeTokensPoint() {
-    var tokens = { "normal-color": Style.normalColorToken, "hover-cursor-color": Style.hoverColorToken,
-                   "selected-color": Style.selectedColorToken, "pressed-color": Style.pressedColorToken,
-                   "focus-color": Style.focusColorToken, "selection-color": Style.selectionColorToken }
-    var off = []
-    for (var key in tokens) {
-      var role = String(tokens[key] || "").replace(/^\s+|\s+$/g, "").toLowerCase()
-      if (role !== "foreground" && role !== "text" && role !== "transparent" && role !== "") off.push({ arg: key, summary: key + " = \"" + tokens[key] + "\"" })
-    }
-    if (!off.length) {
-      return { id: "theme-tokens", severity: "ok", title: "Your theme keeps its colours out of the notch",
-               summary: "Panels the notch draws stay white",
-               detail: ["Its style tokens resolve to the text colour, so a panel the notch draws paints white."], items: [], fix: null, handoff: null }
-    }
-    return {
-      id: "theme-tokens", severity: "info",
-      title: "Your theme tints panels drawn inside the notch",
-      summary: "Plugin panels in the notch take your theme's colours",
-      detail: ["When a plugin's panel opens inside the notch, its hover highlights, selection and outlines come out in your theme's colour instead of white. The notch's own switches and buttons are unaffected. Nothing to press: it is decided by " + off.length + " colour(s) your theme pins, which the notch cannot override for itself alone.",
-               "The notch paints in white only, but a plugin's own panel asks Omarchy's Style helpers for its fills, and these tokens tell the helper to use the theme's colour instead of the white it was handed. Those helpers are shared with the whole desktop, so the notch cannot change them just for itself.",
-               "If it bothers you: set them to \"foreground\" in the theme's shell.toml [style] section, or pick a theme that leaves them at the default. That changes them everywhere, not only in the notch. Text is unaffected either way."],
-      items: off, fix: null, handoff: null
-    }
-  }
-
+  // A widget in the layout that drew nothing. The notch heals this once by
+  // itself; what's left after that is worth telling the user about.
   function emptyWidgetPoint() {
-    if (!bar || typeof bar.emptyWidgetIds !== "function") return []
+    if (!bar || typeof bar.emptyWidgetIds !== "function") return null
     var ids = bar.emptyWidgetIds()
-    if (!ids || !ids.length) {
-      return [{ id: "layout-empty-widget", severity: "ok", title: "Every widget drew something",
-                summary: "No widget in the bar is empty.", detail: [], items: [], fix: null, handoff: null }]
-    }
+    if (!ids || !ids.length) return null
     var items = []
-    for (var i = 0; i < ids.length; i++) items.push({ arg: ids[i], summary: ids[i] + " drew nothing" })
-    return [{ id: "layout-empty-widget", severity: "fix", title: "A widget in the bar is empty",
-              summary: ids.length + (ids.length === 1 ? " widget" : " widgets") + " loaded but drew nothing",
-              detail: ["Fix restarts the shell, which loads every plugin again.",
-                       "The notch closes while that happens and this page comes back with the result."],
-              items: items,
-              fix: { kind: "runtime", label: "Fix", files: [], reload: [], risk: "medium",
-                     destroysNotch: true, disabledReason: "" },
-              handoff: null }]
+    for (var i = 0; i < ids.length; i++) items.push({ arg: ids[i], summary: ids[i] })
+    return { id: "layout-empty-widget", severity: "fix", admit: "page",
+             title: ids.length === 1 ? "A bar item shows nothing" : ids.length + " bar items show nothing",
+             summary: "Restarting the bar usually fixes it. The notch closes for a moment.",
+             detail: [], items: items,
+             fix: { kind: "runtime", label: "Restart bar", files: [], reload: [], risk: "medium", destroysNotch: true, disabledReason: "" },
+             handoff: null }
   }
 
   // --- reading ------------------------------------------------------------------------

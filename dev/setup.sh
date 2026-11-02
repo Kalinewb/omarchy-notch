@@ -600,6 +600,13 @@ else
 fi
 
 
+# NOTCH_SETUP_PART_A_ONLY=1 stops here: part A needs no display, part B starts a notch.
+if [[ ${NOTCH_SETUP_PART_A_ONLY:-} == 1 ]]; then
+  echo
+  if (( failures )); then echo "${RED}$failures of $checks checks failed${RESET} ${DIM}(part B not run)${RESET}"; exit 1; fi
+  echo "${GREEN}$checks checks pass${RESET} ${DIM}(part B not run)${RESET}"; exit 0
+fi
+
 # ---------------------------------------------------------------------------
 # B. The page, in a throwaway notch pointed at the same sandbox.
 # ---------------------------------------------------------------------------

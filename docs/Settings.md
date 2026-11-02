@@ -1,10 +1,19 @@
 # Settings
 
 Long press (or right-click and hold) the notch, or run `omarchy-shell notch settings`, and the
-notch grows into the Settings panel. It is quiet on purpose: nine rows under three headings
+notch grows into the Settings panel. It is quiet on purpose: eight rows under three headings
 (**Look**, **Open**, **In the notch**), and one fold, **Advanced**, closed every time the panel
 opens. A row is a label on the left and its state on the right. Rest the pointer on a row, or
 walk to it with the arrow keys, and the line under the list says what it does.
+
+The keyboard does all of it. Up and Down walk the rows, Left and Right step a number or walk an
+open list, Space or Enter flips, opens or records, and Escape closes the tip, then the open list,
+then the panel. **Tab** reaches the header buttons and the buttons inside a row. Setup answers to
+the same keys: Up and Down over its points, Enter to open one and then press its button.
+**Reset to defaults** asks twice: the button turns into *Sure?* for three seconds, and only a
+second press inside that time deletes your settings. Escape answers no.
+
+*Notification light* and *Light colours* are held back until the notch can draw them.
 
 ## The header
 

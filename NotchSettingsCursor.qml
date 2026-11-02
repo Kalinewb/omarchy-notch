@@ -21,7 +21,7 @@ QtObject {
   function stops() {
     return panel.groups.reduce(function(all, g) {
       var rows = g.fold && !g.open ? [] : g.rows().filter(function(r) { return r.visible })
-      return all.concat(g.fold ? [g] : [], rows)
+      return all.concat(g.fold && g.visible !== false ? [g] : [], g.visible !== false ? rows : [])
     }, [])
   }
   // The stop the cursor is on; a row in a fold that has closed is its fold.

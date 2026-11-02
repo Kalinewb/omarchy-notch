@@ -759,13 +759,7 @@ Item {
   component ActionButton: NotchPanelButton { page: root }
   component HeaderButton: NotchPanelButton { page: root; header: true }
 
-  // The keyboard cursor's mark: NotchButton's focus fill, in the row's shape.
-  component CursorFill: Rectangle {
-    anchors.fill: parent
-    z: -1
-    radius: root.radiusFor(Math.min(width, height))
-    color: Util.alpha(root.foreground, Style.focusFillAlpha)
-  }
+  component CursorFill: NotchCursorFill { page: root }
 
   // One option of a Pick, a flat line in the row's fold. The mark is not the
   // fill alone: the chosen one carries a tick.

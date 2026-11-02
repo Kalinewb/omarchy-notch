@@ -49,8 +49,6 @@ Item {
   property string openRow: ""
   property string confirmRow: ""
   property string confirmKind: ""   // "fix" | "restore" | "restore-force" | "restore-block" | "forget"
-  property bool showSnapshots: false
-  property bool showHealthy: false
 
   // A warning is a real fault that happens to have no one-click fix -- keys
   // that call a script which isn't there, for instance. It was filed under
@@ -105,13 +103,25 @@ Item {
     root.openRow = point.id
   }
 
+  // The keyboard: the row cursor of the Settings panel (NotchSettingsCursor.qml)
+  // over the points, the folds and the snapshots. Up and Down move, Enter opens
+  // a point and then presses its button, Left and Right walk the buttons, Escape
+  // closes the tip, then a question, then the open point, then the page.
   focus: true
-  Keys.onEscapePressed: {
-    if (foot.shown || foot.pending) { foot.hide(); return }
-    if (root.confirmRow !== "") { root.confirmRow = ""; return }
-    root.closeRequested()
+  Keys.onPressed: function(event) { event.accepted = nav.handle(event) }
+  onEnabledChanged: if (enabled) nav.reset(); else foot.hide()
+  NotchSettingsCursor { id: nav; panel: root; flick: flick }
+  property var recorder: null
+  function rows() { return groups.reduce(function(all, g) { return all.concat(g.rows()) }, []) }
+  // A question waiting for its answer (Fix, Undo, Delete): Escape says no.
+  function cancelPending() { var waiting = confirmRow !== ""; confirmRow = ""; return waiting }
+  readonly property var groups: [needsStops, worthStops, healthyFold, snapFold]
+
+  // The foot line's text for a point is its summary (a Setup point has no entry in settings-tips.js).
+  Component.onCompleted: foot.lookup = function(id) {
+    var found = root.points.filter(function(p) { return p.id === id })
+    return found.length > 0 ? String(found[0].summary || "") : ""
   }
-  onEnabledChanged: if (!enabled) foot.hide()
 
   // dev/setup.sh: the foot line, and a pointer resting on a point.
   function tipReport() { return Object.assign(foot.report(), { footHeight: foot.height }) }
@@ -198,6 +208,7 @@ Item {
 
       Heading { text: "Needs attention"; visible: root.attention.length > 0 }
       Repeater {
+        id: needsList
         model: root.attention
         PointRow { point: modelData }
       }
@@ -216,19 +227,20 @@ Item {
 
       Heading { text: "Worth knowing"; visible: root.worthKnowing.length > 0 }
       Repeater {
+        id: worthList
         model: root.worthKnowing
         PointRow { point: modelData }
       }
 
       // Folded: everything that is fine, and the snapshots.
       Fold {
+        id: healthyFold
+        rid: "healthy"
         title: "All good (" + root.healthy.length + ")"
-        open: root.showHealthy
         visible: root.healthy.length > 0
-        onToggled: root.showHealthy = !root.showHealthy
 
         Repeater {
-          model: root.showHealthy ? root.healthy : []
+          model: healthyFold.open ? root.healthy : []
           Text {
             width: column.width
             wrapMode: Text.WordWrap
@@ -242,13 +254,16 @@ Item {
       }
 
       Fold {
+        id: snapFold
+        rid: "snapshots"
         title: "Snapshots (" + (root.setup ? root.setup.snapshots.length : 0) + ")"
-        open: root.showSnapshots
-        visible: root.setup && root.setup.snapshots.length > 0
-        onToggled: { root.showSnapshots = !root.showSnapshots; if (root.showSnapshots && root.setup) root.setup.refreshSnapshots() }
+        visible: !!root.setup && root.setup.snapshots.length > 0
+        onOpenChanged: if (open && root.setup) root.setup.refreshSnapshots()
+        rowsOf: function() { return root.itemsOf(snapList) }
 
         Repeater {
-          model: root.showSnapshots && root.setup ? root.setup.snapshots : []
+          id: snapList
+          model: snapFold.open && root.setup ? root.setup.snapshots : []
           SnapshotRow { snapshot: modelData }
         }
       }
@@ -279,6 +294,16 @@ Item {
 
   // --- pieces ---------------------------------------------------------------
 
+  function itemsOf(list) { var out = []; for (var i = 0; i < list.count; i++) out.push(list.itemAt(i)); return out }
+  // A run of points, as the row cursor sees it.
+  component Stops: QtObject {
+    property Repeater list: null
+    readonly property bool fold: false
+    function rows() { return root.itemsOf(list) }
+  }
+  Stops { id: needsStops; list: needsList }
+  Stops { id: worthStops; list: worthList }
+
   component HeaderButton: NotchPanelButton { page: root; header: true }
   component ActionButton: NotchPanelButton { page: root }
 
@@ -300,7 +325,28 @@ Item {
     readonly property bool expanded: root.openRow === point.id
     readonly property bool confirming: root.confirmRow === point.id && root.confirmKind === "fix"
     readonly property string state_: root.rowState(point)
-    readonly property bool fixable: point.fix && !(point.fix.disabledReason || "")
+    readonly property bool fixable: !!point.fix && !(point.fix.disabledReason || "")
+
+    // What the row cursor reads: this row is a stop, `open` is the unfold (kept
+    // in step with root.openRow), and its buttons are lines once it is open.
+    readonly property string rid: point.id
+    readonly property string kind: "point"
+    readonly property bool foldable: true
+    readonly property Item head: line
+    property bool open: false
+    onOpenChanged: {
+      if (open !== expanded) root.openRow = open ? point.id : ""
+      if (!open && root.confirmRow === point.id) root.confirmRow = ""
+    }
+    Connections { target: root; function onOpenRowChanged() { pointRow.open = pointRow.expanded } }
+    Component.onCompleted: open = expanded
+    function targets() {
+      return !open ? [] : [action, cancelButton, fixButton].filter(function(b) { return b.visible && b.enabled })
+    }
+    Accessible.role: Accessible.ListItem
+    Accessible.name: point.title || ""
+    Accessible.description: point.summary || ""
+    Accessible.expanded: open
 
     width: column.width
     spacing: Style.space(2)
@@ -308,10 +354,12 @@ Item {
     bottomPadding: Style.space(4)
 
     Item {
+      id: line
       width: parent.width
       height: Math.max(Style.space(22), title.implicitHeight + summary.implicitHeight + Style.space(4))
 
-      HoverHandler { onHoveredChanged: hovered ? foot.want(pointRow.point.id, "hover", pointRow.point.summary || "") : foot.leave() }
+      NotchCursorFill { page: root; visible: nav.at === pointRow.rid && nav.sub < 0 }
+      HoverHandler { onHoveredChanged: hovered ? nav.hover(pointRow) : nav.unhover(pointRow) }
 
       Text {
         id: mark
@@ -362,7 +410,7 @@ Item {
         id: action
         anchors.right: parent.right
         anchors.top: parent.top
-        visible: pointRow.state_ !== "working" && (pointRow.fixable || (pointRow.point.handoff && pointRow.point.handoff.label))
+        visible: pointRow.state_ !== "working" && !!(pointRow.fixable || (pointRow.point.handoff && pointRow.point.handoff.label))
         enabled: root.available && !(root.setup && root.setup.jobRunning)
         text: {
           if (pointRow.state_ === "fixed") return "Undo"
@@ -464,11 +512,13 @@ Item {
             spacing: Style.space(6)
 
             ActionButton {
+              id: cancelButton
               text: "Cancel"
               onClicked: root.confirmRow = ""
             }
 
             ActionButton {
+              id: fixButton
               text: root.confirmKind === "restore" ? "Undo" : "Fix"
               onClicked: {
                 if (root.confirmKind === "restore") {
@@ -495,13 +545,29 @@ Item {
     property var snapshot: ({})
     readonly property bool confirming: root.confirmRow === snapshot.name
 
+    // What the row cursor reads: a stop whose buttons are lines, and which
+    // counts as open while it asks (Escape says no first: cancelPending).
+    readonly property string rid: snapshot.name || ""
+    readonly property string kind: "snapshot"
+    readonly property Item head: snapLine
+    readonly property bool open: confirming
+    function targets() {
+      return [snapRestore, snapDelete, snapCancel, snapConfirm, snapForce].filter(function(b) { return b.visible && b.enabled })
+    }
+    Accessible.role: Accessible.ListItem
+    Accessible.name: snapshot.title || snapshot.point || ""
+    Accessible.description: snapWhen.text
+
     width: column.width
     spacing: Style.space(2)
     topPadding: Style.space(4)
 
     Item {
+      id: snapLine
       width: parent.width
       height: Math.max(Style.space(20), snapTitle.implicitHeight + snapWhen.implicitHeight + Style.space(2))
+
+      NotchCursorFill { page: root; visible: nav.at === snapshotRow.rid && nav.sub < 0 }
 
       Text {
         id: snapTitle
@@ -538,12 +604,14 @@ Item {
         spacing: Style.space(6)
 
         ActionButton {
+          id: snapRestore
           text: "Restore"
           enabled: root.available && !(root.setup && root.setup.jobRunning)
           onClicked: { root.confirmRow = snapshotRow.snapshot.name; root.confirmKind = "restore" }
         }
 
         ActionButton {
+          id: snapDelete
           text: "Delete"
           enabled: root.available
           onClicked: { root.confirmRow = snapshotRow.snapshot.name; root.confirmKind = "forget" }
@@ -557,11 +625,13 @@ Item {
       topPadding: Style.space(2)
 
       ActionButton {
+        id: snapCancel
         text: "Cancel"
         onClicked: root.confirmRow = ""
       }
 
       ActionButton {
+        id: snapConfirm
         text: root.confirmKind === "forget" ? "Delete" : "Restore"
         onClicked: {
           if (root.confirmKind === "forget") root.setup.forget(snapshotRow.snapshot.name)
@@ -572,6 +642,7 @@ Item {
 
       // Offered after a restore was refused because the file moved on.
       ActionButton {
+        id: snapForce
         visible: root.confirmKind === "restore" && (root.job.phase === "conflict")
           && String(root.job.snapshot || "") === snapshotRow.snapshot.name
         text: snapshotRow.snapshot.block ? "Remove the notch's block" : "Restore anyway"
@@ -627,25 +698,38 @@ Item {
     }
   }
 
-  // A folding group.
+  // A folding group: a stop of the row cursor that opens and closes the rows
+  // under it (`rowsOf` lists them).
   component Fold: Column {
-    id: fold
+    id: foldBox
+    property string rid: ""
     property string title: ""
     property bool open: false
-    signal toggled()
+    property var rowsOf: function() { return [] }
+    readonly property bool fold: true
+    readonly property string kind: "fold"
+    readonly property Item head: foldHead
     default property alias content: foldSlot.data
+    function rows() { return rowsOf() }
 
     width: column.width
     spacing: Style.space(2)
     topPadding: Style.space(8)
 
     Item {
+      id: foldHead
       width: parent.width
       height: Style.space(18)
+      Accessible.role: Accessible.Button
+      Accessible.name: foldBox.title
+      Accessible.expanded: foldBox.open
+      Accessible.onPressAction: foldBox.open = !foldBox.open
+
+      NotchCursorFill { page: root; visible: nav.at === foldBox.rid }
 
       Text {
         anchors.verticalCenter: parent.verticalCenter
-        text: fold.title + (fold.open ? "  ▾" : "  ▸")
+        text: foldBox.title + (foldBox.open ? "  ▾" : "  ▸")
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
@@ -655,15 +739,15 @@ Item {
       MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: fold.toggled()
+        onClicked: foldBox.open = !foldBox.open
       }
     }
 
     Item {
       width: parent.width
       clip: true
-      height: fold.open ? foldSlot.childrenRect.height : 0
-      Behavior on height { NumberAnimation { duration: root.still ? 0 : fold.open ? 220 : 90; easing.type: Easing.OutCubic } }
+      height: foldBox.open ? foldSlot.childrenRect.height : 0
+      Behavior on height { NumberAnimation { duration: root.still ? 0 : foldBox.open ? 220 : 90; easing.type: Easing.OutCubic } }
 
       Column {
         id: foldSlot

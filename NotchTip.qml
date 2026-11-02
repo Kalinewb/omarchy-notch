@@ -25,12 +25,14 @@ Item {
   property string source: ""
   property string rowId: ""
   property string wanted: ""
+  // A page whose rows have no entry in settings-tips.js says where the text is: id -> text.
+  property var lookup: null
 
   // `from` is "hover" or "focus". The text is the id's tip in settings-tips.js
   // unless the page brings its own (a Setup point's summary).
   function want(id, from, own) {
     hideTimer.stop()
-    var next = own !== undefined ? String(own) : (Tips.t[id] || "")
+    var next = own !== undefined ? String(own) : lookup ? String(lookup(id) || "") : (Tips.t[id] || "")
     if (next === "") { hide(); return }
     rowId = id
     wanted = next

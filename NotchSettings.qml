@@ -732,25 +732,8 @@ Item {
     Row { id: buttonRow; spacing: Style.space(6) }
   }
 
-  component ActionButton: NotchButton {
-    foreground: root.foreground
-    accent: root.accent
-    radius: root.radiusFor(Math.min(width, height))
-    bordered: true
-    fontFamily: root.fontFamily
-    fontSize: Style.font.bodySmall
-    horizontalPadding: Style.space(7)
-    Component.onCompleted: clicked.connect(foot.hide)
-  }
-
-  component HeaderButton: NotchButton {
-    foreground: root.foreground
-    accent: root.accent
-    radius: root.radiusFor(Math.min(width, height))
-    fontFamily: root.fontFamily
-    horizontalPadding: Style.space(10)
-    Component.onCompleted: clicked.connect(foot.hide)
-  }
+  component ActionButton: NotchPanelButton { page: root }
+  component HeaderButton: NotchPanelButton { page: root; header: true }
 
   // The keyboard cursor's mark: NotchButton's focus fill, in the row's shape.
   component CursorFill: Rectangle {

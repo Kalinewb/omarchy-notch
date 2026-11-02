@@ -38,6 +38,7 @@ Item {
   function radiusFor(size) { return bar ? bar.radiusFor(size) : Math.min(8, size / 2) }
 
   readonly property var setup: bar ? bar.setup : null
+  readonly property Item tip: foot
   readonly property var points: setup ? setup.points : []
   readonly property var job: setup ? (setup.job || {}) : ({})
   readonly property bool available: setup ? setup.enabled : false
@@ -142,33 +143,19 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(6)
 
-      NotchButton {
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
+      HeaderButton {
         text: "‹ Settings"
-        fontFamily: root.fontFamily
-        horizontalPadding: Style.space(10)
         onClicked: root.backRequested()
       }
 
       // Installing a plugin is setup, so the Plugins page lives here.
-      NotchButton {
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
+      HeaderButton {
         text: "Plugins"
-        fontFamily: root.fontFamily
-        horizontalPadding: Style.space(10)
         onClicked: root.pluginsRequested()
       }
 
-      NotchButton {
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
+      HeaderButton {
         text: "✕"
-        fontFamily: root.fontFamily
         horizontalPadding: Style.space(8)
         onClicked: root.closeRequested()
       }
@@ -290,6 +277,9 @@ Item {
 
   // --- pieces ---------------------------------------------------------------
 
+  component HeaderButton: NotchPanelButton { page: root; header: true }
+  component ActionButton: NotchPanelButton { page: root }
+
   component Heading: Text {
     width: column.width
     color: root.dim
@@ -366,15 +356,10 @@ Item {
         font.pixelSize: Style.font.caption
       }
 
-      NotchButton {
+      ActionButton {
         id: action
         anchors.right: parent.right
         anchors.top: parent.top
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
-        fontFamily: root.fontFamily
-        horizontalPadding: Style.space(10)
         visible: pointRow.state_ !== "working" && (pointRow.fixable || (pointRow.point.handoff && pointRow.point.handoff.label))
         enabled: root.available && !(root.setup && root.setup.jobRunning)
         text: {
@@ -476,23 +461,13 @@ Item {
           Row {
             spacing: Style.space(6)
 
-            NotchButton {
-              foreground: root.foreground
-              accent: root.accent
-              radius: root.radiusFor(Math.min(width, height))
+            ActionButton {
               text: "Cancel"
-              fontFamily: root.fontFamily
-              horizontalPadding: Style.space(10)
               onClicked: root.confirmRow = ""
             }
 
-            NotchButton {
-              foreground: root.foreground
-              accent: root.accent
-              radius: root.radiusFor(Math.min(width, height))
+            ActionButton {
               text: root.confirmKind === "restore" ? "Undo" : "Fix"
-              fontFamily: root.fontFamily
-              horizontalPadding: Style.space(10)
               onClicked: {
                 if (root.confirmKind === "restore") {
                   var name = String(root.job.snapshot || "")
@@ -560,24 +535,14 @@ Item {
         anchors.top: parent.top
         spacing: Style.space(6)
 
-        NotchButton {
-          foreground: root.foreground
-          accent: root.accent
-          radius: root.radiusFor(Math.min(width, height))
+        ActionButton {
           text: "Restore"
-          fontFamily: root.fontFamily
-          horizontalPadding: Style.space(8)
           enabled: root.available && !(root.setup && root.setup.jobRunning)
           onClicked: { root.confirmRow = snapshotRow.snapshot.name; root.confirmKind = "restore" }
         }
 
-        NotchButton {
-          foreground: root.foreground
-          accent: root.accent
-          radius: root.radiusFor(Math.min(width, height))
+        ActionButton {
           text: "Delete"
-          fontFamily: root.fontFamily
-          horizontalPadding: Style.space(8)
           enabled: root.available
           onClicked: { root.confirmRow = snapshotRow.snapshot.name; root.confirmKind = "forget" }
         }
@@ -589,23 +554,13 @@ Item {
       spacing: Style.space(6)
       topPadding: Style.space(2)
 
-      NotchButton {
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
+      ActionButton {
         text: "Cancel"
-        fontFamily: root.fontFamily
-        horizontalPadding: Style.space(8)
         onClicked: root.confirmRow = ""
       }
 
-      NotchButton {
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
+      ActionButton {
         text: root.confirmKind === "forget" ? "Delete" : "Restore"
-        fontFamily: root.fontFamily
-        horizontalPadding: Style.space(8)
         onClicked: {
           if (root.confirmKind === "forget") root.setup.forget(snapshotRow.snapshot.name)
           else root.setup.startRestore(snapshotRow.snapshot.name, "")
@@ -614,15 +569,10 @@ Item {
       }
 
       // Offered after a restore was refused because the file moved on.
-      NotchButton {
+      ActionButton {
         visible: root.confirmKind === "restore" && (root.job.phase === "conflict")
           && String(root.job.snapshot || "") === snapshotRow.snapshot.name
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
         text: snapshotRow.snapshot.block ? "Remove the notch's block" : "Restore anyway"
-        fontFamily: root.fontFamily
-        horizontalPadding: Style.space(8)
         onClicked: {
           root.setup.startRestore(snapshotRow.snapshot.name, snapshotRow.snapshot.block ? "block-only" : "force")
           root.confirmRow = ""
@@ -665,16 +615,11 @@ Item {
       font.pixelSize: Style.font.caption
     }
 
-    NotchButton {
+    ActionButton {
       id: jobDismiss
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      foreground: root.foreground
-      accent: root.accent
-      radius: root.radiusFor(Math.min(width, height))
       text: "Dismiss"
-      fontFamily: root.fontFamily
-      horizontalPadding: Style.space(8)
       visible: !(root.setup && root.setup.jobRunning) && (root.job.seen !== true)
       onClicked: root.setup.ack()
     }

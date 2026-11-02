@@ -64,6 +64,7 @@ Item {
   // "Kalinewb/omarchy-profiles" from its GitHub URL.
   function repoName(url) { return String(url || "").replace(/^[a-z]+:\/\/(github\.com\/)?/, "").replace(/\.git$/, "") }
 
+  readonly property Item tip: foot
   readonly property var views: bar ? bar.pluginsViews : []
   readonly property var rows: views.concat(bar ? [bar.pluginsSelfView] : [])
   readonly property var confirm: bar && bar.pluginsConfirm ? bar.pluginsConfirm : ({})
@@ -306,38 +307,22 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(4)
 
-      NotchButton {
+      HeaderButton {
         id: refreshButton
         text: root.bar && root.bar.pluginsStateProcessRunning ? "Checking…" : "Refresh"
         // Not while a job runs: a fetch would race the checkout it changes.
         enabled: !!root.bar && root.bar.pluginsCanAct && !root.carding && !root.bar.pluginsStateProcessRunning && !root.bar.pluginJobRunning
         opacity: enabled ? 1 : 0.35
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
-        fontFamily: root.fontFamily
-        fontSize: Style.font.bodySmall
-        horizontalPadding: Style.space(8)
         onClicked: root.bar.refreshPlugins()
       }
 
-      NotchButton {
+      HeaderButton {
         text: "‹ Setup"
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
-        fontFamily: root.fontFamily
-        fontSize: Style.font.bodySmall
-        horizontalPadding: Style.space(8)
         onClicked: root.backRequested()
       }
 
-      NotchButton {
+      HeaderButton {
         text: "✕"
-        foreground: root.foreground
-        accent: root.accent
-        radius: root.radiusFor(Math.min(width, height))
-        fontFamily: root.fontFamily
         horizontalPadding: Style.space(8)
         onClicked: root.closeRequested()
       }
@@ -516,18 +501,15 @@ Item {
         width: parent.width
         height: cardButtons.height + Style.space(4)
 
-        NotchButton {
+        ActionButton {
           id: reviewButton
           anchors.left: parent.left
           anchors.verticalCenter: cardButtons.verticalCenter
           visible: !card.install && !card.removal && card.ready
           text: "Review full diff in terminal"
-          focusable: true
           onActiveFocusChanged: if (activeFocus) root.cardFocus = "review"
+          bordered: false
           foreground: root.secondary
-          accent: root.accent
-          radius: root.radiusFor(Math.min(width, height))
-          fontFamily: root.fontFamily
           fontSize: Style.font.caption
           horizontalPadding: Style.space(4)
           onClicked: root.bar.reviewPluginInTerminal(root.confirm.id)
@@ -539,39 +521,25 @@ Item {
           y: Style.space(4)
           spacing: Style.space(6)
 
-          NotchButton {
+          ActionButton {
             id: cancelButton
             // Refused: nothing to cancel, only to close.
             text: card.refused !== "" ? "Close" : "Cancel"
-            focusable: true
             onActiveFocusChanged: if (activeFocus) root.cardFocus = "cancel"
-            bordered: true
-            foreground: root.foreground
             background: root.surface
-            accent: root.accent
-            radius: root.radiusFor(Math.min(width, height))
-            fontFamily: root.fontFamily
-            fontSize: Style.font.bodySmall
             horizontalPadding: Style.space(10)
             onClicked: root.bar.cancelPluginAction()
           }
 
-          NotchButton {
+          ActionButton {
             id: confirmButton
             text: card.ready || card.p.id ? (card.install ? "Install" : card.removal ? "Remove" : "Update") : "Checking…"
             visible: card.refused === ""
             enabled: card.ready
             opacity: enabled ? 1 : 0.35
-            focusable: true
             onActiveFocusChanged: if (activeFocus) root.cardFocus = "confirm"
-            bordered: true
             selected: true
-            foreground: root.foreground
             background: root.surface
-            accent: root.accent
-            radius: root.radiusFor(Math.min(width, height))
-            fontFamily: root.fontFamily
-            fontSize: Style.font.bodySmall
             horizontalPadding: Style.space(12)
             onClicked: root.bar.startPluginJob(root.confirm.token)
           }
@@ -589,6 +557,9 @@ Item {
     color: root.secondary
     fontFamily: root.fontFamily
   }
+
+  component HeaderButton: NotchPanelButton { page: root; header: true }
+  component ActionButton: NotchPanelButton { page: root }
 
   // One catalogue entry: name and version, what it is doing, and its buttons
   // on the right with the primary one last.
@@ -671,20 +642,13 @@ Item {
 
       Repeater {
         model: row.view.actions || []
-        NotchButton {
+        ActionButton {
           required property var modelData
           text: modelData.label
           enabled: modelData.enabled
           opacity: enabled ? 1 : 0.35
-          bordered: true
           selected: modelData.primary
-          foreground: root.foreground
           background: root.surface
-          accent: root.accent
-          radius: root.radiusFor(Math.min(width, height))
-          fontFamily: root.fontFamily
-          fontSize: Style.font.bodySmall
-          horizontalPadding: Style.space(7)
           onClicked: { root.selectedIndex = row.rowIndex; root.run(modelData.name) }
         }
       }

@@ -1,0 +1,116 @@
+import QtQuick
+import QtTest
+import "file://@REPO@" as Notch
+import "file://@REPO@/plugins" as Plugins
+import "file://@REPO@/dev/harness/panels" as Fake
+
+// The Settings, Setup and Plugins pages on a fake bar (FakeBar.qml), under
+// qmltestrunner offscreen: no window on a screen, no live shell. dev/panels.sh
+// runs it; the cases are named in its output.
+TestCase {
+  id: tc
+  name: "Panels"
+  width: 420
+  height: 800
+  visible: true
+  when: windowShown
+
+  Fake.FakeBar { id: bar }
+  Item {
+    id: stage
+    anchors.fill: parent
+  }
+
+  // --- helpers ------------------------------------------------------------
+
+  readonly property var point: ({ id: "hypr", severity: "fix", title: "Hyprland reports an error", summary: "Line 3 of the config is not valid",
+                                  fix: { label: "Fix", files: ["hyprland.lua"] }, items: [], detail: [] })
+  readonly property var info: ({ id: "note", severity: "info", title: "Keys call a missing script", summary: "Bound keys do nothing", items: [], detail: [] })
+  readonly property var good: ({ id: "fine", severity: "ok", title: "The shell is running", summary: "", items: [], detail: [] })
+  readonly property var snap: ({ name: "snap-1", title: "Hyprland config", createdAt: 1700000000000, state: "kept" })
+
+  function make(url, props) {
+    var c = Qt.createComponent(url)
+    if (c.status !== Component.Ready) { fail(c.errorString()); return null }
+    var item = c.createObject(stage, props)
+    return item
+  }
+  function settings() { return make("file://@REPO@/NotchSettings.qml", { bar: bar, maxHeight: 780, headerHeight: 32, width: 400 }) }
+  function setupPage() {
+    bar.setup.points = [point, info, good]
+    bar.setup.snapshots = [snap]
+    return make("file://@REPO@/NotchSetup.qml", { bar: bar, maxHeight: 780, headerHeight: 32, width: 400 })
+  }
+  function pluginsPage() {
+    bar.pluginsViews = [{ id: "kalinewb.profiles", name: "Profiles", version: "1.4.0", state: "not-installed", words: "Not installed",
+                          actions: [{ name: "install:kalinewb.profiles", label: "Install…", enabled: true, primary: true }] }]
+    bar.pluginsCatalogue = { plugins: [{ id: "kalinewb.profiles", name: "Profiles", url: "https://github.com/Kalinewb/omarchy-profiles.git",
+                                         pin: "8b4360eae8ab9cdf438e0296e799155961a03016", version: "1.4.0" }] }
+    return make("file://@REPO@/plugins/NotchPlugins.qml", { bar: bar, maxHeight: 780, headerHeight: 32, width: 400 })
+  }
+  // Every item under `item`, depth first.
+  function walk(item, out) {
+    out = out || []
+    out.push(item)
+    var kids = item.children || []
+    for (var i = 0; i < kids.length; i++) walk(kids[i], out)
+    return out
+  }
+  function isButton(item) { return item.iconSpinning !== undefined && item.focusable !== undefined }
+  // The buttons on show, bar the option lines of an open Pick (the row cursor walks those).
+  function buttons(page) { return walk(page).filter(function(i) { return isButton(i) && i.visible && !i.leftAlign }) }
+  function names(list) { return list.map(function(b) { return b.text }).join("|") }
+  function unfocusable(page) { return names(buttons(page).filter(function(b) { return !b.focusable })) }
+  // Tab through the page from its first button; the labels of the buttons reached, in order.
+  function tabWalk(page, count) {
+    var seen = []
+    page.forceActiveFocus()
+    for (var n = 0; n < count; n++) {
+      keyClick(Qt.Key_Tab)
+      var f = Window.activeFocusItem
+      seen.push(f && f.text !== undefined ? f.text : "?")
+    }
+    return seen
+  }
+  function init() {
+    bar.writes = []
+    bar.configEdits = 0
+    bar.setup.points = []
+    bar.setup.snapshots = []
+    bar.setup.calls = []
+    bar.pluginCalls = []
+  }
+  function cleanup() { for (var i = stage.children.length - 1; i >= 0; i--) stage.children[i].destroy() }
+
+  // --- focusable buttons (fix 2, 11) -----------------------------------------
+
+  function test_settings_buttons_are_focusable() {
+    var page = settings()
+    page.press("advanced")
+    page.rows().filter(function(r) { return r.rid === "keybinds" })[0].open = true
+    wait(400)
+    var all = buttons(page)
+    verify(all.length >= 7, "buttons on show: " + all.length)
+    compare(unfocusable(page), "", "buttons Tab skips")
+  }
+  function test_settings_tab_reaches_the_header() {
+    bar.setup.enabled = true
+    var page = settings()
+    wait(100)
+    var seen = tabWalk(page, 2)
+    compare(seen.join("|"), "Setup|✕", "Tab from the top")
+  }
+  function test_setup_buttons_are_focusable() {
+    var page = setupPage()
+    page.openRow = "hypr"
+    wait(400)
+    verify(buttons(page).length >= 5, "buttons on show: " + buttons(page).length)
+    compare(unfocusable(page), "", "buttons Tab skips")
+  }
+  function test_plugins_buttons_are_focusable() {
+    var page = pluginsPage()
+    wait(200)
+    verify(buttons(page).length >= 4, "buttons on show: " + buttons(page).length)
+    compare(unfocusable(page), "", "buttons Tab skips")
+  }
+}

@@ -119,6 +119,7 @@ load_catalogue() {
         and (.name | type == "string" and length > 0) and (.url | urlok)
         and (.pin | type == "string" and test("^[0-9a-f]{40}$"))
         and (.version | type == "string" and length > 0)
+        and ((.summary // "") | type == "string" and length <= 60)
         and ((.was // null) == null or (.was as $was | ($was | idok) and $was != .id and $was != $self and ($deny | index($was)) == null))
         and ((.removeVia // "") as $r | ["", "omarchy"] | index($r)) != null
         and (.kinds | argv and index("bar") == null)

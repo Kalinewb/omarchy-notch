@@ -119,6 +119,7 @@ Item {
     if (name === "down" || name === "up") {
       selectedIndex = Math.max(0, Math.min(rows.length - 1, selectedIndex + (name === "down" ? 1 : -1)))
       ensureVisible()
+      foot.want(rows[selectedIndex].id, "focus", tipFor(rows[selectedIndex].id))
       return true
     }
     if (name === "return") { pressPrimary(selectedIndex); return true }
@@ -216,11 +217,10 @@ Item {
     else if (item.y + item.height > flick.contentY + flick.height) flick.contentY = item.y + item.height - flick.height
   }
 
-  // An entry's tip: where its verified commit comes from. The notch's own row has none.
+  // An entry's tip: the plugin's own one-line summary, from the catalogue. The notch's own row has none.
   function tipFor(id) {
     var listed = bar && bar.pluginsCatalogue ? (bar.pluginsCatalogue.plugins || []) : []
-    for (var i = 0; i < listed.length; i++)
-      if (listed[i].id === id && listed[i].url && listed[i].pin) return "Verified commit " + shortSha(listed[i].pin) + " of " + repoName(listed[i].url)
+    for (var i = 0; i < listed.length; i++) if (listed[i].id === id) return String(listed[i].summary || "")
     return ""
   }
   function tipReport() { return Object.assign(foot.report(), { footHeight: foot.height }) }
@@ -468,31 +468,25 @@ Item {
         width: parent.width
         wrapMode: Text.WordWrap
         textFormat: Text.PlainText
+        // The consent line, then at most one line of state.
         text: {
-          var lines = []
           if (card.refused === "wrong-id" || card.refused === "bar-kind") {
             return (card.refused === "wrong-id" ? "The verified commit isn't " + card.name + "."
                                                 : "The verified commit is a bar, not " + card.name + ".")
               + (card.install ? " Nothing was installed." : " Nothing was updated.")
           }
-          if (card.install) {
-            lines.push("Plugins run unsandboxed inside your shell. It's turned on when it lands.")
-          } else if (card.removal) {
-            lines.push("Its folder is deleted. You can install it again here.")
-          } else {
-            lines.push("Plugins run unsandboxed inside your shell.")
-            // The one surprise in the flow: a new name, a restart, a password.
-            if (card.p.renames === true)
-              lines.push("This renames " + card.name + " to " + card.pluginId + " and restarts the shell. "
-                + card.name + "'s Setup then asks for your password once, to update its system files.")
-            if (card.p.panelOpen === true) lines.push("Updating closes " + card.name + "'s panel.")
-            if (card.p.restartLikely === true) lines.push("The shell may need a restart to load every file.")
-            if (card.p.pluginBusy === true) lines.push(PluginsModel.reasonWords("plugin-busy", card.name))
-          }
-          if (root.bar && root.bar.pluginJobRunning) lines.push(PluginsModel.reasonWords("busy", card.name))
-          else if (card.p.id && !card.ready && card.p.ok === false)
-            lines.push(card.p.reason === "current" ? "It's already up to date." : PluginsModel.reasonWords(card.p.reason, card.name))
-          return lines.join("\n")
+          var p = card.p
+          var state = root.bar && root.bar.pluginJobRunning ? PluginsModel.reasonWords("busy", card.name)
+            : p.id && !card.ready && p.ok === false ? (p.reason === "current" ? "It's already up to date." : PluginsModel.reasonWords(p.reason, card.name))
+            : card.install ? "It's turned on when it lands."
+            : card.removal ? ""
+            // The one surprise in the flow: a new name and a restart.
+            : p.renames === true ? "Renames " + card.name + " to " + card.pluginId + " and restarts the shell."
+            : p.panelOpen === true ? "Updating closes " + card.name + "'s panel."
+            : p.restartLikely === true ? "The shell may need a restart to load every file."
+            : p.pluginBusy === true ? PluginsModel.reasonWords("plugin-busy", card.name) : ""
+          return (card.removal ? "Its folder is deleted. You can install it again here." : "Plugins run unsandboxed inside your shell.")
+            + (state !== "" ? "\n" + state : "")
         }
         color: root.foreground
         font.family: root.fontFamily

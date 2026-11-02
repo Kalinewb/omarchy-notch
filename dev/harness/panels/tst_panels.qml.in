@@ -43,10 +43,14 @@ TestCase {
     return make("file://@REPO@/NotchSetup.qml", { bar: bar, maxHeight: 780, headerHeight: 32, width: 400 })
   }
   function pluginsPage() {
-    bar.pluginsViews = [{ id: "kalinewb.profiles", name: "Profiles", version: "1.4.0", state: "not-installed", words: "Not installed",
+    bar.pluginsViews = [{ id: "kalinewb.face", name: "Face ID", version: "2.2.0", state: "not-installed", words: "Not installed",
+                          actions: [{ name: "install:kalinewb.face", label: "Install…", enabled: true, primary: true }] },
+                        { id: "kalinewb.profiles", name: "Profiles", version: "1.4.0", state: "not-installed", words: "Not installed",
                           actions: [{ name: "install:kalinewb.profiles", label: "Install…", enabled: true, primary: true }] }]
-    bar.pluginsCatalogue = { plugins: [{ id: "kalinewb.profiles", name: "Profiles", url: "https://github.com/Kalinewb/omarchy-profiles.git",
-                                         pin: "8b4360eae8ab9cdf438e0296e799155961a03016", version: "1.4.0" }] }
+    bar.pluginsCatalogue = { plugins: [{ id: "kalinewb.face", name: "Face ID", summary: "Unlocks sudo with your face instead of a password",
+                                         url: "https://github.com/Kalinewb/omarchy-face.git", pin: "7632e83a205ca2b265fba5f2b7b72e848c068a6b", version: "2.2.0" },
+                                       { id: "kalinewb.profiles", name: "Profiles", summary: "Saves and switches whole Omarchy setups as profiles",
+                                         url: "https://github.com/Kalinewb/omarchy-profiles.git", pin: "8b4360eae8ab9cdf438e0296e799155961a03016", version: "1.4.0" }] }
     return make("file://@REPO@/plugins/NotchPlugins.qml", { bar: bar, maxHeight: 780, headerHeight: 32, width: 400 })
   }
   // Every item under `item`, depth first.
@@ -305,5 +309,54 @@ TestCase {
     bar.reducedMotion = false
     page = settings()
     verify(page.settleMs + page.fadeMs > 0)
+  }
+
+  // --- The Plugins card and tip (fix 9) ---------------------------------------------
+
+  function cardText(page) { return walk(page).filter(function(i) { return i.text !== undefined && String(i.text).indexOf("\n") !== -1 || String(i.text).indexOf("unsandboxed") !== -1 || String(i.text).indexOf("folder is deleted") !== -1 })[0].text }
+
+  function test_the_card_is_a_consent_line_and_one_state_line() {
+    var page = pluginsPage()
+    // An update with every surprise at once: the card still says one line of state.
+    bar.pluginsPreview = { id: "kalinewb.face", ok: true, behind: 2, files: 3, insertions: 10, deletions: 2, commits: [],
+                           renames: true, panelOpen: true, restartLikely: true, pluginBusy: true }
+    bar.pluginsConfirmReady = true
+    bar.pluginsConfirm = { id: "kalinewb.face", action: "update", token: "t" }
+    wait(500)
+    var lines = cardText(page).split("\n")
+    compare(lines.length, 2, "update: " + lines.join(" / "))
+    compare(lines[0], "Plugins run unsandboxed inside your shell.")
+    compare(lines[1], "Renames Face ID to kalinewb.face and restarts the shell.", "the one surprise that matters most")
+    bar.pluginsConfirm = {}
+    wait(500)
+    bar.pluginsPreview = {}
+    bar.pluginsConfirm = { id: "kalinewb.profiles", action: "install", token: "t" }
+    wait(500)
+    compare(cardText(page).split("\n").length, 2, "install: " + cardText(page))
+    bar.pluginsConfirm = {}
+    wait(500)
+    bar.pluginsConfirm = { id: "kalinewb.profiles", action: "remove", token: "t" }
+    wait(500)
+    compare(cardText(page).split("\n").length, 1, "remove: " + cardText(page))
+  }
+  function test_a_plugins_tip_is_its_own_summary_from_the_pointer_and_the_keyboard() {
+    var page = pluginsPage()
+    wait(100)
+    page.press("hover:kalinewb.profiles")
+    wait(500)
+    var tip = page.tipReport()
+    compare(tip.text, "Saves and switches whole Omarchy setups as profiles")
+    compare(tip.source, "hover")
+    page.press("unhover")
+    page.selectedIndex = 0
+    page.press("key:down")
+    wait(400)
+    tip = page.tipReport()
+    compare(tip.source, "focus", "the keyboard reaches the tip")
+    compare(tip.text, "Saves and switches whole Omarchy setups as profiles")
+    page.press("key:up")
+    wait(100)
+    compare(page.tipReport().text, "Unlocks sudo with your face instead of a password", "the next row swaps it")
+    verify(page.tipReport().text.length <= 60)
   }
 }

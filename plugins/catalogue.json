@@ -3,7 +3,7 @@
   "self": { "id": "kalinewb.notch", "name": "Notch" },
   "deny": ["graveklar.liquid-notifications", "graveklar.face-lock", "kalinewb.face-lock"],
   "plugins": [
-    { "id": "kalinewb.face", "was": "graveklar.face", "name": "Face ID",
+    { "id": "kalinewb.face", "was": "graveklar.face", "name": "Face ID", "summary": "Unlocks sudo with your face instead of a password",
       "url": "https://github.com/Kalinewb/omarchy-face.git",
       "kinds": ["bar-widget", "service"],
       "status": ["bin/omarchy-face-status", "--json"], "statusFormat": "face",
@@ -12,7 +12,7 @@
       "removeHint": "Settings → Remove Face ID from this machine",
       "busyWhen": "face-install-running", "panelOpenCall": ["kalinewb.face", "state"],
       "pin": "7632e83a205ca2b265fba5f2b7b72e848c068a6b", "version": "2.2.0" },
-    { "id": "kalinewb.profiles", "name": "Profiles",
+    { "id": "kalinewb.profiles", "name": "Profiles", "summary": "Saves and switches whole Omarchy setups as profiles",
       "url": "https://github.com/Kalinewb/omarchy-profiles.git",
       "kinds": ["bar-widget"],
       "status": ["bin/omarchy-profile", "setup", "status", "--json"], "statusFormat": "profiles",
@@ -21,7 +21,7 @@
       "removeHint": "Manage → Uninstall Profiles from this machine",
       "busyWhen": "profiles-switch-pending",
       "pin": "8b4360eae8ab9cdf438e0296e799155961a03016", "version": "1.4.0" },
-    { "id": "kalinewb.oled-corners", "name": "OLED Corners",
+    { "id": "kalinewb.oled-corners", "name": "OLED Corners", "summary": "Draws black rounded corners on every monitor",
       "url": "https://github.com/Kalinewb/omarchy-oled-corners.git",
       "kinds": ["service"], "removeVia": "omarchy",
       "pin": "5c64ace7d07c4473c94a5f5f7a0fecf4e4480ef4", "version": "1.1.0" }

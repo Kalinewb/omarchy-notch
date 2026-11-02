@@ -98,13 +98,15 @@ for i, tip in tips.items():
     if "." in tip or "\n" in tip: bad.append(f"{i}: a full stop")
     if not tip[:1].isupper(): bad.append(f"{i}: does not start a sentence")
     if label and (low.startswith(label) or label in low): bad.append(f"{i}: repeats its label")
+    for w in re.findall(r"\b(this|these|those|each)\b", low): bad.append(f"{i}: points at '{w}' with nothing to point to")
+    if re.match(r"^(keys|a |an |the )", low): bad.append(f"{i}: starts with a noun, not the effect")
 print(json.dumps({"ids": sorted(tips), "want": sorted(rows), "bad": bad, "unique": len(set(tips.values())) == len(tips),
                   "longest": max(len(v) for v in tips.values()), "labelled": sorted(labels) == sorted(rows),
                   "noRow": len(noRow), "noRowUnique": len(set(noRow)) == len(noRow)}))
 PY
 )
 check "one tip per row id: 28, none missing, none extra" "28 true" "$(jq -r '"\(.ids | length) \(.ids == .want)"' <<<"$tips")"
-check "every tip is at most 60 characters, one sentence, no full stop, never its label" "" "$(jq -r '.bad | join("; ")' <<<"$tips")"
+check "every tip is at most 60 characters, one sentence, no full stop, never its label, no this/these/those/each" "" "$(jq -r '.bad | join("; ")' <<<"$tips")"
 check "every tip is different" "true" "$(jq -r .unique <<<"$tips")"
 check "the label table here covers exactly the 28 row ids" "true" "$(jq -r .labelled <<<"$tips")"
 check "the 17 rowless keys are listed once each" "17 true" "$(jq -r '"\(.noRow) \(.noRowUnique)"' <<<"$tips")"

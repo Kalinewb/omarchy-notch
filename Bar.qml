@@ -2104,8 +2104,6 @@ Item {
   function setupReport() {
     var status = setupService.status()
     status.script = setupService.script
-    var page = root.focusedNotchWindow() ? root.focusedNotchWindow().setupItem : null
-    status.tip = page ? page.tipReport() : null
     return status
   }
 
@@ -2983,13 +2981,6 @@ Item {
     // the live notch changes nothing without a click in the page.
     function setup(action: string, arg: string): string {
       if (action === "check") root.setup.check(false)
-      else if (action === "hover" || action === "unhover") {
-        // A test notch's stand-in for a pointer resting on a point (dev/setup.sh).
-        var page = root.harnessed && root.focusedNotchWindow() ? root.focusedNotchWindow().setupItem : null
-        if (!page) return JSON.stringify({ refused: "not-a-test-notch" })
-        if (action === "hover") page.hoverTip(arg)
-        else page.unhoverTip()
-      }
       else if (action === "fix" || action === "restore" || action === "forget") {
         if (!(root.harnessed && Quickshell.env("NOTCH_SETUP_IPC_ACTIONS") === "1")) return JSON.stringify({ refused: "ipc" })
         if (action === "fix") root.setup.startFix(arg, "")
@@ -3437,6 +3428,8 @@ Item {
     // never goes false in between -- the notch resizes on its spring instead
     // of collapsing through rest first.
     function openSetup() {
+      // A notch that doesn't do Setup (a test notch) has no page to open.
+      if (!root.setup || !root.setup.enabled) return
       pushState()
       expandTimer.stop()
       peeking = false
@@ -4247,8 +4240,7 @@ Item {
                        host: { opacity: Number(integrationHost.opacity.toFixed(3)), enabled: integrationHost.enabled },
                        width: Number(barWindow.integrationWidth.toFixed(3)), height: Number(barWindow.integrationHeight.toFixed(3)),
                        contentWidth: Number(panelContent.width.toFixed(3)), contentHeight: Number(panelContent.height.toFixed(3)) },
-        setup: { open: barWindow.setupOpen, width: Number(barWindow.setupWidth.toFixed(3)), height: Number(barWindow.setupHeight.toFixed(3)),
-                 tip: setupHost.item ? setupHost.item.tipReport() : null },
+        setup: { open: barWindow.setupOpen, width: Number(barWindow.setupWidth.toFixed(3)), height: Number(barWindow.setupHeight.toFixed(3)) },
         open: { key: barWindow.keyExpanded, click: barWindow.clickExpanded, hover: barWindow.hoverExpanded, pinned: barWindow.pinned, stayOpen: root.notchStayOpen },
         window: { height: barWindow.height, exclusiveZone: barWindow.reservedZone, windowsToTop: root.notchWindowsToTop,
                   applied: { zone: barWindow.exclusiveZone, mode: barWindow.exclusionMode === ExclusionMode.Ignore ? "ignore" : "normal", onScreen: barWindow.reservesOnScreen } },
@@ -5039,7 +5031,7 @@ Item {
         maxHeight: barWindow.panelMaxHeight
         focusId: barWindow.pluginsFocusId
         onCloseRequested: barWindow.closePanels()
-        onBackRequested: barWindow.openSetup()
+        onBackRequested: barWindow.openSettings()
       }
     }
     Component {
@@ -5050,7 +5042,6 @@ Item {
         maxHeight: barWindow.panelMaxHeight
         onCloseRequested: barWindow.closePanels()
         onBackRequested: barWindow.openSettings()
-        onPluginsRequested: barWindow.openPlugins("")
       }
     }
     Component {

@@ -93,6 +93,8 @@ QtObject {
     function forget(name) { calls = calls.concat([["forget", name]]) }
     function ack() { calls = calls.concat([["ack"]]) }
     function refreshSnapshots() {}
+    function check(localOnly) { calls = calls.concat([["check"]]) }
+    function retryHelper(which) { calls = calls.concat([["helper", which]]) }
   }
   property var viewsOpened: []
   function focusedNotchWindow() { return { openView: function(view, from) { bar.viewsOpened = bar.viewsOpened.concat([[view, from]]) } } }

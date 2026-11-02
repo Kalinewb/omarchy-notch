@@ -23,12 +23,14 @@ TestCase {
 
   // --- helpers ------------------------------------------------------------
 
-  readonly property var point: ({ id: "hypr", severity: "fix", title: "Hyprland reports an error", summary: "Line 3 of the config is not valid",
-                                  fix: { label: "Fix", files: ["hyprland.lua"] }, items: [],
-                                  detail: ["Line 3 of the config is not valid Lua.", "The file was last edited an hour ago, so check it by hand."] })
-  readonly property var info: ({ id: "note", severity: "info", title: "Keys call a missing script", summary: "Bound keys do nothing", items: [], detail: [] })
-  readonly property var good: ({ id: "fine", severity: "ok", title: "The shell is running", summary: "", items: [], detail: [] })
-  readonly property var snap: ({ name: "snap-1", title: "Hyprland config", createdAt: 1700000000000, state: "kept" })
+  // Setup's points, as the page lists them: a fix that one press does, one that restarts the bar, a handoff.
+  readonly property var keys: ({ id: "menu-keys-bypass", severity: "fix", title: "Some menu keys ignore the menu switch",
+                                 summary: "Move them back onto Omarchy's keys.", fix: { label: "Move keys", files: ["bindings.lua"] }, items: [] })
+  readonly property var widget: ({ id: "layout-empty-widget", severity: "fix", title: "A bar item shows nothing",
+                                   summary: "Restarting the bar usually fixes it.", fix: { label: "Restart bar", destroysNotch: true }, items: [] })
+  readonly property var face: ({ id: "plugin-face", severity: "action", title: "Face ID needs one more step",
+                                 summary: "It can't work until you finish its setup.", fix: null, items: [], handoff: { label: "Finish setup", argv: ["true"] } })
+  readonly property var snap: ({ name: "snap-1", title: "Old backups moved aside", createdAt: 1700000000000, state: "verified" })
 
   function make(url, props) {
     var c = Qt.createComponent(url)
@@ -38,7 +40,7 @@ TestCase {
   }
   function settings() { return make("file://@REPO@/NotchSettings.qml", { bar: bar, maxHeight: 780, headerHeight: 32, width: 400 }) }
   function setupPage() {
-    bar.setup.points = [point, info, good]
+    bar.setup.points = [keys, widget]
     bar.setup.snapshots = [snap]
     return make("file://@REPO@/NotchSetup.qml", { bar: bar, maxHeight: 780, headerHeight: 32, width: 400 })
   }
@@ -82,6 +84,8 @@ TestCase {
     bar.configEdits = 0
     bar.setup.points = []
     bar.setup.snapshots = []
+    bar.setup.job = ({})
+    bar.setup.checkFailed = false
     bar.setup.calls = []
     bar.pluginCalls = []
   }
@@ -107,8 +111,8 @@ TestCase {
   }
   function test_setup_buttons_are_focusable() {
     var page = setupPage()
-    page.openRow = "hypr"
-    page.groups[3].open = true
+    page.confirmRow = "layout-empty-widget"
+    page.groups[1].open = true
     wait(400)
     verify(buttons(page).length >= 6, "buttons on show: " + buttons(page).length)
     compare(unfocusable(page), "", "buttons Tab skips")
@@ -147,7 +151,7 @@ TestCase {
   }
   function test_every_button_is_named_by_its_text() {
     var pages = [settings(), setupPage(), pluginsPage()]
-    pages[1].openRow = "hypr"
+    pages[1].confirmRow = "layout-empty-widget"
     wait(300)
     var bad = []
     pages.forEach(function(page) {
@@ -267,23 +271,23 @@ TestCase {
     bar.reducedMotion = false
     verify(spin() !== 0, "turning when motion is allowed")
   }
-  function test_reduced_motion_cuts_the_setup_unfold() {
-    var height = function(page) { return walk(page).filter(function(i) { return i.point !== undefined && i.point.id === "hypr" })[0].height }
+  function test_reduced_motion_cuts_the_earlier_fixes_unfold() {
+    var height = function(page) { return page.groups[1].children[1].height }
     bar.reducedMotion = true
     var page = setupPage()
     wait(100)
     var closed = height(page)
-    page.openRow = "hypr"
+    page.groups[1].open = true
     wait(40)
     var cut = height(page)
-    verify(cut > closed, "the row opened")
+    verify(cut > closed, "the fold opened")
     wait(400)
     compare(height(page), cut, "reduced: already at its full height after 40 ms")
     page.destroy()
     bar.reducedMotion = false
     page = setupPage()
     wait(100)
-    page.openRow = "hypr"
+    page.groups[1].open = true
     wait(40)
     var mid = height(page)
     wait(400)
@@ -361,114 +365,173 @@ TestCase {
     verify(page.tipReport().text.length <= 60)
   }
 
-  // --- The Setup cursor (fix 3) -------------------------------------------------------
+  // --- The Setup page: zero rows, two problems, a check that failed -----------------------
 
   function cursorOf(page) { for (var i = 0; i < page.data.length; i++) if (page.data[i].stops !== undefined && page.data[i].at !== undefined) return page.data[i]; return null }
   function key(k, n) { for (var i = 0; i < (n || 1); i++) keyClick(k) }
+  function said(page, start) { return walk(page).filter(function(i) { return i.text !== undefined && String(i.text).indexOf(start) === 0 && i.visible }).length }
+  function allText(page) { return walk(page).filter(function(i) { return i.text !== undefined && i.font !== undefined && i.visible }).map(function(i) { return String(i.text) }).join("|") }
 
-  function test_setup_down_walks_the_points_and_the_folds() {
+  function test_setup_a_healthy_machine_has_zero_rows_and_one_calm_line() {
+    var page = setupPage()
+    bar.setup.points = []
+    bar.setup.snapshots = []
+    wait(50)
+    compare(page.rows().length, 0, "no rows")
+    compare(said(page, "Everything is working."), 1)
+    compare(said(page, "Checked just now."), 1)
+    compare(names(buttons(page)), "‹ Settings|✕", "two buttons in the header and nothing else")
+    compare(allText(page), "Setup|‹ Settings|✕|Everything is working.|Checked just now.", "the whole page")
+  }
+  function test_setup_two_problems_are_two_rows_with_one_button_each() {
+    var page = setupPage()
+    bar.setup.snapshots = []
+    wait(50)
+    compare(page.rows().length, 2)
+    compare(said(page, "Everything is working."), 0)
+    compare(page.rows().map(function(r) { return r.targets().map(function(b) { return b.text }).join("+") }).join("|"), "Move keys|Restart bar")
+    var text = allText(page)
+    ;["Worth knowing", "All good", "From a terminal", "Plugins", "Dismiss", "Snapshots"].forEach(function(w) { compare(text.indexOf(w), -1, "no '" + w + "'") })
+  }
+  function test_setup_a_failed_check_never_says_everything_is_working() {
+    bar.setup.checkFailed = true
+    var page = setupPage()
+    wait(50)
+    compare(said(page, "Couldn't check."), 1, "it says the check failed")
+    compare(said(page, "Everything is working."), 0)
+    compare(page.rows().length, 0, "and lists nothing it cannot vouch for")
+    var retry = buttons(page).filter(function(b) { return b.text === "Try again" })
+    compare(retry.length, 1)
+    retry[0].clicked()
+    compare(JSON.stringify(bar.setup.calls), JSON.stringify([["check"]]), "Try again checks again")
+  }
+  function test_setup_one_press_fixes_and_only_a_restart_asks_first() {
+    var page = setupPage()
+    wait(50)
+    page.rows()[0].targets()[0].clicked()
+    compare(JSON.stringify(bar.setup.calls), JSON.stringify([["fix", "menu-keys-bypass", ""]]), "no question for a fix that can be undone")
+    compare(page.confirmRow, "")
+    bar.setup.calls = []
+    page.rows()[1].targets()[0].clicked()
+    compare(page.confirmRow, "layout-empty-widget", "the restart asks")
+    compare(JSON.stringify(bar.setup.calls), "[]", "nothing ran yet")
+    compare(page.rows()[1].targets().map(function(b) { return b.text }).join("+"), "Cancel+Restart")
+    verify(said(page, "This restarts the bar. The notch closes for a moment.") === 1)
+    page.rows()[1].targets()[1].clicked()
+    compare(JSON.stringify(bar.setup.calls), JSON.stringify([["fix", "layout-empty-widget", ""]]))
+  }
+  function test_setup_a_fixed_row_says_so_and_offers_undo_until_the_page_closes() {
+    var page = setupPage()
+    wait(50)
+    page.rows()[0].targets()[0].clicked()
+    bar.setup.job = ({ point: "menu-keys-bypass", action: "fix", phase: "done", snapshot: "snap-1" })
+    bar.setup.points = [widget]   // healed, so detection no longer lists it
+    wait(50)
+    compare(page.rows().length, 2, "the fixed row stays")
+    compare(said(page, "Fixed."), 1)
+    var undo = page.rows()[1].targets()
+    compare(undo.length, 1)
+    compare(undo[0].text, "Undo")
+    undo[0].clicked()
+    compare(JSON.stringify(bar.setup.calls[bar.setup.calls.length - 1]), JSON.stringify(["restore", "snap-1", ""]))
+  }
+  function test_setup_a_failed_fix_says_nothing_was_changed() {
+    var page = setupPage()
+    bar.setup.job = ({ point: "menu-keys-bypass", action: "fix", phase: "rolled-back", message: "The fix didn't take." })
+    wait(50)
+    compare(said(page, "Couldn't fix this. Nothing was changed."), 1)
+    compare(page.rows()[0].targets()[0].text, "Try again")
+  }
+  function test_setup_earlier_fixes_show_only_above_zero_and_have_one_undo() {
+    var page = setupPage()
+    bar.setup.snapshots = []
+    wait(50)
+    verify(!page.groups[1].visible, "no snapshots, no fold")
+    page.destroy()
+    page = setupPage()
+    wait(50)
+    verify(page.groups[1].visible)
+    verify(said(page, "Earlier fixes (1)") === 1)
+    page.groups[1].open = true
+    wait(300)
+    var undo = buttons(page).filter(function(b) { return b.text === "Undo" || b.text === "Restore" || b.text === "Delete" })
+    compare(undo.map(function(b) { return b.text }).join("|"), "Undo", "one button, no Delete")
+    undo[0].clicked()
+    compare(JSON.stringify(bar.setup.calls[bar.setup.calls.length - 1]), JSON.stringify(["restore", "snap-1", ""]))
+  }
+  function test_setup_down_walks_the_points_and_the_fold() {
     var page = setupPage()
     wait(100)
     page.forceActiveFocus()
     var nav = cursorOf(page)
     var seen = []
-    for (var i = 0; i < 5; i++) { key(Qt.Key_Down); seen.push(nav.at) }
-    compare(seen.join(" "), "hypr note healthy snapshots snapshots", "points, then the two folds, and it stops at the end")
-    key(Qt.Key_Up, 3)
-    compare(nav.at, "hypr")
+    for (var i = 0; i < 4; i++) { key(Qt.Key_Down); seen.push(nav.at) }
+    compare(seen.join(" "), "menu-keys-bypass layout-empty-widget earlier earlier", "points, then the fold, and it stops at the end")
+    key(Qt.Key_Up, 2)
+    compare(nav.at, "menu-keys-bypass")
   }
-  function test_setup_the_cursor_brings_up_the_points_summary() {
+  function test_setup_enter_presses_the_rows_button_and_a_restart_confirms() {
     var page = setupPage()
     wait(100)
     page.forceActiveFocus()
     key(Qt.Key_Down)
-    wait(400)
-    var tip = page.tipReport()
-    compare(tip.source, "focus")
-    compare(tip.text, point.summary)
-    key(Qt.Key_Down)
-    compare(page.tipReport().text, info.summary, "the next point swaps it at once")
-  }
-  function test_setup_enter_opens_a_point_then_presses_its_button_then_confirms() {
-    var page = setupPage()
-    wait(100)
-    page.forceActiveFocus()
-    var nav = cursorOf(page)
+    key(Qt.Key_Return)
+    compare(JSON.stringify(bar.setup.calls), JSON.stringify([["fix", "menu-keys-bypass", ""]]), "Enter presses the button")
+    bar.setup.calls = []
     key(Qt.Key_Down)
     key(Qt.Key_Return)
-    compare(page.openRow, "hypr", "Enter opens the point")
-    compare(nav.sub, 0, "with the cursor on its button")
-    compare(page.confirmRow, "")
+    compare(page.confirmRow, "layout-empty-widget", "a restart asks")
+    compare(JSON.stringify(bar.setup.calls), "[]")
+    key(Qt.Key_Escape)
+    compare(page.confirmRow, "", "Escape says no")
     key(Qt.Key_Return)
-    compare(page.confirmRow, "hypr", "Enter on the button asks")
-    compare(bar.setup.calls.length, 0, "nothing ran yet")
+    compare(page.confirmRow, "layout-empty-widget")
     key(Qt.Key_Right, 2)
-    compare(nav.sub, 2, "Right walks to the confirming Fix")
     key(Qt.Key_Return)
-    compare(JSON.stringify(bar.setup.calls), JSON.stringify([["fix", "hypr", ""]]), "the second Enter fixes")
-    compare(page.confirmRow, "")
+    compare(JSON.stringify(bar.setup.calls), JSON.stringify([["fix", "layout-empty-widget", ""]]), "Right walks past Cancel to Restart, Enter restarts")
   }
-  function test_setup_escape_closes_the_tip_then_the_question_then_the_point_then_the_page() {
+  function test_setup_escape_closes_the_question_then_the_page() {
     var page = setupPage()
     wait(100)
     var closed = 0
     page.closeRequested.connect(function() { closed++ })
     page.forceActiveFocus()
-    key(Qt.Key_Down)
-    key(Qt.Key_Return, 2)
-    compare(page.confirmRow, "hypr")
-    page.hoverTip("hypr")
-    wait(500)
-    verify(page.tipReport().shown)
+    key(Qt.Key_Down, 2)
+    key(Qt.Key_Return)
+    compare(page.confirmRow, "layout-empty-widget")
     key(Qt.Key_Escape)
-    verify(!page.tipReport().shown, "the tip first")
-    compare(page.confirmRow, "hypr")
-    key(Qt.Key_Escape)
-    compare(page.confirmRow, "", "then the question")
-    compare(page.openRow, "hypr")
-    key(Qt.Key_Escape)
-    compare(page.openRow, "", "then the open point")
+    compare(page.confirmRow, "", "the question first")
     compare(closed, 0)
     key(Qt.Key_Escape)
     compare(closed, 1, "then the page")
   }
-  function test_setup_a_snapshot_is_reached_opened_and_asked_about_from_the_keyboard() {
+  function test_setup_an_earlier_fix_is_reached_and_undone_from_the_keyboard() {
     var page = setupPage()
     wait(100)
     page.forceActiveFocus()
     var nav = cursorOf(page)
-    key(Qt.Key_Down, 4)
-    compare(nav.at, "snapshots")
+    key(Qt.Key_Down, 3)
+    compare(nav.at, "earlier")
     key(Qt.Key_Space)
     wait(300)
     key(Qt.Key_Down)
-    compare(nav.at, "snap-1", "Down from the open fold reaches its snapshot")
+    compare(nav.at, "snap-1", "Down from the open fold reaches its fix")
     key(Qt.Key_Return)
-    compare(page.confirmRow, "snap-1", "Enter on a snapshot asks to restore it")
-    compare(page.confirmKind, "restore")
-    key(Qt.Key_Escape)
-    compare(page.confirmRow, "", "Escape says no")
-    compare(JSON.stringify(bar.setup.calls), "[]")
+    compare(JSON.stringify(bar.setup.calls[bar.setup.calls.length - 1]), JSON.stringify(["restore", "snap-1", ""]))
   }
   function test_setup_buttons_hold_the_cursor_mark_and_tab_still_works() {
     var page = setupPage()
     wait(100)
     page.forceActiveFocus()
-    var seen = tabWalk(page, 3)
-    compare(seen.join("|"), "‹ Settings|Plugins|✕", "Tab walks the header")
+    var seen = tabWalk(page, 2)
+    compare(seen.join("|"), "‹ Settings|✕", "Tab walks the header")
   }
-
-  // --- A check that fails is not an all-clear -----------------------------------------
-
-  function test_setup_a_failed_check_never_says_nothing_needs_attention() {
-    bar.setup.checkFailed = true
-    var page = setupPage()
-    bar.setup.points = []
+  function test_setup_a_handoff_row_opens_the_plugins_own_step() {
+    bar.setup.points = [face]
+    var page = make("file://@REPO@/NotchSetup.qml", { bar: bar, maxHeight: 780, headerHeight: 32, width: 400 })
     wait(50)
-    var said = walk(page).filter(function(i) { return i.text !== undefined && String(i.text).indexOf("Couldn't check") === 0 && i.visible })
-    compare(said.length, 1, "it says the check failed")
-    compare(walk(page).filter(function(i) { return i.text !== undefined && String(i.text).indexOf("Nothing needs attention") === 0 && i.visible }).length, 0)
-    bar.setup.checkFailed = false
+    compare(page.rows().length, 1)
+    compare(page.rows()[0].targets()[0].text, "Finish setup")
   }
 
   // --- Peeks, the chevron, the dimmed row (fix 10) ----------------------------------

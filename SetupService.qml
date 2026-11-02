@@ -168,6 +168,16 @@ Item {
     return true
   }
 
+  // "Try again" on a helper row: the notch asks the companion's installer once
+  // more (Companion.setUp), then looks again when it has had time to finish.
+  function retryHelper(which) {
+    var helper = which === "osd" ? bar.osdCompanion : which === "notifications" ? bar.notificationsCompanion : bar.menuCompanion
+    if (!enabled || !helper || !helper.setUp()) return false
+    recheck.restart()
+    return true
+  }
+  Timer { id: recheck; interval: 15000; onTriggered: root.check(false) }
+
   function refreshSnapshots() {
     if (!enabled || snapshotProcess.running) return false
     snapshotProcess.running = true

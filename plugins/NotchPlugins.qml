@@ -319,7 +319,7 @@ Item {
       }
 
       HeaderButton {
-        text: "‹ Setup"
+        text: "‹ Settings"
         onClicked: root.backRequested()
       }
 

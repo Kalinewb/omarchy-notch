@@ -39,6 +39,8 @@ Item {
 
   readonly property var setup: bar ? bar.setup : null
   readonly property Item tip: foot
+  // Reduced motion: a row unfolds and a fold opens in one cut.
+  readonly property bool still: !!bar && bar.reducedMotion
   readonly property var points: setup ? setup.points : []
   readonly property var job: setup ? (setup.job || {}) : ({})
   readonly property bool available: setup ? setup.enabled : false
@@ -394,7 +396,7 @@ Item {
       width: parent.width
       clip: true
       height: pointRow.expanded ? detail.implicitHeight : 0
-      Behavior on height { NumberAnimation { duration: pointRow.expanded ? 220 : 90; easing.type: Easing.OutCubic } }
+      Behavior on height { NumberAnimation { duration: root.still ? 0 : pointRow.expanded ? 220 : 90; easing.type: Easing.OutCubic } }
 
       Column {
         id: detail
@@ -661,7 +663,7 @@ Item {
       width: parent.width
       clip: true
       height: fold.open ? foldSlot.childrenRect.height : 0
-      Behavior on height { NumberAnimation { duration: fold.open ? 220 : 90; easing.type: Easing.OutCubic } }
+      Behavior on height { NumberAnimation { duration: root.still ? 0 : fold.open ? 220 : 90; easing.type: Easing.OutCubic } }
 
       Column {
         id: foldSlot

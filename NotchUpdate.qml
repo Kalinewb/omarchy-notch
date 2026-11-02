@@ -31,6 +31,9 @@ Item {
   readonly property real padding: Style.space(14)
   readonly property real actionsHeight: Style.space(30)
 
+  // Reduced motion: the title does not breathe.
+  readonly property bool still: !!bar && bar.reducedMotion
+
   // Whether Update takes a click (dev/plugins.sh).
   readonly property bool updateButtonEnabled: updateButton.enabled
 
@@ -81,7 +84,7 @@ Item {
 
       // Updating: the title breathes while the job runs.
       SequentialAnimation on opacity {
-        running: root.notice === "updating"
+        running: root.notice === "updating" && !root.still
         loops: Animation.Infinite
         alwaysRunToEnd: true
         NumberAnimation { to: 0.55; duration: 700; easing.type: Easing.InOutSine }

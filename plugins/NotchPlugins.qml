@@ -65,6 +65,8 @@ Item {
   function repoName(url) { return String(url || "").replace(/^[a-z]+:\/\/(github\.com\/)?/, "").replace(/\.git$/, "") }
 
   readonly property Item tip: foot
+  // Reduced motion: the list and the card cut, and the busy words do not breathe.
+  readonly property bool still: !!bar && bar.reducedMotion
   readonly property var views: bar ? bar.pluginsViews : []
   readonly property var rows: views.concat(bar ? [bar.pluginsSelfView] : [])
   readonly property var confirm: bar && bar.pluginsConfirm ? bar.pluginsConfirm : ({})
@@ -156,13 +158,13 @@ Item {
   }
   SequentialAnimation {
     id: toCard
-    NumberAnimation { target: root; property: "listOpacity"; to: 0; duration: 90; easing.type: Easing.OutCubic }
-    NumberAnimation { target: root; property: "cardOpacity"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+    NumberAnimation { target: root; property: "listOpacity"; to: 0; duration: root.still ? 0 : 90; easing.type: Easing.OutCubic }
+    NumberAnimation { target: root; property: "cardOpacity"; to: 1; duration: root.still ? 0 : 220; easing.type: Easing.OutCubic }
   }
   SequentialAnimation {
     id: toList
-    NumberAnimation { target: root; property: "cardOpacity"; to: 0; duration: 90; easing.type: Easing.OutCubic }
-    NumberAnimation { target: root; property: "listOpacity"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+    NumberAnimation { target: root; property: "cardOpacity"; to: 0; duration: root.still ? 0 : 90; easing.type: Easing.OutCubic }
+    NumberAnimation { target: root; property: "listOpacity"; to: 1; duration: root.still ? 0 : 220; easing.type: Easing.OutCubic }
   }
 
   // Test notches record 0.9 s of the notch's drawn height against the page's
@@ -624,7 +626,7 @@ Item {
 
         // Busy: the words breathe while the job runs.
         SequentialAnimation on opacity {
-          running: row.view.state === "busy"
+          running: row.view.state === "busy" && !root.still
           loops: Animation.Infinite
           alwaysRunToEnd: true
           NumberAnimation { to: 0.55; duration: 700; easing.type: Easing.InOutSine }

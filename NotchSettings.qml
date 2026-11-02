@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import qs.Commons
 import qs.Ui
 import "keys.js" as KeyCombo
@@ -52,8 +51,8 @@ Item {
 
   // Motion: a control settles on a spring (zeta 0.85, 200 ms) and fades in
   // 120 ms; the notch itself grows on the arrival spring when a fold opens.
-  // OMARCHY_REDUCED_MOTION=1 (or NOTCH_REDUCED_MOTION) turns the moving parts into cuts.
-  readonly property bool still: Quickshell.env("OMARCHY_REDUCED_MOTION") === "1" || Quickshell.env("NOTCH_REDUCED_MOTION") === "1"
+  // Bar.reducedMotion (OMARCHY_REDUCED_MOTION=1) turns the moving parts into cuts.
+  readonly property bool still: !!bar && bar.reducedMotion
   readonly property int settleMs: still ? 0 : 200
   readonly property int fadeMs: still ? 0 : 120
   readonly property var settleCurve: Spring.curve(0.85, 0.55, 8)

@@ -1501,6 +1501,10 @@ Item {
   // Appended to every keybind description. Test harnesses set it, so a test
   // notch's binds are distinct and its reconcile can never touch the live
   // notch's binds (which it would otherwise see as stale notch binds).
+  // Reduced motion, for the whole notch: the environment only, no setting
+  // (OMARCHY_REDUCED_MOTION=1, alias NOTCH_REDUCED_MOTION=1). Pages cut their
+  // fades and resizes, and every looping animation stops.
+  readonly property bool reducedMotion: Quickshell.env("OMARCHY_REDUCED_MOTION") === "1" || Quickshell.env("NOTCH_REDUCED_MOTION") === "1"
   readonly property string keybindTag: Quickshell.env("NOTCH_KEYBIND_TAG") || ""
   readonly property var keybindActions: ({
     open: { method: "toggle", description: "Open the notch" + keybindTag },
@@ -4544,7 +4548,7 @@ Item {
           // notch, so its equaliser only dances under the pointer. Everywhere
           // else -- a peek, the hover row, an open view -- you are already
           // looking, and the motion is worth a frame.
-          animate: islandHover.hovered
+          animate: islandHover.hovered && !root.reducedMotion
           x: (content.width - width) / 2
           width: implicitWidth
           height: root.notchCompactHeight
@@ -4656,7 +4660,7 @@ Item {
               // sits in hides by opacity, and opacity is NOT inherited the way
               // visible is -- so every glance in the row says outright when it
               // can be seen. See expandedGlance.
-              animate: widgetRow.opacity > 0 && barWindow.view === "hover"
+              animate: widgetRow.opacity > 0 && barWindow.view === "hover" && !root.reducedMotion
               width: implicitWidth
               height: parent.height
               items: root.notchHoverItems
@@ -4690,7 +4694,7 @@ Item {
             // danced whenever anything was playing -- for every notch, at
             // rest, because `expanded` has media in it by default. 6.7 % of a
             // core to animate something drawn at zero opacity (dev/perf.sh).
-            animate: widgetRow.opacity > 0
+            animate: widgetRow.opacity > 0 && !root.reducedMotion
             anchors.verticalCenter: parent.verticalCenter
             // Hidden while it has nothing to show, so the row has no empty gap.
             // Whether it has anything is read from a copy outside the row: a

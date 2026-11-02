@@ -24,7 +24,8 @@ TestCase {
   // --- helpers ------------------------------------------------------------
 
   readonly property var point: ({ id: "hypr", severity: "fix", title: "Hyprland reports an error", summary: "Line 3 of the config is not valid",
-                                  fix: { label: "Fix", files: ["hyprland.lua"] }, items: [], detail: [] })
+                                  fix: { label: "Fix", files: ["hyprland.lua"] }, items: [],
+                                  detail: ["Line 3 of the config is not valid Lua.", "The file was last edited an hour ago, so check it by hand."] })
   readonly property var info: ({ id: "note", severity: "info", title: "Keys call a missing script", summary: "Bound keys do nothing", items: [], detail: [] })
   readonly property var good: ({ id: "fine", severity: "ok", title: "The shell is running", summary: "", items: [], detail: [] })
   readonly property var snap: ({ name: "snap-1", title: "Hyprland config", createdAt: 1700000000000, state: "kept" })
@@ -204,5 +205,105 @@ TestCase {
     compare(resetButton(page).text, "Reset")
     pressReset(page)
     compare(bar.configEdits, 0, "a press after the question lapsed asks again")
+  }
+
+  // --- Reduced motion (fix 7) -----------------------------------------------------
+
+  // Opacity of the Text showing `words`, after `ms`.
+  function textOpacity(page, words, ms) {
+    var t = walk(page).filter(function(i) { return i.text === words && i.font !== undefined })[0]
+    wait(ms)
+    return t.opacity
+  }
+  readonly property var busyView: ({ id: "kalinewb.profiles", name: "Profiles", version: "1.4.0", state: "busy", words: "Installing", actions: [] })
+
+  function test_reduced_motion_stills_the_busy_words_in_plugins() {
+    bar.reducedMotion = true
+    var page = pluginsPage()
+    bar.pluginsViews = [busyView]
+    compare(textOpacity(page, "Installing", 400), 1, "reduced")
+    bar.reducedMotion = false
+    verify(textOpacity(page, "Installing", 400) < 0.97, "breathing when motion is allowed")
+  }
+  function test_reduced_motion_stills_the_updating_title() {
+    var title = function(page) { return walk(page).filter(function(i) { return i.text === "Updating Notch…" })[0] }
+    bar.reducedMotion = true
+    var page = make("file://@REPO@/NotchUpdate.qml", { bar: bar, notice: "updating", width: 360 })
+    wait(400)
+    compare(title(page).opacity, 1, "reduced")
+    page.destroy()
+    bar.reducedMotion = false
+    page = make("file://@REPO@/NotchUpdate.qml", { bar: bar, notice: "updating", width: 360 })
+    wait(400)
+    verify(title(page).opacity < 0.97, "breathing when motion is allowed")
+  }
+  function test_reduced_motion_stills_the_plugins_notice_title() {
+    var title = function(page) { return walk(page).filter(function(i) { return i.font !== undefined && i.text !== undefined && i.font.weight === Font.DemiBold && i.opacity !== undefined && i.text !== "" })[0] }
+    bar.reducedMotion = true
+    var page = make("file://@REPO@/plugins/NotchPluginsNotice.qml", { bar: bar, notice: "running", width: 360 })
+    wait(400)
+    compare(title(page).opacity, 1, "reduced")
+    page.destroy()
+    bar.reducedMotion = false
+    page = make("file://@REPO@/plugins/NotchPluginsNotice.qml", { bar: bar, notice: "running", width: 360 })
+    wait(400)
+    verify(title(page).opacity < 0.97, "breathing when motion is allowed")
+  }
+  function test_reduced_motion_holds_the_spinner() {
+    var spin = function() {
+      var page = settings()
+      var b = make("file://@REPO@/NotchPanelButton.qml", { page: page, iconText: "⟳", text: "Busy", iconSpinning: true })
+      wait(250)
+      var icon = walk(b).filter(function(i) { return i.text === "⟳" })[0]
+      return icon.rotation
+    }
+    bar.reducedMotion = true
+    compare(spin(), 0, "reduced")
+    bar.reducedMotion = false
+    verify(spin() !== 0, "turning when motion is allowed")
+  }
+  function test_reduced_motion_cuts_the_setup_unfold() {
+    var height = function(page) { return walk(page).filter(function(i) { return i.point !== undefined && i.point.id === "hypr" })[0].height }
+    bar.reducedMotion = true
+    var page = setupPage()
+    wait(100)
+    var closed = height(page)
+    page.openRow = "hypr"
+    wait(40)
+    var cut = height(page)
+    verify(cut > closed, "the row opened")
+    wait(400)
+    compare(height(page), cut, "reduced: already at its full height after 40 ms")
+    page.destroy()
+    bar.reducedMotion = false
+    page = setupPage()
+    wait(100)
+    page.openRow = "hypr"
+    wait(40)
+    var mid = height(page)
+    wait(400)
+    verify(height(page) > mid, "animated when motion is allowed")
+  }
+  function test_reduced_motion_cuts_the_plugins_card() {
+    var open = function() {
+      var page = pluginsPage()
+      bar.pluginsConfirm = { id: "kalinewb.profiles", action: "install", token: "t" }
+      wait(60)
+      var o = page.cardOpacity
+      bar.pluginsConfirm = {}
+      return o
+    }
+    bar.reducedMotion = true
+    compare(open(), 1, "reduced: the card is there after 60 ms")
+    bar.reducedMotion = false
+    verify(open() < 1, "fading in when motion is allowed")
+  }
+  function test_reduced_motion_cuts_the_settings_controls() {
+    bar.reducedMotion = true
+    var page = settings()
+    compare(page.settleMs + page.fadeMs, 0)
+    bar.reducedMotion = false
+    page = settings()
+    verify(page.settleMs + page.fadeMs > 0)
   }
 }

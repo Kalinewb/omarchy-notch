@@ -52,6 +52,25 @@ check "every case ran: $want" "$want" "$ran"
 errors=$(grep -E 'TypeError|ReferenceError|is not a type|Cannot assign|unavailable' <<<"$out" | sort -u | head -3 | cut -c1-200)
 check "no QML errors in the run" "" "$errors"
 
+# Reduced motion, as source: one reader of the environment, and no loop that ignores it.
+cd "$REPO"
+check "reduced motion has one source: Bar.reducedMotion reads the environment, no page does" "Bar.qml" \
+  "$(git ls-files '*.qml' ':!dev/**' | xargs grep -l 'env("OMARCHY_REDUCED_MOTION")' | tr '\n' ' ' | sed 's/ $//')"
+check "every infinite animation runs only while motion is allowed" "" "$(python3 - <<'PY'
+import re, subprocess
+files = subprocess.run(["git", "ls-files", "*.qml", ":!dev/**"], capture_output=True, text=True).stdout.split()
+bad = []
+for f in files:
+    lines = open(f).read().split("\n")
+    for i, ln in enumerate(lines):
+        if "Animation.Infinite" in ln:
+            near = "\n".join(lines[max(0, i - 4):i + 4])
+            if not re.search(r"running:.*(still|reducedMotion|dancing)", near): bad.append(f"{f}:{i + 1}")
+print(" ".join(bad))
+PY
+)"
+check "the equaliser's three callers give it Bar.reducedMotion (its dancing follows animate)" "3" "$(grep -c 'animate:.*!root.reducedMotion' Bar.qml)"
+
 echo
 if ((failures == 0)); then echo "${GREEN}All $checks checks pass.${RESET}"
 else echo "${RED}$failures of $checks checks failed.${RESET}"; fi

@@ -53,6 +53,8 @@ BorderSurface {
   property real iconSize: Style.font.icon
   property real iconRotation: 0
   property bool iconSpinning: false
+  // Reduced motion: the spinner holds still (the page says so, NotchPanelButton).
+  property bool reducedMotion: false
   property real horizontalPadding: Style.spacing.controlPaddingX
   property real verticalPadding: Style.spacing.controlPaddingY
   property bool leftAlign: false
@@ -198,7 +200,7 @@ BorderSurface {
         to: 360
         duration: 900
         loops: Animation.Infinite
-        running: root.iconSpinning
+        running: root.iconSpinning && !root.reducedMotion
       }
     }
 

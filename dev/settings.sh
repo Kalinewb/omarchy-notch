@@ -152,8 +152,8 @@ check "every row is a label and one control of the six kinds, directly in its se
 check "a row has a state on the right, except the buttons" "" \
   "$(jq -r '[.panel.rows[] | select(.control != "button" and .state == "") | .id] | join(" ")' <<<"$rep")"
 check "the retired components are gone from the source" "0" "$(grep -cwE 'ChipFlow|StackedRow|ItemChips|PluginPicker|PanelSlider|Choice|ViewRow|revealSection' "$SRC" || true)"
-check "…and so are wrapped text, captions and a reduced-motion key" "0 0 0" \
-  "$(grep -c wrapMode "$SRC" || true) $(grep -c 'Style.font.caption' "$SRC" || true) $(grep -c reducedMotion "$SRC" || true)"
+check "…and so are wrapped text, captions and a reduced-motion key (it reads Bar.reducedMotion, the environment)" "0 0 0 1" \
+  "$(grep -c wrapMode "$SRC" || true) $(grep -c 'Style.font.caption' "$SRC" || true) $(grep -c '"reducedMotion"' "$SRC" || true) $(grep -c 'bar.reducedMotion' "$SRC" || true)"
 
 echo; echo "${BOLD}2  Ratchet and fit${RESET}"
 vmax=$(jq -r .visibleMax "$BASE")

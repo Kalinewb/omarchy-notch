@@ -37,6 +37,9 @@ Item {
   readonly property real padding: Style.space(14)
   readonly property real actionsHeight: Style.space(30)
 
+  // Reduced motion: the title does not breathe.
+  readonly property bool still: !!bar && bar.reducedMotion
+
   function radiusFor(size) { return bar ? bar.radiusFor(size) : Math.max(0, Math.min(10, size / 2)) }
   function shortSha(sha) { return String(sha || "").slice(0, 7) }
 
@@ -123,7 +126,7 @@ Item {
 
       // Running: the title breathes while the job runs.
       SequentialAnimation on opacity {
-        running: root.notice === "running"
+        running: root.notice === "running" && !root.still
         loops: Animation.Infinite
         alwaysRunToEnd: true
         NumberAnimation { to: 0.55; duration: 700; easing.type: Easing.InOutSine }

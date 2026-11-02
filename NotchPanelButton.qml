@@ -19,5 +19,6 @@ NotchButton {
   horizontalPadding: Style.space(header ? 10 : 7)
   bordered: !header
   focusable: true
+  reducedMotion: !!page && !!page.bar && page.bar.reducedMotion
   onClicked: if (page && page.tip) page.tip.hide()
 }

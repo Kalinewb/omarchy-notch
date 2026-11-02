@@ -14,6 +14,11 @@ QtObject {
   function radiusFor(size) { return Math.max(0, Math.min(10, size / 2)) }
 
   // What the pages wrote.
+  property bool reducedMotion: false
+  property real notchCompactHeight: 32
+  property var updateJob: ({})
+  property var pluginsJob: ({})
+  property var pluginsJobEntry: null
   property var writes: []
   property var config: ({ bar: { notch: { autoHide: true } } })
   property string batterySimulatedState: ""

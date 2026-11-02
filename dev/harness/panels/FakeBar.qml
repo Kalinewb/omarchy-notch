@@ -86,6 +86,7 @@ QtObject {
     property bool jobRunning: false
     property var snapshots: []
     property bool checking: false
+    property bool checkFailed: false
     property var calls: []
     function startFix(id, arg) { calls = calls.concat([["fix", id, arg]]) }
     function startRestore(name, mode) { calls = calls.concat([["restore", name, mode]]) }

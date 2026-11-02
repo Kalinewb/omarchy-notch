@@ -217,7 +217,7 @@ Item {
         visible: root.available && root.attention.length === 0 && !root.checking
         width: parent.width
         wrapMode: Text.WordWrap
-        text: "Nothing needs attention."
+        text: root.checkFailed ? "Couldn't check." : "Nothing needs attention."
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
@@ -281,6 +281,7 @@ Item {
   }
 
   readonly property bool checking: setup ? setup.checking : false
+  readonly property bool checkFailed: setup ? setup.checkFailed : false
 
   NotchTip {
     id: foot

@@ -29,6 +29,10 @@ Item {
   // The last `detect --json`, plus the points only the running notch can see.
   property var report: ({})
   property bool checking: false
+  // The last check could not be read: the script did not answer, or what it
+  // printed was not a report. `report` keeps the last good one, and the page
+  // says "Couldn't check" instead of "everything is working".
+  property bool checkFailed: false
   property var job: ({})
   property var snapshots: []
   property real checkedAt: 0
@@ -176,14 +180,20 @@ Item {
     command: [root.script, "detect", "--json"]
     stdout: StdioCollector {
       onStreamFinished: {
-        try { root.report = JSON.parse(text) } catch (e) { root.report = { points: [], counts: {} } }
-        root.checkedAt = Date.now()
-        if (!checkProcess.localOnly) root.lastFullCheck = root.checkedAt
+        var parsed = null
+        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
+        root.checkFailed = !parsed || !Array.isArray(parsed.points)
+        if (!root.checkFailed) {
+          root.report = parsed
+          root.checkedAt = Date.now()
+          if (!checkProcess.localOnly) root.lastFullCheck = root.checkedAt
+        }
         root.checking = false
         root.refreshSnapshots()
       }
     }
-    onRunningChanged: if (!running) root.checking = false
+    // A script that never started prints nothing and never finishes its stream.
+    onRunningChanged: if (!running) Qt.callLater(function() { if (root.checking) { root.checkFailed = true; root.checking = false } })
   }
 
   Process {
@@ -374,7 +384,7 @@ Item {
 
   function status() {
     return {
-      enabled: enabled, checking: checking, checkedAt: checkedAt, issueCount: issueCount,
+      enabled: enabled, checking: checking, checkFailed: checkFailed, checkedAt: checkedAt, issueCount: issueCount,
       counts: countsOf(points),
       context: (report && report.context) ? report.context : {},
       points: points, job: job || {}, snapshots: snapshots,

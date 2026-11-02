@@ -458,6 +458,19 @@ TestCase {
     compare(seen.join("|"), "‹ Settings|Plugins|✕", "Tab walks the header")
   }
 
+  // --- A check that fails is not an all-clear -----------------------------------------
+
+  function test_setup_a_failed_check_never_says_nothing_needs_attention() {
+    bar.setup.checkFailed = true
+    var page = setupPage()
+    bar.setup.points = []
+    wait(50)
+    var said = walk(page).filter(function(i) { return i.text !== undefined && String(i.text).indexOf("Couldn't check") === 0 && i.visible })
+    compare(said.length, 1, "it says the check failed")
+    compare(walk(page).filter(function(i) { return i.text !== undefined && String(i.text).indexOf("Nothing needs attention") === 0 && i.visible }).length, 0)
+    bar.setup.checkFailed = false
+  }
+
   // --- Peeks, the chevron, the dimmed row (fix 10) ----------------------------------
 
   function rowOf(page, id) { return page.rows().filter(function(r) { return r.rid === id })[0] }

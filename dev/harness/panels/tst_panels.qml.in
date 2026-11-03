@@ -147,6 +147,18 @@ TestCase {
     compare(walk(row).filter(function(i) { return isButton(i) })[0].text, "2")
     bar.setup.issueCount = 0
   }
+  function test_a_key_two_notch_keys_share_says_who_has_it() {
+    bar.notchOpenKey = "SUPER + N"
+    bar.notchSettingsKey = "SUPER + N"
+    var page = settings()
+    page.press("advanced")
+    rowOf(page, "keybinds").open = true
+    wait(300)
+    var says = textsOf(rowOf(page, "keybinds"), function(t) { return t.indexOf("taken by") !== -1 }).map(function(t) { return t.text })
+    compare(says.join("|"), "SUPER + N · taken by settings|SUPER + N · taken by the notch")
+    bar.notchOpenKey = ""
+    bar.notchSettingsKey = ""
+  }
   function test_opening_settings_asks_for_a_fresh_check() {
     var page = settings()
     page.enabled = false
@@ -425,7 +437,7 @@ TestCase {
     compare(said(page, "Everything is working."), 1)
     compare(said(page, "Checked just now."), 1)
     compare(names(buttons(page)), "‹ Settings|✕", "two buttons in the header and nothing else")
-    compare(allText(page), "Setup|‹ Settings|✕|Everything is working.|Checked just now.", "the whole page")
+    compare(allText(page), "Needs attention|‹ Settings|✕|Everything is working.|Checked just now.", "the whole page")
   }
   function test_setup_two_problems_are_two_rows_with_one_button_each() {
     var page = setupPage()

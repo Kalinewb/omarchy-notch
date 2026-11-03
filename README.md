@@ -44,7 +44,7 @@ a sandbox git remote.
 
 ### Plugins
 
-Setup → **Plugins** grows the notch into the Plugins page. It lists the plugins the notch installs,
+The Settings header's **Updates · n** (or the Plugins hand-off) grows the notch into the Plugins page. It lists the plugins the notch installs,
 updates and removes, **Face ID** (`kalinewb.face`, once `graveklar.face`), **Profiles**
 (`kalinewb.profiles`) and **OLED Corners** (`kalinewb.oled-corners`), each at the commit the
 Omarchy plugin marketplace verified, with what each is doing: not installed, pinned to the
@@ -119,45 +119,46 @@ to `~/.local/state/kalinewb.notch/backups/` first.
 
 Go back to another bar with `omarchy plugin enable omarchy.bar` (or your own clone).
 
-### Setup
+### Needs attention
 
-Settings → **Setup** (the button left of ✕, with a count when something needs attention) turns the
-settings into the Setup page: a list of things about this machine that stop the notch working the
-way you want, each in plain words, with a **Fix** button where the notch can safely put it right.
-`omarchy-shell notch view setup` opens it directly.
+A quiet page for the rare day something stops the notch working. Settings shows **2 need
+attention** (or **1 needs attention**) in its header only while that is true; at zero there is no
+button, and Settings → Advanced → **Check for problems** (state *None* or the count) is the door
+when you want to look anyway. `omarchy-shell notch view setup` opens the page directly.
 
-It checks twenty-three things — whether the bar is hidden, whether the notch is the active bar and
-loaded, Hyprland config errors, the menu, OSD and notifications companions (and whether Omarchy
-would bring its own back if one were removed) and menu keys that go around the menu, keybind
-clashes and leftover notch binds, widgets in the layout that aren't installed or drew nothing,
-settings naming plugins that are gone, Face ID, Profiles and Face ID's rename, stray test shells,
-old `.bak` files and backup folders, Omarchy files that moved upstream, layer rules that fight the
-notch's animation, OLED Corners popping in when the screen changes, and whether the notch can
-update itself.
+The notch checks 20 seconds after it starts, every 6 hours, and when Settings opens. It never pushes
+anything: no pop-up, no glow. On a healthy machine the page is one calm line, *Everything is
+working.* When something needs you, a row is a title, one line and one button: *Some menu keys
+ignore the menu switch* **Move keys**, *Face ID needs one more step* **Finish setup**, *The notch
+menu didn't start* **Try again**. If the check itself fails the page says *Couldn't check* with
+**Try again**, never *Everything is working*.
 
-**Nothing is done behind your back.** Fix unfolds a confirmation that names the files it will
-change. Before it changes them they are copied into
-`~/.local/state/kalinewb.notch/setup/snapshots/`, and **Snapshots** at the bottom of the page
-puts any of them back byte for byte. A restore of a file you have edited since is refused and says
-so; you can then remove just the notch's marked block and keep your own edits, or restore anyway
-(which snapshots the current state first). Whether a fix worked is decided by running the check
-again and hashing the files, never by a command's exit status: a fix that doesn't take is rolled
-back by itself.
+**Nothing is done behind your back, and nothing is lost.** One press does a fix; only one that
+restarts the bar asks first. Before it changes a file the file is copied into
+`~/.local/state/kalinewb.notch/setup/snapshots/`, and **Earlier fixes** at the bottom of the page
+(shown only once there is one) puts it back with **Undo**. An undo of a file you have edited since
+asks first. Whether a fix worked is decided by checking again and hashing the files, never by a
+command's exit status: a fix that doesn't take is rolled back by itself.
 
-Some of what it finds means there is no notch to press a button in (the bar is hidden, the notch
-isn't the active bar, it failed to load), so all of it works from a terminal too:
+The notch tidies its own litter without a row (a snapshot stays under Earlier fixes): settings that
+name plugins that are gone, leftover keybinds, a bar item whose plugin was removed, and its own
+plugin backups older than 30 days. If "Notch only" is on and nothing answers on the notification
+bus (`org.freedesktop.Notifications`), it switches back to Omarchy's own pop-ups by itself. The
+developer's view is in a terminal only:
 
 ```sh
-~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup detect      # the same list, as a table
+~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup detect          # what the page lists
+~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup detect --all    # every point and state
 ~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup fix <point>
 ~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup snapshots
 ~/.config/omarchy/plugins/kalinewb.notch/bin/notch-setup restore <snapshot>
 ```
 
 `detect` only reads. It works out your effective keybinds by loading your Hyprland config with a
-recording stand-in for Hyprland's own `hl` table (the same trick Omarchy's keybindings menu uses),
-which is the only way to see a `code:` key or a bind written in Lua. Setup never runs anything
-privileged, never touches a plugin's own setup, and never writes the plugins folder.
+recording stand-in for Hyprland's own `hl` table. Setup never runs anything privileged and never
+touches a plugin's own setup; the only thing it moves out of the plugins folder is the notch's own
+old backups. What may appear on the page at all, and what OLED Corners' install should carry, is in
+`docs/Needs-attention.md`.
 
 ### The on-screen display
 
@@ -515,8 +516,8 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `expanded` | `["clock","date","media"]` | Glance items added to the widget row. Leaves out time and date when the layout already has `omarchy.clock`. |
 | `openWith` | `["hover","click"]` | Gestures that open the notch: `hover`, `click`, `doubleClick`, `longPress`, `rightClick`, `middleClick`, `scroll`. |
 | `settingsWith` | `["longRightClick"]` | Gestures that open the settings, from the same list plus `longRightClick`. |
-| `replaceOsd` | `false` | Omarchy's volume, brightness and media overlays show in the notch instead of its card at the bottom of the screen. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
-| `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. The notch installs and keeps up to date the small companion plugin this needs by itself; Setup reports it if that fails. |
+| `replaceOsd` | `false` | Omarchy's volume, brightness and media overlays show in the notch instead of its card at the bottom of the screen. The notch installs and keeps up to date the small companion plugin this needs by itself; Needs attention reports it if that fails. |
+| `replaceMenu` | `false` | Every way into Omarchy's menu opens the notch's menu. The notch installs and keeps up to date the small companion plugin this needs by itself; Needs attention reports it if that fails. |
 | `notifications` | `true` | Omarchy's toasts also show in the notch: the glyph and summary on the resting row, the body wrapped underneath it (up to two rows, elided after that), with the notch widening and growing down to fit. Omarchy's own toast still appears too, unless `suppressNativeToast` is on. |
 | `notificationStay`, `notificationSeconds` | `false`, `6` | How long the notch's copy of a toast stays: until you act on it (`notificationStay`), or this many seconds, 1 to 60, after it appears. Left click opens it, right click dismisses it. |
 | `suppressNativeToast` | `false` | The notch is the only place a toast shows: Omarchy's own is kept off screen by the notifications companion, which the notch installs by itself (see Notifications). Omarchy's toast comes back whenever the notch can't show one. |

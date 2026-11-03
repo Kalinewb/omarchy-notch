@@ -3,8 +3,8 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 
-// Setup: what's stopping the notch from working the way you want, and where it
-// is safe, a button that puts it right.
+// Needs attention (the IPC view is still `setup`): what's stopping the notch
+// from working the way you want, and where it is safe, a button that puts it right.
 //
 // A pure view over `bar.setup` (SetupService.qml). Nothing here runs a process:
 // a button asks the service, the service starts bin/notch-setup detached, and
@@ -150,7 +150,7 @@ Item {
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
-      text: "Setup"
+      text: "Needs attention"
       color: root.foreground
       font.family: root.fontFamily
       font.pixelSize: Style.font.title

@@ -808,6 +808,9 @@ Item {
     height: Style.space(28)
     CursorFill { visible: keyLine.hasCursor }
 
+    // A combination another notch key already holds (set by hand before the recorder refused it).
+    readonly property string takenBy: current !== "" ? usedBy(current) : ""
+
     // Every notch keybind: one combination can't be recorded twice.
     function usedBy(combo) {
       if (!root.bar) return ""
@@ -843,7 +846,7 @@ Item {
 
       Text {
         anchors.verticalCenter: parent.verticalCenter
-        text: keyLine.recording ? (keyLine.hint || "press keys…") : (keyLine.hint || (keyLine.current || "none"))
+        text: keyLine.recording ? (keyLine.hint || "press keys…") : (keyLine.hint || (keyLine.current ? keyLine.current + (keyLine.takenBy ? " · taken by " + keyLine.takenBy : "") : "none"))
         color: keyLine.recording || keyLine.hint ? root.accent : root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall

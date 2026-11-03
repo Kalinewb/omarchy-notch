@@ -8,8 +8,8 @@ walk to it with the arrow keys, and the line under the list says what it does.
 
 The keyboard does all of it. Up and Down walk the rows, Left and Right step a number or walk an
 open list, Space or Enter flips, opens or records, and Escape closes the tip, then the open list,
-then the panel. **Tab** reaches the header buttons and the buttons inside a row. Setup answers to
-the same keys: Up and Down over its points, Enter to open one and then press its button.
+then the panel. **Tab** reaches the header buttons and the buttons inside a row. The Needs attention page answers to
+the same keys: Up and Down over its rows, Enter to press a row's button.
 **Reset to defaults** asks twice: the button turns into *Sure?* for three seconds, and only a
 second press inside that time deletes your settings. Escape answers no.
 
@@ -21,7 +21,7 @@ second press inside that time deletes your settings. Escape answers no.
 
 - **Updates · n** opens the Plugins page. `n` counts the notch's own update (1 when GitHub has
   a newer version) plus every plugin with a verified update ready.
-- **Setup · n** opens Setup. `n` is the number of things Setup says need attention.
+- **n need attention** (**1 needs attention**) opens the Needs attention page. It is not there at zero; Advanced → **Check for problems** (*None*, or the count) opens the same page. The notch counts 20 seconds after it starts, every 6 hours and when Settings opens, so this is current without anyone asking.
 - **Guided setup** appears once the notch has a guided setup to start.
 
 A badge is a count on a header button, shown only above 0. It is never on a row or a section.

@@ -93,6 +93,7 @@ QtObject {
     function forget(name) { calls = calls.concat([["forget", name]]) }
     function ack() { calls = calls.concat([["ack"]]) }
     function refreshSnapshots() {}
+    function checkSoon() { calls = calls.concat([["soon"]]) }
     function check(localOnly) { calls = calls.concat([["check"]]) }
     function retryHelper(which) { calls = calls.concat([["helper", which]]) }
   }

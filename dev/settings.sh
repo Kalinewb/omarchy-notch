@@ -13,7 +13,7 @@
 #   1   the shape: rows are a label and one of six controls, in sections one deep;
 #       the retired components, wraps and captions are gone from the source
 #   2   the ratchet: 8 visible rows by default (9 when plan-glow.md P4 shows Notification
-#       light), 19 behind Advanced, 32 in all, a
+#       light), 20 behind Advanced, 33 in all, a
 #       file that only shrinks; the default view fits without scrolling
 #   3   the tips: one per row id, short, one sentence, none that repeats its label
 #   4   Advanced is closed on open, opens on press, and is closed again on reopen
@@ -119,7 +119,7 @@ check "the report carries the panel: rows, tip, cursor and the sizes the checks 
     and (["sections","advanced","cursor","contentHeight","viewHeight","footHeight","header","badges","lastWrite"] | all(. as $k | $p | has($k)))' <<<"$rep")"
 n=$(jq -r '.panel.rows | length' <<<"$rep")
 if (( n == 0 )); then
-  check "the panel reports its rows" "28" "0"
+  check "the panel reports its rows" "29" "0"
 else
   check "each row's tip is its id's tip, and only an attention row has a helper" "" "$(python3 - "$REPO/settings-tips.js" "$rep" <<'PY'
 import json, re, sys
@@ -145,7 +145,7 @@ open_panel() { ipc settings >/dev/null; settle '.panel.rows | length > 0'; }
 start '{"batteryPeek":false}'
 open_panel || true; sleep 0.3
 rep=$(report)
-check "28 rows in four sections: 3, 2, 4 and 19" "Look,Open,In the notch,Advanced 28 3 2 4 19" \
+check "29 rows in four sections: 3, 2, 4 and 20" "Look,Open,In the notch,Advanced 29 3 2 4 20" \
   "$(jq -r '.panel | "\(.sections | join(",")) \(.rows | length) \([.rows[] | select(.section == "Look")] | length) \([.rows[] | select(.section == "Open")] | length) \([.rows[] | select(.section == "In the notch")] | length) \([.rows[] | select(.section == "Advanced")] | length)"' <<<"$rep")"
 check "every row is a label and one control of the six kinds, directly in its section" "" \
   "$(jq -r '[.panel.rows[] | select((.label == "") or ((.control | IN("switch","pick","pickMany","stepper","keyRecord","button")) | not) or .depth != 1 or .controls > 1) | .id] | join(" ")' <<<"$rep")"
@@ -167,7 +167,7 @@ echo; echo "${BOLD}4  Advanced${RESET}"
 adv_visible='[.panel.rows[] | select(.section == "Advanced" and .visible)] | length'
 check "Advanced is closed when the panel opens, and none of its rows shows" "false 0" "$(jq -r "\"\(.panel.advanced.open) \($adv_visible)\"" <<<"$rep")"
 ipc settingsPress advanced >/dev/null; settle ".panel.advanced.open == true and ($adv_visible) > 0" || true
-check "the press opens it: all its rows show but the four with no target here (Panels, Share, Use, Light colours)" "true 15" "$(report | jq -r "\"\(.panel.advanced.open) \($adv_visible)\"")"
+check "the press opens it: all its rows show but the five with no target here (Panels, Check for problems, Share, Use, Light colours)" "true 15" "$(report | jq -r "\"\(.panel.advanced.open) \($adv_visible)\"")"
 check "…and the long list scrolls rather than stretching the panel" "true" "$(report | jq -r '.panel.contentHeight > .panel.viewHeight')"
 ipc settings >/dev/null; sleep 0.8; open_panel || true
 settle '.panel.advanced.open == false' || true
@@ -452,7 +452,7 @@ ipc setup check "" >/dev/null
 ipc settings >/dev/null
 settle '.panel.badges | length > 0' || true
 rep=$(report)
-check "two issues in the sandbox: one badge, Setup · 2" "setup=2 title,setup,close Setup · 2" \
+check "two issues in the sandbox: one badge, 2 need attention" "setup=2 title,setup,close 2 need attention" \
   "$(jq -r "[($badge_text), ($header_names), ($(button_text setup))] | join(\" \")" <<<"$rep")"
 check "…the header still fits" "true" "$(jq -r "$header_fits" <<<"$rep")"
 check "…and still no row or section carries a count" "" "$(jq -r "$no_row_badge" <<<"$rep")"
@@ -489,7 +489,7 @@ ipc setup check "" >/dev/null
 ipc settings >/dev/null
 settle '(.panel.badges | length) == 2' || true
 rep=$(report)
-check "both at once: Updates · 1 then Setup · 2" "updates=1,setup=2 title,updates,setup,close" "$(jq -r "[($badge_text), ($header_names)] | join(\" \")" <<<"$rep")"
+check "both at once: Updates · 1 then 2 need attention" "updates=1,setup=2 title,updates,setup,close" "$(jq -r "[($badge_text), ($header_names)] | join(\" \")" <<<"$rep")"
 check "…with both badges the header still fits: the title is overlapped by nothing" "true" "$(jq -r "$header_fits" <<<"$rep")"
 stop
 XENV=()
@@ -512,7 +512,7 @@ check "the recorded baseline changes in no line but a height" "0" "$(git -C "$RE
 # The ratchet's baseline (check 2 reads it)
 # ---------------------------------------------------------------------------
 echo; echo "${BOLD}Ratchet${RESET}"
-check "the baseline holds the caps: 9 visible, 19 Advanced, 32 in all" "9 19 32" "$(jq -r '"\(.visibleMax) \(.advancedMax) \(.totalMax)"' "$BASE")"
+check "the baseline holds the caps: 9 visible, 20 Advanced, 33 in all" "9 20 33" "$(jq -r '"\(.visibleMax) \(.advancedMax) \(.totalMax)"' "$BASE")"
 lines=$(wc -l <"$REPO/NotchSettings.qml"); cap=$(jq -r .fileLines "$BASE")
 check "NotchSettings.qml has not grown past the recorded $cap lines" "true" "$( (( lines <= cap )) && echo true || echo false )"
 if grep -qE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log"; then

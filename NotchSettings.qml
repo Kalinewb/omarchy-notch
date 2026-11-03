@@ -100,6 +100,7 @@ Item {
   // `enabled` follows the host's `shown` exactly, so this is "the panel is
   // being opened" with no dependence on the fade. Every fold starts closed.
   onEnabledChanged: if (enabled) {
+    if (bar && bar.setup) bar.setup.checkSoon()
     refreshHostable()
     advanced.open = false
     rows().forEach(function(row) { row.open = false })
@@ -212,7 +213,7 @@ Item {
       spacing: Style.space(6)
 
       HeaderButton { id: updatesButton; visible: root.updates > 0; text: "Updates · " + root.updates; onClicked: root.pluginsRequested() }
-      HeaderButton { id: setupButton; visible: !!root.bar && root.bar.setup.enabled; text: root.issues > 0 ? "Setup · " + root.issues : "Setup"; onClicked: root.setupRequested() }
+      HeaderButton { id: setupButton; visible: root.issues > 0; text: root.issues === 1 ? "1 needs attention" : root.issues + " need attention"; onClicked: root.setupRequested() }
       HeaderButton { id: guideButton; visible: !!root.bar && typeof root.bar.openWizard === "function"; text: "Guided setup"; onClicked: root.bar.openWizard() }
       HeaderButton { id: closeButton; text: "✕"; horizontalPadding: Style.space(8); onClicked: root.closeRequested() }
     }
@@ -460,6 +461,13 @@ Item {
         ToggleRow {
           rid: "updateCheck"; label: "Check for updates"; keys: ["updateCheck"]
           checked: root.bar ? root.bar.notchUpdateCheck : true
+        }
+
+        // Setup's page has no button of its own while all is well; this is its door.
+        ButtonRow {
+          rid: "problems"; label: "Check for problems"
+          visible: !!root.bar && root.bar.setup.enabled
+          buttons: ActionButton { text: root.issues > 0 ? String(root.issues) : "None"; onClicked: root.setupRequested() }
         }
 
         // plan-export.md's rows: hidden until the notch can export.

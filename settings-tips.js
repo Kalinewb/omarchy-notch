@@ -32,6 +32,7 @@ var t = {
   greenAbove:    "Turns the glow green once charge passes the level you set",
   lowBelow:      "Switches the glow and peek to low under the level you set",
   updateCheck:   "Asks GitHub now and then if a new version exists",
+  problems:      "Shows what keeps the notch from working and how to fix it",
   share:         "Copies your settings as a code, or saves a file",
   importer:      "Shows what a pasted code would change, then asks",
   reset:         "Erases every notch setting and returns the defaults"

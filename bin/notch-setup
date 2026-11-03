@@ -354,6 +354,10 @@ detect_hypr_config_errors() {
   fi
 }
 
+# The menu and OSD helpers are kept in step by the notch itself (Companion.keepInStep).
+# A row appears only when that did not work: the helper is switched off, or the
+# notch could not install it. "Try again" is one press either way. A helper that
+# Omarchy has not noted as a stand-in is a future risk, not a fault (dev view).
 detect_osd_companion() {
   local want; want=$(setting .bar.notch.replaceOsd)
   local state; state=$(companion_state "$OSD_COMPANION")
@@ -367,23 +371,21 @@ detect_osd_companion() {
     # "broken". Installed and enabled is the whole of what Setup can tell.
     active|inactive)
       if ! restore_noted "$OSD_COMPANION"; then
-        point osd-companion fix "Removing the OSD companion would leave no OSD" \
-          "Omarchy brings omarchy.osd back only for a companion it has noted, and it hasn't noted this one." \
-          "$(strings "Fix adds $OSD_COMPANION to Omarchy's cloneSourceRestores in shell.json." "Undo takes it out again.")" \
-          '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
+        point osd-companion info "Removing the OSD companion would leave no OSD" \
+          "Omarchy brings omarchy.osd back only for a companion it has noted, and it hasn't noted this one."
       else
         point osd-companion ok "The OSD shows in the notch" "The OSD companion is installed and enabled."
       fi ;;
     disabled)
-      point osd-companion fix "The OSD companion is switched off" \
-        "\"Show the OSD in the notch\" is on, but $OSD_COMPANION is disabled, so volume and brightness still show Omarchy's own card." \
+      point osd-companion fix "Volume pop-ups didn't move to the notch" \
+        "Omarchy's own volume card shows instead." \
         "$(strings "Fix runs \`omarchy plugin enable $OSD_COMPANION\`." "Undo runs \`omarchy plugin disable $OSD_COMPANION\`, which puts omarchy.osd back exactly.")" \
-        '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
+        '[]' "$(fixspec ipc "Try again" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
     *)
-      point osd-companion fix "The OSD companion isn't installed" \
-        "\"Show the OSD in the notch\" is on, but $OSD_COMPANION isn't in the plugins folder, so the notch never sees an OSD call." \
-        "$(strings "The notch installs it by itself; this says that has not happened." "Switching the setting off and on again asks for another try.")" \
-        '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
+      point osd-companion action "Volume pop-ups didn't move to the notch" \
+        "Omarchy's own volume card shows instead." \
+        "$(strings "The notch installs $OSD_COMPANION by itself; this says that has not happened.")" '[]' null \
+        '{"label": "Try again", "helper": "osd"}' ;;
   esac
 }
 
@@ -439,36 +441,32 @@ detect_menu_replace_companion() {
     point menu-replace-companion ok "Omarchy's own menu is in use" "\"Replace the Omarchy menu\" is off."
     return
   fi
-  if [[ $state == active || $state == inactive ]] && ! restore_noted "$COMPANION"; then
-    point menu-replace-companion fix "Removing the menu companion would leave no menu" \
-      "Omarchy brings omarchy.menu back only for a companion it has noted, and it hasn't noted this one." \
-      "$(strings "Fix adds $COMPANION to Omarchy's cloneSourceRestores in shell.json." "Undo takes it out again.")" \
-      '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)"
-    return
-  fi
   case $state in
-    active) point menu-replace-companion ok "The menu opens in the notch" "The menu companion is installed and running." ;;
+    active|inactive)
+      if ! restore_noted "$COMPANION"; then
+        point menu-replace-companion info "Removing the menu companion would leave no menu" \
+          "Omarchy brings omarchy.menu back only for a companion it has noted, and it hasn't noted this one."
+      elif [[ $state == active ]]; then
+        point menu-replace-companion ok "The menu opens in the notch" "The menu companion is installed and running."
+      else
+        # Omarchy builds a menu plugin's entry point when the menu opens and
+        # drops it afterwards, so from out here "not active" and "shut" look
+        # the same. The running notch overrides this with what its bridge knows.
+        point menu-replace-companion unknown "Couldn't tell whether the menu companion loaded" \
+          "It is installed and enabled; from a terminal a shut menu looks the same as a broken one."
+      fi ;;
     disabled)
-      point menu-replace-companion fix "The menu companion is switched off" \
-        "\"Replace the Omarchy menu\" is on, but $COMPANION is disabled, so the menu still opens in Omarchy's own window." \
+      point menu-replace-companion fix "The notch menu didn't start" \
+        "Omarchy's own menu opens instead." \
         "$(strings "Fix runs \`omarchy plugin enable $COMPANION\`." "Undo runs \`omarchy plugin disable $COMPANION\`, which puts omarchy.menu back exactly.")" \
-        '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
-    inactive)
-      # Omarchy instantiates a menu plugin's entry point when the menu opens and
-      # drops it afterwards, so from out here "not active" and "the menu is
-      # currently shut" look identical. The notch overrides this with what its
-      # own bridge knows (SetupService.menuCompanionPoint); this is what is left
-      # when there is no notch to ask.
-      point menu-replace-companion unknown "Couldn't tell whether the menu companion loaded" \
-        "It is installed and enabled. Omarchy only builds a menu plugin's entry point while the menu is open, so from a terminal this looks the same whether it works or not." \
-        "$(strings "Open the notch's menu: if it opens in the notch, it works." "If it does not, run \`omarchy plugin validate $PLUGINS/$COMPANION\` and restart the shell.")" ;;
+        '[]' "$(fixspec ipc "Try again" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
     *)
       local job="${XDG_RUNTIME_DIR:-/tmp}/$ID/companion.json" why=""
       [[ -f $job ]] && why=$(jq -r 'select(.phase == "failed") | .message // ""' "$job" 2>/dev/null)
-      point menu-replace-companion action "The menu companion isn't installed" \
-        "\"Replace the Omarchy menu\" is on, so the notch installs its companion by itself; it hasn't managed to${why:+: $why}" \
-        "$(strings "Switching \"Replace the Omarchy menu\" off and on again in Settings → How it opens makes the notch try again." "From a terminal: \`$NOTCH_DIR/bin/notch-companion install /dev/stdout\`.")" '[]' null \
-        '{"label": "Open Settings", "view": "settings"}' ;;
+      point menu-replace-companion action "The notch menu didn't start" \
+        "Omarchy's own menu opens instead." \
+        "$(strings "The notch installs $COMPANION by itself; it hasn't managed to${why:+: $why}")" '[]' null \
+        '{"label": "Try again", "helper": "menu"}' ;;
   esac
 }
 
@@ -489,6 +487,12 @@ bypass_binds() {
             summary: ("\(.combo) runs `\(.command)`") } ]' <<<"$scan"
 }
 
+# The reason a fix that writes a Hyprland file cannot run now, or nothing.
+hypr_pause_reason() {
+  local errors; errors=$(hypr_config_errors)
+  [[ $(jq '[.[] | select(. != null and . != "")] | length' <<<"$errors") == 0 ]] || echo "your Hyprland settings have errors."
+}
+
 detect_menu_keys_bypass() {
   local items
   if ! items=$(bypass_binds); then
@@ -507,16 +511,16 @@ detect_menu_keys_bypass() {
   local keys; keys=$(jq -r '[.[].arg] | join(", ")' <<<"$items")
   if [[ $state != active ]]; then
     point menu-keys-bypass info "Menu keys call the notch directly" \
-      "$keys open the notch's menu without going through Omarchy. That works today; once the menu companion is set up and \"Replace the Omarchy menu\" is on, these keys will skip the toggle." \
-      "$(strings "Turn \"Replace the Omarchy menu\" on in Settings → How it opens first, then come back here to put the keys on Omarchy's defaults.")" "$items"
+      "$keys open the notch's menu without going through Omarchy. That works today." \
+      "$(strings "Turn \"Replace the Omarchy menu\" on in Settings first, then put the keys on Omarchy's defaults.")" "$items"
     return
   fi
-  local disabled=""
-  (( late > 0 )) && disabled="$(jq -r '[.[] | select(.late) | .source] | unique | join(", ")' <<<"$items") loads after bindings.lua, so a block appended there can't override it. Change it in that file."
-  point menu-keys-bypass fix "Menu keys skip the menu toggle" \
-    "$keys open the notch's menu directly, so \"Replace the Omarchy menu\" can't switch them back." \
-    "$(strings "Fix appends a marked block to ~/.config/hypr/bindings.lua that puts each key back on Omarchy's own default, which the menu companion then routes to the notch." "Nothing in the block mentions the notch, so it keeps working if the notch is gone.")" \
-    "$items" "$(fixspec block "Fix" "$files" "$(strings "hyprctl reload")" medium false "$disabled")"
+  local disabled; disabled=$(hypr_pause_reason)
+  (( late > 0 )) && disabled="a later file sets those keys, so they can't be moved from here."
+  point menu-keys-bypass fix "Some menu keys ignore the menu switch" \
+    "Moves them back onto Omarchy's keys. You can undo it." \
+    "$(strings "$keys open the notch's menu directly, so \"Replace the Omarchy menu\" can't switch them back." "Fix appends a marked block to ~/.config/hypr/bindings.lua that puts each key back on Omarchy's own default.")" \
+    "$items" "$(fixspec block "Move keys" "$files" "$(strings "hyprctl reload")" medium false "$disabled")"
 }
 
 # The notch's own keys, and whether anything else already uses them.
@@ -679,23 +683,24 @@ detect_plugin() { # detect_plugin <point id> <plugin id> <name> <setup argv>
   [[ $entry == null ]] && { point "$pid" info "$name isn't listed" "The notch's plugin catalogue doesn't know it."; return; }
   # Its panel answers to the id it is installed under (a renamed plugin's old one).
   setup_argv=$(jq -c --arg id "$(jq -r '.folder // ""' <<<"$entry")" 'if $id != "" then .[1] = $id else . end' <<<"$setup_argv")
+  # Only one state is a problem: it is installed and on, and its own setup is
+  # not finished. Not installed, switched off or behind are the user's choice,
+  # and Updates already counts the last (so those read as info, dev view only).
   local installed enabled update setup
   installed=$(jq -r '.installed // false' <<<"$entry")
   enabled=$(jq -r '.enabled // false' <<<"$entry")
   update=$(jq -r 'if (.relation // .state // "") == "behind" or (.state // "") == "available" then "available" else "" end' <<<"$entry")
   setup=$(jq -r '.setup // ""' <<<"$entry")
-  if [[ $installed == true && $enabled == true && -n $setup && $setup != ok && $setup != "" ]]; then
-    point "$pid" action "$name needs setup" "It is installed, but its own setup hasn't been finished ($setup)." '[]' '[]' null \
-      "$(jq -nc --arg label "Open setup" --argjson argv "$setup_argv" '{label: $label, argv: $argv}')"
+  if [[ $installed == true && $enabled == true && -n $setup && $setup != ok && $setup != unknown && $setup != none ]]; then
+    point "$pid" action "$name needs one more step" "It can't work until you finish its setup." \
+      "$(strings "It is installed, but its own setup hasn't been finished ($setup).")" '[]' null \
+      "$(jq -nc --arg label "Finish setup" --argjson argv "$setup_argv" '{label: $label, argv: $argv}')"
   elif [[ $installed != true ]]; then
-    point "$pid" action "$name isn't installed" "Install it from the notch's Plugins page." '[]' '[]' null \
-      '{"label": "Open Plugins", "view": "plugins"}'
+    point "$pid" info "$name isn't installed" "Install it from the notch's Plugins page."
   elif [[ $enabled != true ]]; then
-    point "$pid" action "$name is switched off" "It is installed but not enabled." '[]' '[]' null \
-      '{"label": "Open Plugins", "view": "plugins"}'
+    point "$pid" info "$name is switched off" "It is installed but not enabled."
   elif [[ $update == available ]]; then
-    point "$pid" action "$name has an update" "A verified update is ready on the Plugins page." '[]' '[]' null \
-      '{"label": "Open Plugins", "view": "plugins"}'
+    point "$pid" info "$name has an update" "A verified update is ready on the Plugins page."
   else
     point "$pid" ok "$name is set up" "Installed and enabled."
   fi
@@ -713,9 +718,10 @@ detect_profiles_binds_path() {
     point profiles-binds-path ok "Profiles keybinds work" "The script they call is there."
   else
     local keys; keys=$(grep -oP '^\s*o\.bind\("\K[^"]+(?=".*omarchy-profile)' "$file" 2>/dev/null | paste -sd', ')
-    point profiles-binds-path warn "Profiles keybinds point at a missing script" \
-      "${keys:-Some keys} do nothing: they call $target, which isn't there. No Fix button, because you wrote these binds -- the notch only edits blocks it put there itself. Reinstall Profiles, or delete the lines from ~/.config/hypr/bindings.lua." \
-      "$(strings "The notch appends and removes its own marked blocks in bindings.lua, and snapshots the file first. It will not rewrite lines you wrote, because it cannot know what you meant by them." "Reinstalling Profiles puts the script back and the keys work again.")"
+    point profiles-binds-path warn "Your Profiles keys point to a missing file" \
+      "They do nothing until you reinstall Profiles." \
+      "$(strings "${keys:-Some keys} call $target, which isn't there." "The notch only edits blocks it put there itself, so it will not rewrite lines you wrote." "Reinstalling Profiles puts the script back and the keys work again.")" \
+      '[]' null '{"label": "Reinstall", "view": "plugins"}'
   fi
 }
 
@@ -872,10 +878,12 @@ detect_face_renamed() {
     return
   fi
   if [[ -d $PLUGINS/$FACE && -d $PLUGINS/$FACE_WAS ]] || [[ $face == "$PLUGINS/$FACE_WAS" ]] || names_old_face; then
-    point face-renamed fix "Face ID was renamed, but your settings still use the old name" \
-      "Face ID is $FACE now, but $( [[ -d $PLUGINS/$FACE && -d $PLUGINS/$FACE_WAS ]] && echo "a $FACE_WAS folder is still beside it" || echo "the bar or a profile still names $FACE_WAS"), so it may be missing from the bar." \
-      "$(strings "Fix runs Face's own \`omarchy-face-rename --finish\`, which moves what is left to the new name and restarts the shell." "Undo runs its \`--rollback\`, which puts everything back as it was.")" \
-      '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low true)"
+    local left="the bar or a profile still names $FACE_WAS"
+    [[ -d $PLUGINS/$FACE && -d $PLUGINS/$FACE_WAS ]] && left="a $FACE_WAS folder is still beside it"
+    point face-renamed fix "Face ID's old name is still in your settings" \
+      "It may be missing from the bar." \
+      "$(strings "Face ID is $FACE now, but $left." "Fix runs Face's own \`omarchy-face-rename --finish\`, which moves what is left to the new name and restarts the shell." "Undo runs its \`--rollback\`, which puts everything back as it was.")" \
+      '[]' "$(fixspec ipc "Finish the move" "$(strings "$SHELL_JSON")" '[]' low true)"
   else
     point face-renamed ok "Face ID has its new name" "Everything names $FACE."
   fi
@@ -893,10 +901,10 @@ detect_oled_corners_still() {
                      and (.layerRule.rule | test("no_anim=true")))' <<<"$scan" >/dev/null 2>&1; then
     point oled-corners-still ok "OLED Corners stay still" "A no_anim rule keeps Hyprland from animating them."
   else
-    point oled-corners-still fix "OLED Corners pop in when the screen changes" \
-      "Hyprland animates the corners' layer every time a monitor changes, so they visibly fade in instead of just being there." \
-      "$(strings "Fix appends a marked block to ~/.config/hypr/looknfeel.lua with Omarchy's own no_anim rule for omarchy-oled-corners, as OLED Corners' README suggests." "Nothing in the block mentions the notch, so it keeps working without it.")" \
-      '[]' "$(fixspec block "Fix" "$(strings "$HYPR/looknfeel.lua")" "$(strings "hyprctl reload")" low false)"
+    point oled-corners-still fix "OLED Corners flash when a screen changes" \
+      "One animation rule in your Hyprland settings stops it." \
+      "$(strings "Hyprland animates the corners' layer every time a monitor changes, so they visibly fade in instead of just being there." "Fix appends a marked block to ~/.config/hypr/looknfeel.lua with Omarchy's own no_anim rule for omarchy-oled-corners, as OLED Corners' README suggests." "Nothing in the block mentions the notch, so it keeps working without it.")" \
+      '[]' "$(fixspec block "Add the rule" "$(strings "$HYPR/looknfeel.lua")" "$(strings "hyprctl reload")" low false "$(hypr_pause_reason)")"
   fi
 }
 
@@ -1314,16 +1322,8 @@ apply_fix() { # apply_fix <point> <arg> <snapshot name>
     menu-replace-companion|osd-companion)
       local cid=$COMPANION
       [[ $point == osd-companion ]] && cid=$OSD_COMPANION
-      if [[ $(companion_state "$cid") == disabled ]]; then
-        "${OMARCHY[@]}" plugin enable "$cid" >/dev/null 2>&1
-        meta_set "$name" --arg id "$cid" '.undo = [["omarchy", "plugin", "disable", $id]]'
-      else
-        # Enabled, but Omarchy hasn't noted it as the source's stand-in.
-        commit_shell '.cloneSourceRestores = (((.cloneSourceRestores // []) - [$id]) + [$id])' --arg id "$cid" || return 1
-        meta_set "$name" --arg id "$cid" '.undo = [["shell-config",
-          "((.cloneSourceRestores // []) - [$id]) as $r | if $r == [] then del(.cloneSourceRestores) else .cloneSourceRestores = $r end",
-          "--arg", "id", $id]]'
-      fi
+      "${OMARCHY[@]}" plugin enable "$cid" >/dev/null 2>&1
+      meta_set "$name" --arg id "$cid" '.undo = [["omarchy", "plugin", "disable", $id]]'
       ;;
     notch-not-bar)
       local previous; previous=$(setting .bar.id)

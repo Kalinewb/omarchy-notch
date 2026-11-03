@@ -390,16 +390,9 @@ shell_set '.bar.notch.replaceMenu = true'
 plugins_add 'map(select(.id != "kalinewb.notch-menu")) + [{"id": "kalinewb.notch-menu", "enabled": true, "active": true, "kinds": ["menu"]}]'
 pre=$(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)
 p=$(run_setup detect --json --only menu-replace-companion | jq -c '.points[0]')
-check "64. the menu companion without Omarchy's restore flag is a fix, in plain words" "fix Removing the menu companion would leave no menu" \
-  "$(jq -r '"\(.severity) \(.title)"' <<<"$p")"
-reset_calls
-rc=0; run_setup fix menu-replace-companion >/dev/null 2>&1 || rc=$?
-snap=$(latest menu-replace-companion)
-check "65. the fix adds the flag (and enables nothing), and the point is clear" "0 kalinewb.notch-menu 0 ok" \
-  "$rc $(jq -r '.cloneSourceRestores | join(",")' "$CONFIG_SB/omarchy/shell.json") $(calls | grep -c '^omarchy plugin enable kalinewb.notch-menu') $(run_setup detect --json --only menu-replace-companion | jq -r '.points[0].severity')"
-rc=0; run_setup restore "$snap" >/dev/null 2>&1 || rc=$?
-check "66. Undo takes the flag out again, byte for byte" "0 $pre false" \
-  "$rc $(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1) $(jq 'has("cloneSourceRestores")' "$CONFIG_SB/omarchy/shell.json")"
+check "64. a menu companion Omarchy hasn't noted is a future risk, not a fault: info, never on the page" "info page" \
+  "$(jq -r '"\(.severity) \(.admit)"' <<<"$p")"
+check "64b. …and the default view lists no such row" "0" "$(run_setup detect --json | jq '[.points[] | select(.id == "menu-replace-companion")] | length')"
 
 # Old backups: plugin folders the plugins folder keeps, moved and moved back.
 mkdir -p "$PLUGINS_SB/.kalinewb.notch-menu.bak.20261022185832" "$PLUGINS_SB/.notch-refused.evil.profiles.1700000000000"
@@ -424,7 +417,7 @@ check "70. without OLED Corners there is nothing to keep still" "ok" "$(run_setu
 plugins_add '. + [{"id": "kalinewb.oled-corners", "enabled": true, "active": true, "kinds": ["service"]}]'
 layer_before=$(run_setup detect --json --only layer-rules | jq -c '.points[0]')
 pre=$(sha256sum "$HYPR_SB/looknfeel.lua" | cut -d' ' -f1)
-check "71. with it, they pop in: a fix that writes a block to looknfeel.lua" "fix OLED Corners pop in when the screen changes block looknfeel.lua" \
+check "71. with it, they pop in: a fix that writes a block to looknfeel.lua" "fix OLED Corners flash when a screen changes block looknfeel.lua" \
   "$(run_setup detect --json --only oled-corners-still | jq -r '.points[0] | "\(.severity) \(.title) \(.fix.kind) \(.fix.files[0] | split("/") | last)"')"
 reset_calls
 rc=0; run_setup fix oled-corners-still >/dev/null 2>&1 || rc=$?
@@ -444,7 +437,7 @@ jq '.id = "kalinewb.face" | .version = "3.0.0"' "$PLUGINS_SB/graveklar.face/mani
 shell_set '.bar.layout.right += [{"id": "graveklar.face"}] | .plugins = [{"id": "graveklar.face-lock"}]'
 pre=$(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)
 p=$(run_setup detect --json --only face-renamed | jq -c '.points[0]')
-check "77. a 3.x Face in the old folder, with settings naming the old ids: a fix, in plain words" "fix Face ID was renamed, but your settings still use the old name true" \
+check "77. a 3.x Face in the old folder, with settings naming the old ids: a fix, in plain words" "fix Face ID's old name is still in your settings true" \
   "$(jq -r '"\(.severity) \(.title) \(.fix.destroysNotch)"' <<<"$p")"
 : >"$sb/rename.log"
 rc=0; run_setup fix face-renamed --arg 0123456789abcdef0123456789abcdef01234567 >/dev/null 2>&1 || rc=$?
@@ -609,6 +602,17 @@ p=$(run_setup detect --json --only menu-replace-companion | jq -r '.points[0].se
 run_setup fix menu-replace-companion >/dev/null 2>&1
 check "58. an installed but disabled companion is enabled by the fix" "fix omarchy plugin enable kalinewb.notch-menu" \
   "$p $(calls | grep '^omarchy plugin enable' | head -1)"
+
+# The helper rows: one title and line per helper, one "Try again", and the OSD's no longer a dead Fix.
+jq 'map(select(.id != "kalinewb.notch-menu" and .id != "kalinewb.notch-osd"))' "$sb/fixtures/plugins.json" >"$sb/t" && mv "$sb/t" "$sb/fixtures/plugins.json"
+shell_set '.bar.notch.replaceOsd = true'
+check "59. a helper that isn't installed is a Try again for the notch's installer, not a Fix (menu, then volume)" "action menu Try again|action osd Try again" \
+  "$(for h in menu-replace-companion osd-companion; do run_setup detect --json --only $h | jq -r '.points[0] | "\(.severity) \(.handoff.helper) \(.handoff.label)"'; done | paste -sd'|')"
+check "59b. …in plain words, with no id, file or jargon" "The notch menu didn't start: Omarchy's own menu opens instead.|Volume pop-ups didn't move to the notch: Omarchy's own volume card shows instead." \
+  "$(for h in menu-replace-companion osd-companion; do run_setup detect --json --only $h | jq -r '.points[0] | "\(.title): \(.summary)"'; done | paste -sd'|')"
+plugins_add '. + [{"id": "kalinewb.notch-osd", "enabled": false, "active": false, "kinds": ["service"]}]'
+check "59c. a helper that is switched off is one press: Try again enables it" "fix Try again" "$(run_setup detect --json --only osd-companion | jq -r '.points[0] | "\(.severity) \(.fix.label)"')"
+shell_set '.bar.notch.replaceOsd = false'
 
 # A bypass bind that loads after bindings.lua can't be fixed from bindings.lua.
 jq 'map(select(.id != "kalinewb.notch-menu")) + [{"id": "kalinewb.notch-menu", "enabled": true, "active": true, "kinds": ["menu"]}]' \

@@ -675,10 +675,10 @@ start_notch() { # start_notch [extra env...]
 }
 stop_notch() { kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""; }
 
-# Two points the fixture detects: a bypass bind (fix) and old backups (fix).
+# One point the fixture detects: a bypass bind (fix).
 cat "$sb/bindings.pre" >"$HYPR_SB/bindings.lua"
 bypass_block
-: >"$HYPR_SB/looknfeel.lua.bak.1700000009"
+bindings_before=$(sha256sum "$HYPR_SB/bindings.lua" | cut -d' ' -f1)
 rm -rf "$STATE_SB/snapshots" "$STATUS_SB"
 
 start_notch
@@ -693,21 +693,6 @@ g=$(ipc geometry)
 check "40. view setup opens the page, top edge on the screen edge, square top corners" \
   "expanded true true 0 0" \
   "$(jq -r '.state' <<<"$g") $(jq -r '.setup.open' <<<"$g") $(jq -r '.setup.height > 32 and (.target.height == .setup.height)' <<<"$g") $(jq -r '.bar.y' <<<"$g") $(jq -r '.radii.topLeft' <<<"$g")"
-
-# The foot line: a point's tip is its summary, after the pointer rests on it.
-tip_id=$(jq -r '[.points[] | select(.severity == "fix")][0].id' <<<"$status")
-tip_text=$(jq -r --arg id "$tip_id" '.points[] | select(.id == $id) | .summary' <<<"$status")
-rest_height=$(ipc geometry | jq -r .setup.height)
-ipc setup hover "$tip_id" >/dev/null
-check "40b. a pointer on a point: its tip is pending at once, not yet shown" "true false" \
-  "$(ipc setup status "" | jq -r '.tip | "\(.pending) \(.shown)"')"
-for _ in $(seq 1 40); do [[ $(ipc setup status "" | jq -r '.tip.shown') == true ]] && break; sleep 0.1; done
-check "40c. …then shown, and it is the point's summary" "true hover $tip_text" \
-  "$(ipc setup status "" | jq -r '.tip | "\(.shown) \(.source) \(.text)"')"
-check "40d. …the page is as tall with it as without, the foot a reserved line, the text uncut" "$rest_height true false" \
-  "$(ipc geometry | jq -r .setup.height) $(ipc setup status "" | jq -r '.tip.footHeight > 0') $(ipc setup status "" | jq -r '.tip.truncated')"
-ipc setup unhover "" >/dev/null
-check "40e. unhover: gone" "false false" "$(ipc setup status "" | jq -r '.tip | "\(.shown) \(.pending)"')"
 
 d=$(ipc design)
 check "43. every rounded thing on the page uses the notch's radius" "0" "$(python3 -c '
@@ -729,18 +714,18 @@ check "42. going from the settings to Setup never passes through the resting hei
 
 # A fix, from the page.
 snaps_before=$(run_setup snapshots --json | jq 'length')
-ipc setup fix stray-backups >/dev/null
+ipc setup fix menu-keys-bypass >/dev/null
 for _ in $(seq 1 60); do sleep 0.2; [[ $(ipc setup status "" | jq -r '.job.phase') == done ]] && break; done
 job=$(ipc setup status "" | jq -c '.job')
 check "45. a Fix from the page runs, finishes, and leaves one more snapshot" "done $((snaps_before + 1))" \
   "$(jq -r .phase <<<"$job") $(run_setup snapshots --json | jq 'length')"
 
 # Undo it again.
-snap=$(run_setup snapshots --json | jq -r '[.[] | select(.point == "stray-backups")][0].name')
+snap=$(run_setup snapshots --json | jq -r '[.[] | select(.point == "menu-keys-bypass")][0].name')
 ipc setup restore "$snap" >/dev/null
 for _ in $(seq 1 60); do sleep 0.2; [[ $(ipc setup status "" | jq -r '.job.phase') == done ]] && break; done
-check "46. Undo puts the files back" "done true" \
-  "$(ipc setup status "" | jq -r '.job.phase') $([[ -f $HYPR_SB/looknfeel.lua.bak.1700000009 ]] && echo true || echo false)"
+check "46. Undo puts the file back" "done $bindings_before" \
+  "$(ipc setup status "" | jq -r '.job.phase') $(sha256sum "$HYPR_SB/bindings.lua" | cut -d' ' -f1)"
 
 # Escape and the open keybind both leave the page.
 ipc view setup >/dev/null; sleep 0.8

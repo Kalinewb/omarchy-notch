@@ -434,13 +434,14 @@ check "…the header fits: nothing overlaps, all inside the padding" "true" "$(j
 stop
 
 # A notch whose Setup runs against a sandbox (the hooks of dev/setup.sh) that
-# has exactly two things to put right: a Hyprland config error and an old backup.
+# has exactly two things to put right: the menu and volume helpers are asked
+# for and neither is installed (a plugin list that is empty).
 sbx="$root/setup-sandbox"
 mkdir -p "$sbx/bin" "$sbx/notch" "$sbx/home/.config/hypr" "$sbx/home/.config/omarchy/plugins" "$sbx/home/.local/state/omarchy/toggles"
-printf '#!/bin/bash\ncase "$1" in configerrors) echo '"'"'["line 3: unexpected symbol"]'"'"' ;; *) echo "[]" ;; esac\n' >"$sbx/bin/hyprctl"
+echo '{"bar":{"id":"kalinewb.notch","notch":{"replaceMenu":true,"replaceOsd":true}}}' >"$sbx/home/.config/omarchy/shell.json"
+printf '#!/bin/bash\necho "[]"\n' >"$sbx/bin/hyprctl"
 printf '#!/bin/bash\nexit 0\n' >"$sbx/bin/quiet"
 chmod +x "$sbx/bin/hyprctl" "$sbx/bin/quiet"
-: >"$sbx/home/.config/hypr/hyprland.lua.bak.1700000000"
 SETUP_ENV=(NOTCH_FORCE_SETUP=1 NOTCH_SETUP_SANDBOX="$sbx" NOTCH_SETUP_STATUS="$sbx/run/setup.json" NOTCH_SETUP_NOTCH_DIR="$sbx/notch"
   NOTCH_SETUP_HYPRCTL="$sbx/bin/hyprctl" NOTCH_SETUP_OMARCHY_SHELL="$sbx/bin/quiet" NOTCH_SETUP_OMARCHY="$sbx/bin/quiet"
   NOTCH_SETUP_OMARCHY_VERSION="$sbx/bin/quiet" NOTCH_SETUP_TOGGLE_BAR="$sbx/bin/quiet" NOTCH_SETUP_QS="$sbx/bin/quiet"

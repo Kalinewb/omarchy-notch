@@ -65,7 +65,7 @@ mkdir -p "$root/setup-home/.config/hypr" "$root/setup-home/.config/omarchy" "$ro
 echo '{"bar":{"id":"kalinewb.notch","layout":{"left":[],"center":[],"right":[]}}}' >"$root/setup-home/.config/omarchy/shell.json"
 SETUP_HOOKS=(NOTCH_FORCE_SETUP=1 NOTCH_SETUP_DETACH=setsid NOTCH_SETUP_HOME="$root/setup-home"
              NOTCH_SETUP_CONFIG_DIR="$root/setup-home/.config" NOTCH_SETUP_TOGGLES_DIR="$root/setup-home/toggles"
-             NOTCH_SETUP_STATE_DIR="$root/setup-state" NOTCH_SETUP_STATUS="$root/setup-run/setup.json")
+             NOTCH_SETUP_STATE_DIR="$root/setup-state" NOTCH_SETUP_STATUS="$root/setup-run/setup.json" NOTCH_SETUP_PLUGINS_STATE=true)
 
 ipc() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
 start() {

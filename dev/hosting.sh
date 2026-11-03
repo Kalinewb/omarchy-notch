@@ -255,7 +255,7 @@ OMARCHY_SHELL_PATH="$SHELL_PATH/shell" HOSTING_WIDGET="$WIDGET" \
   NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 \
   NOTCH_FORCE_SETUP=1 NOTCH_SETUP_HOME="$sb/setup-home" NOTCH_SETUP_CONFIG_DIR="$sb/setup-home/.config" \
   NOTCH_SETUP_TOGGLES_DIR="$sb/setup-home/toggles" NOTCH_SETUP_STATE_DIR="$sb/setup-state" \
-  NOTCH_SETUP_STATUS="$sb/setup-run/setup.json" \
+  NOTCH_SETUP_STATUS="$sb/setup-run/setup.json" NOTCH_SETUP_PLUGINS_STATE=true \
   NOTCH_HARNESS_CONFIG='{"batteryPeek":false,"bottomRadius":10}' \
   quickshell -p "$notch_root" -n >>"$sb/qs.log" 2>&1 &
 qs_pid=$!
@@ -408,9 +408,9 @@ check "63. …and the plugin was told, so nothing of it is left running" "false"
 
 # Setup has to ask, or nobody finds the switch.
 harness setNotch '{"batteryPeek":false,"bottomRadius":10}' >/dev/null
-setup_points() { notch setup status "" 2>/dev/null | jq -r '.points | length > 0'; }
+setup_checked() { notch setup status "" 2>/dev/null | jq -r '.checkedAt > 0 and .checkFailed == false'; }
 notch setup check "" >/dev/null 2>&1
-settle true setup_points >/dev/null
+settle true setup_checked >/dev/null
 # Whether a panel opens in the notch is a preference, set in Settings ->
 # Integrations. Setup reports what is wrong, and an unticked preference isn't.
 check "64. Setup says nothing about a panel nobody asked to host" "0" \

@@ -98,6 +98,7 @@ cat >"$sb/fixtures/plugins.json" <<'JSON'
  {"id": "omarchy.clock", "enabled": true, "active": true, "kinds": ["bar-widget"]}]
 JSON
 echo '' >"$sb/fixtures/qs-list.txt"
+echo 'b true' >"$sb/fixtures/busctl.txt"
 echo '{"entries": []}' >"$sb/fixtures/plugins-state.json"
 
 # Every command the script can run, recorded rather than run.
@@ -118,7 +119,7 @@ exit 0'
 recorder omarchy-shell '[[ -n ${SB_SLOW:-} && $* == *$SB_SLOW* ]] && sleep 3
 [[ $* == *reloadConfig* ]] && { [[ ${SB_RELOAD_FAILS:-} == 1 ]] || echo ok; }
 # The shell writes a notch setting the way Omarchy writes shell.json.
-if [[ $1 == notch && $2 == set ]] && jq -e . >/dev/null 2>&1 <<<"$4"; then
+if [[ $1 == notch && $2 == set ]] && jq . >/dev/null 2>&1 <<<"$4"; then
   f="'"$CONFIG_SB"'/omarchy/shell.json"
   jq -S --arg k "$3" --argjson v "$4" ".bar.notch[\$k] = \$v" "$f" >"$f.new" && mv "$f.new" "$f"
 fi
@@ -136,6 +137,7 @@ recorder fakekill 'exit 0'
 recorder session-locked 'exit ${SB_LOCKED:-1}'
 recorder restart-shell 'exit 0'
 recorder plugins-state 'cat "'"$sb"'/fixtures/plugins-state.json"'
+recorder busctl 'cat "'"$sb"'/fixtures/busctl.txt"; exit ${SB_BUS_RC:-0}'
 
 env_common=(
   NOTCH_SETUP_HOME="$HOME_SB" NOTCH_SETUP_CONFIG_DIR="$CONFIG_SB" NOTCH_SETUP_TOGGLES_DIR="$TOGGLES_SB"
@@ -146,6 +148,7 @@ env_common=(
   NOTCH_SETUP_TOGGLE_BAR="$BIN/omarchy-toggle-bar" NOTCH_SETUP_QS="$BIN/qs"
   NOTCH_SETUP_KILL="$BIN/fakekill" NOTCH_SETUP_SESSION_LOCKED="$BIN/session-locked"
   NOTCH_SETUP_RESTART_SHELL="$BIN/restart-shell" NOTCH_SETUP_PLUGINS_STATE="$BIN/plugins-state"
+  NOTCH_SETUP_BUSCTL="$BIN/busctl" NOTCH_SETUP_AUTO_WAIT=0
   FIXTURE_RENAME_LOG="$sb/rename.log"
 )
 setup() { env "${env_common[@]}" "$@"; }
@@ -330,18 +333,15 @@ check "24. only the test shell under /tmp with NOTCH_HARNESS=1 is killed" "fix 1
   "$(jq -r .severity <<<"$p") $(jq '.items | length' <<<"$p") $(calls | grep '^fakekill' | head -1)"
 echo '' >"$sb/fixtures/qs-list.txt"
 
-# stray-backups
+# stray-backups: only the notch's own plugin-folder backups, and only once they are old.
 : >"$HYPR_SB/bindings.lua.bak.1700000001"
-: >"$HYPR_SB/looknfeel.lua.bak.1700000002"
 echo '{}' >"$CONFIG_SB/omarchy/shell.json.bak.1700000003"
-chmod 600 "$HYPR_SB/bindings.lua.bak.1700000001"
-rc=0; run_setup fix stray-backups >/dev/null 2>&1 || rc=$?
-snap_bak=$(run_setup snapshots --json | jq -r '[.[] | select(.point == "stray-backups")][0].name')
-check "25. backups are moved into the snapshot, not deleted" "0 3 0" \
-  "$rc $(jq '.files | length' "$STATE_SB/snapshots/$snap_bak/meta.json") $(find "$HYPR_SB" "$CONFIG_SB/omarchy" -maxdepth 1 -name '*.bak.*' | wc -l)"
-run_setup restore "$snap_bak" >/dev/null 2>&1
-check "25b. restore puts all three back, with their modes" "3 600" \
-  "$(find "$HYPR_SB" "$CONFIG_SB/omarchy" -maxdepth 1 -name '*.bak.*' | wc -l) $(stat -c %a "$HYPR_SB/bindings.lua.bak.1700000001" 2>/dev/null)"
+mkdir -p "$PLUGINS_SB/.kalinewb.notch-menu.bak.20261001000000" "$PLUGINS_SB/.workspaces.bak.20261001000000" "$PLUGINS_SB/.kalinewb.notch-osd.bak.20261030000000"
+touch -d '40 days ago' "$PLUGINS_SB/.kalinewb.notch-menu.bak.20261001000000" "$PLUGINS_SB/.workspaces.bak.20261001000000"
+p=$(run_setup detect --json --only stray-backups | jq -c '.points[0]')
+check "25. only the notch's own old plugin backups are litter (not config .bak files, other plugins', or fresh ones)" "fix 1 .kalinewb.notch-menu.bak.20261001000000" \
+  "$(jq -r .severity <<<"$p") $(jq '.items | length' <<<"$p") $(jq -r '.items[0].arg | split("/") | last' <<<"$p")"
+rm -rf "$PLUGINS_SB"/.kalinewb.notch-menu.bak.* "$PLUGINS_SB"/.workspaces.bak.* "$PLUGINS_SB"/.kalinewb.notch-osd.bak.*
 rm -f "$HYPR_SB"/*.bak.* "$CONFIG_SB/omarchy"/*.bak.*
 
 # upstream-drift: the sandbox gets the real files, then one of them moves.
@@ -405,6 +405,7 @@ check "66. Undo takes the flag out again, byte for byte" "0 $pre false" \
 mkdir -p "$PLUGINS_SB/.kalinewb.notch-menu.bak.20261022185832" "$PLUGINS_SB/.notch-refused.evil.profiles.1700000000000"
 echo '{"id": "kalinewb.notch-menu"}' >"$PLUGINS_SB/.kalinewb.notch-menu.bak.20261022185832/manifest.json"
 echo 'x' >"$PLUGINS_SB/.notch-refused.evil.profiles.1700000000000/Panel.qml"
+touch -d '40 days ago' "$PLUGINS_SB/.kalinewb.notch-menu.bak.20261022185832" "$PLUGINS_SB/.notch-refused.evil.profiles.1700000000000"
 tree_before=$(cd "$PLUGINS_SB" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum)
 p=$(run_setup detect --json --only stray-backups | jq -c '.points[0]')
 check "67. .bak and .notch-refused folders in the plugins folder are old backups, and the fix says it reloads the notch" "fix 2 true" \
@@ -461,6 +462,55 @@ check "80. two Face folders, even with every setting renamed: a fix" "fix" "$(ru
 rm -rf "$PLUGINS_SB/graveklar.face"
 check "81. kalinewb.face alone, settings renamed: done" "ok" "$(run_setup detect --json --only face-renamed | jq -r '.points[0].severity')"
 rm -rf "$PLUGINS_SB/kalinewb.face"
+
+# --- notifications: the bus decides, never the plugin list's `active` ---------------------------
+
+shell_set '.bar.notch.suppressNativeToast = true'
+plugins_add 'map(select(.id != "kalinewb.notch-notifications")) + [{"id": "kalinewb.notch-notifications", "enabled": true, "active": false, "kinds": ["service"]}]'
+notif() { run_setup detect --json --only notifications-companion | jq -r '.points[0] | "\(.severity) \(.title)"'; }
+check "82. the helper is enabled, the list says active:false, and the bus has an owner: all fine (no false alarm)" "ok Notifications show in the notch only" "$(notif)"
+echo 'b false' >"$sb/fixtures/busctl.txt"
+check "83. nobody owns org.freedesktop.Notifications: the point says so, in plain words" "fix Notifications may not show" "$(notif)"
+rc=0; SB_BUS_RC=1 run_setup detect --json --only notifications-companion >/dev/null || rc=$?
+check "84. a bus that cannot be asked is unknown, not a fault" "unknown" "$(SB_BUS_RC=1 run_setup detect --json --only notifications-companion | jq -r '.points[0].severity')"
+check "85. the default view lists no notifications row (it is repaired, not shown): it is in the auto list" "0 notifications-companion" \
+  "$(run_setup detect --json | jq '[.points[] | select(.id == "notifications-companion")] | length') $(run_setup detect --json | jq -r '.auto | join(",")')"
+pre=$(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)
+before_status=$(sha256sum "$STATUS_SB" 2>/dev/null | cut -d' ' -f1)
+reset_calls
+rc=0; run_setup auto >/dev/null 2>&1 || rc=$?
+snap=$(latest notifications-companion)
+check "86. auto switches back by itself: the helper off, Notch only off, a snapshot with a plain title, no status written" \
+  "0 1 1 false Switched back to Omarchy's pop-ups $before_status" \
+  "$rc $(calls | grep -c '^omarchy plugin disable kalinewb.notch-notifications') $(calls | grep -c '^omarchy-shell notch set suppressNativeToast false') $(jq -r '.bar.notch.suppressNativeToast' "$CONFIG_SB/omarchy/shell.json") $(jq -r .title "$STATE_SB/snapshots/$snap/meta.json") $(sha256sum "$STATUS_SB" 2>/dev/null | cut -d' ' -f1)"
+reset_calls
+rc=0; run_setup restore "$snap" >/dev/null 2>&1 || rc=$?
+check "87. Undo enables the helper and turns Notch only back on" "0 1 true $pre" \
+  "$rc $(calls | grep -c '^omarchy plugin enable kalinewb.notch-notifications') $(jq -r '.bar.notch.suppressNativeToast' "$CONFIG_SB/omarchy/shell.json") $(sha256sum "$CONFIG_SB/omarchy/shell.json" | cut -d' ' -f1)"
+echo 'b true' >"$sb/fixtures/busctl.txt"
+reset_calls
+run_setup auto >/dev/null 2>&1
+check "88. with an owner, auto changes nothing" "0" "$(calls | grep -c -e 'plugin disable' -e 'notch set')"
+shell_set '.bar.notch.suppressNativeToast = false'
+
+# --- auto: the notch's own litter, quietly, with a snapshot ---------------------------------------
+
+shell_set '.bar.notch.hostedPanels = ["omarchy.clock", "ghost.panel"]'
+mkdir -p "$PLUGINS_SB/.kalinewb.notch-menu.bak.20260901000000" "$PLUGINS_SB/.workspaces.bak.20260901000000" "$PLUGINS_SB/.kalinewb.notch-osd.bak.20261030000000"
+touch -d '40 days ago' "$PLUGINS_SB/.kalinewb.notch-menu.bak.20260901000000" "$PLUGINS_SB/.workspaces.bak.20260901000000"
+check "89. the default view lists no automatic point, and names them for auto" "0 settings-stale-ids,stray-backups" \
+  "$(run_setup detect --json | jq '[.points[] | select(.admit != "page")] | length') $(run_setup detect --json | jq -r '.auto | join(",")')"
+rc=0; run_setup auto >/dev/null 2>&1 || rc=$?
+check "90. auto tidies the stale id and moves the notch's own old backup; Omarchy's backup and a fresh one stay" \
+  "0 omarchy.clock 0 true true" \
+  "$rc $(jq -r '.bar.notch.hostedPanels | join(",")' "$CONFIG_SB/omarchy/shell.json") $(ls -A "$PLUGINS_SB" | grep -c '^.kalinewb.notch-menu.bak') $([[ -d $PLUGINS_SB/.workspaces.bak.20260901000000 ]] && echo true || echo false) $([[ -d $PLUGINS_SB/.kalinewb.notch-osd.bak.20261030000000 ]] && echo true || echo false)"
+check "91. both are kept under Earlier fixes, titled in plain words" "Moved old backups aside|Tidied the notch's settings" \
+  "$(for pt in stray-backups settings-stale-ids; do run_setup snapshots --json | jq -r --arg p "$pt" '[.[] | select(.point == $p)][0].title'; done | sort | paste -sd'|')"
+reset_calls; run_setup auto >/dev/null 2>&1
+check "92. a second auto finds nothing left to do" "0" "$(calls | grep -c -e 'plugin disable' -e 'plugin enable' -e 'notch set' -e 'reload$')"
+rm -rf "$PLUGINS_SB"/.workspaces.bak.* "$PLUGINS_SB"/.kalinewb.notch-osd.bak.*
+rc=0; NOTCH_HARNESS=1 NOTCH_SETUP_HOME="$HOME_SB" "$SCRIPT" auto >/dev/null 2>&1 || rc=$?
+check "93. auto refuses a half-set-up test run, like fix" "2" "$rc"
 
 # --- safety ------------------------------------------------------------------------------
 

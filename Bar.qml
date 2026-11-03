@@ -354,6 +354,8 @@ Item {
   onModuleSlotsChanged: Qt.callLater(prunePluginBarApis)
 
   Component.onDestruction: {
+    // Another bar took over: the notifications helper goes with the notch.
+    notificationsCompanionHelper.park()
     for (var id in pluginBarApis) {
       root.releasePluginObjects(id)
       if (pluginBarApis[id] && typeof pluginBarApis[id].destroy === "function")

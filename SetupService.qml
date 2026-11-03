@@ -118,6 +118,35 @@ Item {
   }
   Timer { id: recheck; interval: 15000; onTriggered: root.check(false) }
 
+  // --- when it looks ------------------------------------------------------------------
+
+  // The Settings header shows an entry only above zero, so something has to
+  // look without being asked: 20 seconds after start, every 6 hours, and when
+  // Settings opens (unless a check just finished).
+  Timer {
+    interval: Number(Quickshell.env("NOTCH_SETUP_FIRST_CHECK_MS") || 20000)
+    running: root.enabled
+    onTriggered: root.check(false)
+  }
+  Timer { interval: 6 * 3600 * 1000; repeat: true; running: root.enabled; onTriggered: root.check(false) }
+  function checkSoon() {
+    if (!enabled || checking || Date.now() - checkedAt < 30000) return false
+    return check(false)
+  }
+
+  // The notch's own litter is repaired without a page (`notch-setup auto`),
+  // once per set of findings per session, so a repair that fails is not retried
+  // in a loop. A broken "Notch only" helper is in that list: nothing serves
+  // notifications, so the notch switches back to Omarchy's own pop-ups.
+  property var autoTried: ({})
+  function runAuto(ids) {
+    var key = (ids || []).join(",")
+    if (!enabled || key === "" || autoTried[key] || jobRunning) return
+    autoTried[key] = true
+    launch([script, "auto"])
+    recheck.restart()
+  }
+
   function refreshSnapshots() {
     if (!enabled || snapshotProcess.running) return false
     snapshotProcess.running = true
@@ -137,6 +166,7 @@ Item {
           root.report = parsed
           root.checkedAt = Date.now()
           if (!checkProcess.localOnly) root.lastFullCheck = root.checkedAt
+          root.runAuto(parsed.auto)
         }
         root.checking = false
         root.refreshSnapshots()
@@ -163,7 +193,7 @@ Item {
     "NOTCH_SETUP_OMARCHY_VERSION", "NOTCH_SETUP_TOGGLE_BAR", "NOTCH_SETUP_QS", "NOTCH_SETUP_KILL",
     "NOTCH_SETUP_LUA", "NOTCH_SETUP_PLUGINS_STATE", "NOTCH_SETUP_SESSION_LOCKED",
     "NOTCH_SETUP_RESTART_SHELL", "NOTCH_SETUP_PROC", "NOTCH_SETUP_RETENTION_DAYS",
-    "NOTCH_SETUP_RETENTION_CAP", "NOTCH_SETUP_FAIL_AT"]
+    "NOTCH_SETUP_RETENTION_CAP", "NOTCH_SETUP_FAIL_AT", "NOTCH_SETUP_BUSCTL", "NOTCH_SETUP_AUTO_WAIT"]
   // Detached (Detached.qml), so the job outlives the notch it may destroy.
   function launch(run) { detached.launch("kalinewb-notch-setup", run, detachedEnv, "NOTCH_SETUP_DETACH") }
 

@@ -150,12 +150,22 @@ Item {
 
   Detached { id: detached }
 
+  readonly property var jobEnv: ["NOTCH_COMPANION_DIR", "NOTCH_COMPANION_SOURCE", "NOTCH_COMPANION_LIST", "NOTCH_COMPANION_ENABLE",
+                                 "NOTCH_COMPANION_REMOVE", "NOTCH_COMPANION_DISABLE", "NOTCH_COMPANION_SHELL_JSON",
+                                 "NOTCH_COMPANION_VALIDATE", "NOTCH_COMPANION_SESSION_LOCKED", "NOTCH_COMPANION_STATE_DIR"]
+
+  // Leaving the notch for another bar destroys the notch, so this goes out as it
+  // goes: the script switches the companion off only if shell.json no longer
+  // names the notch as the bar (a restart or an update leaves it alone), and
+  // Omarchy's own service comes back. Coming back, keepInStep switches it on.
+  function park() {
+    if (!actionsEnabled) return
+    detached.launch(unitPrefix + "-park", idEnv.concat([script, "park"]), jobEnv, "NOTCH_UPDATE_DETACH")
+  }
+
   function startJob(verb) {
     if (!actionsEnabled || statusKey === "working") return false
-    detached.launch(unitPrefix, idEnv.concat([script, verb, statusPath]),
-                    ["NOTCH_COMPANION_DIR", "NOTCH_COMPANION_SOURCE", "NOTCH_COMPANION_LIST", "NOTCH_COMPANION_ENABLE",
-                     "NOTCH_COMPANION_REMOVE", "NOTCH_COMPANION_VALIDATE", "NOTCH_COMPANION_SESSION_LOCKED",
-                     "NOTCH_COMPANION_STATE_DIR"], "NOTCH_UPDATE_DETACH")
+    detached.launch(unitPrefix, idEnv.concat([script, verb, statusPath]), jobEnv, "NOTCH_UPDATE_DETACH")
     job = { phase: "working", verb: verb, startedAt: Date.now(), finishedAt: 0, message: "", launched: true }
     clock = Date.now()
     statusPoll.restart()

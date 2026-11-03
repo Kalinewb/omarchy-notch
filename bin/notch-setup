@@ -88,6 +88,7 @@ split QS "${NOTCH_SETUP_QS:-qs}"
 split KILL_CMD "${NOTCH_SETUP_KILL:-kill}"
 split LUA "${NOTCH_SETUP_LUA:-lua}"
 split SESSION_LOCKED "${NOTCH_SETUP_SESSION_LOCKED:-omarchy-hyprland-session-locked}"
+split BUSCTL "${NOTCH_SETUP_BUSCTL:-busctl}"
 split RESTART_SHELL "${NOTCH_SETUP_RESTART_SHELL:-omarchy restart shell}"
 PLUGINS_STATE="${NOTCH_SETUP_PLUGINS_STATE:-}"
 
@@ -114,7 +115,7 @@ OVERRIDE_NAMES=(NOTCH_SETUP_SANDBOX NOTCH_SETUP_HOME NOTCH_SETUP_CONFIG_DIR NOTC
   NOTCH_SETUP_STATE_DIR NOTCH_SETUP_STATUS NOTCH_SETUP_OMARCHY_PATH NOTCH_SETUP_PLUGINS_DIR
   NOTCH_SETUP_NOTCH_DIR NOTCH_SETUP_HYPRCTL NOTCH_SETUP_OMARCHY_SHELL NOTCH_SETUP_OMARCHY
   NOTCH_SETUP_OMARCHY_VERSION NOTCH_SETUP_TOGGLE_BAR NOTCH_SETUP_QS NOTCH_SETUP_KILL
-  NOTCH_SETUP_LUA NOTCH_SETUP_PLUGINS_STATE NOTCH_SETUP_SESSION_LOCKED NOTCH_SETUP_RESTART_SHELL)
+  NOTCH_SETUP_LUA NOTCH_SETUP_PLUGINS_STATE NOTCH_SETUP_SESSION_LOCKED NOTCH_SETUP_RESTART_SHELL NOTCH_SETUP_BUSCTL)
 
 guard_triggered() {
   [[ ${NOTCH_HARNESS:-} == 1 ]] && return 0
@@ -147,7 +148,7 @@ paths_sandboxed() {
 commands_stubbed() {
   local name
   for name in NOTCH_SETUP_HYPRCTL NOTCH_SETUP_OMARCHY_SHELL NOTCH_SETUP_OMARCHY NOTCH_SETUP_TOGGLE_BAR \
-              NOTCH_SETUP_KILL NOTCH_SETUP_SESSION_LOCKED NOTCH_SETUP_RESTART_SHELL; do
+              NOTCH_SETUP_KILL NOTCH_SETUP_SESSION_LOCKED NOTCH_SETUP_RESTART_SHELL NOTCH_SETUP_BUSCTL; do
     [[ -n ${!name:-} ]] || return 1
   done
   return 0
@@ -386,32 +387,48 @@ detect_osd_companion() {
   esac
 }
 
-# The notifications companion stands in for omarchy.notifications, so while it
-# is enabled it IS the notification server: one that is enabled but not
-# running means no notifications at all, not just no notch.
+# Whether anything serves org.freedesktop.Notifications on the session bus:
+# 0 yes, 1 no, 2 can't tell. The plugin list's `active` flag says nothing about
+# a service plugin, so the bus is the only honest answer.
+notifications_owned() {
+  runnable BUSCTL || return 2
+  local out
+  out=$(timeout 5 "${BUSCTL[@]}" --user call org.freedesktop.DBus /org/freedesktop/DBus \
+    org.freedesktop.DBus NameHasOwner s org.freedesktop.Notifications 2>/dev/null) || return 2
+  case $out in
+    "b true") return 0 ;;
+    "b false") return 1 ;;
+  esac
+  return 2
+}
+
+# "Notch only" runs on a companion that stands in for omarchy.notifications, so
+# while it is enabled it IS the notification server. If nobody owns the name,
+# nothing shows notifications at all. The notch switches back to Omarchy's own
+# pop-ups itself (`auto`); this is the point that says when.
 detect_notifications_companion() {
   local want; want=$(setting .bar.notch.suppressNativeToast)
-  local state; state=$(companion_state "$NOTIFICATIONS_COMPANION")
   if [[ $want != true ]]; then
-    point notifications-companion ok "Omarchy's own toast is in use" "\"Suppress Omarchy's own toast\" is off."
+    point notifications-companion ok "Omarchy's own pop-ups are in use" "\"Notch only\" is off."
     return
   fi
-  case $state in
-    active) point notifications-companion ok "Notifications show in the notch only" \
-      "The notifications companion is running Omarchy's service and keeping its toast off screen while the notch shows it." ;;
-    inactive)
-      point notifications-companion warn "The notifications companion isn't running" \
-        "$NOTIFICATIONS_COMPANION is enabled but not loaded, and it stands in for omarchy.notifications -- so nothing may be showing notifications at all." \
-        "$(strings "\`omarchy plugin validate $PLUGINS/$NOTIFICATIONS_COMPANION\` says why." "\`omarchy plugin disable $NOTIFICATIONS_COMPANION\` puts omarchy.notifications back exactly.")" ;;
-    disabled)
-      point notifications-companion fix "The notifications companion is switched off" \
-        "\"Suppress Omarchy's own toast\" is on, but $NOTIFICATIONS_COMPANION is disabled, so Omarchy's toast still shows alongside the notch." \
-        "$(strings "Fix runs \`omarchy plugin enable $NOTIFICATIONS_COMPANION\`." "Undo runs \`omarchy plugin disable $NOTIFICATIONS_COMPANION\`, which puts omarchy.notifications back exactly.")" \
-        '[]' "$(fixspec ipc "Fix" "$(strings "$SHELL_JSON")" '[]' low false)" ;;
+  case $(companion_state "$NOTIFICATIONS_COMPANION") in
+    absent|disabled)
+      # The notch installs and switches on its helper by itself while it runs.
+      point notifications-companion info "The notifications helper isn't on yet" \
+        "\"Notch only\" is on, and the notch sets its helper up by itself; Omarchy's pop-up shows meanwhile." ;;
     *)
-      point notifications-companion info "The notifications companion isn't installed" \
-        "\"Suppress Omarchy's own toast\" is on, but $NOTIFICATIONS_COMPANION isn't in the plugins folder yet, so Omarchy's toast still shows." \
-        "$(strings "The notch installs it by itself; this says that has not happened." "Switching the setting off and on again asks for another try.")" ;;
+      notifications_owned; local owned=$?
+      if (( owned == 0 )); then
+        point notifications-companion ok "Notifications show in the notch only" "Something answers on the notification bus."
+      elif (( owned == 1 )); then
+        point notifications-companion fix "Notifications may not show" \
+          "The notch's helper didn't start, and Omarchy's own pop-ups are switched off." \
+          "$(strings "No process owns org.freedesktop.Notifications on the session bus." "Fix runs \`omarchy plugin disable $NOTIFICATIONS_COMPANION\` and turns \"Notch only\" off.")" \
+          '[]' "$(fixspec ipc "Switch back" "$(strings "$SHELL_JSON")" '[]' low false)"
+      else
+        point notifications-companion unknown "Couldn't tell whether notifications show" "Couldn't ask the session bus."
+      fi ;;
   esac
 }
 
@@ -730,14 +747,15 @@ detect_stray_instances() {
   fi
 }
 
-# Backup files beside the config, and the folders the plugins folder keeps:
-# `omarchy plugin remove` backs a plugin up as .<id>.bak.<time>, and the notch's
-# installer moves a refused folder to .notch-refused.<name>.<ms>. Omarchy skips
-# dot folders, so they only take up room.
+# The notch's own litter in the plugins folder: `omarchy plugin remove` backs a
+# plugin up as .<id>.bak.<time> (the notch's old names and its helpers' too),
+# and the notch's installer moves a refused folder to .notch-refused.<name>.<ms>.
+# Omarchy skips dot folders, so they only take up room. Only the notch's own,
+# and only once they are older than the retention: nothing of Omarchy's or of
+# another plugin's is ever listed.
 stray_backup_files() {
-  find "$HYPR" -maxdepth 1 -type f -regextype posix-extended -regex '.*\.bak\.[0-9]+' 2>/dev/null
-  find "$CONFIG/omarchy" -maxdepth 1 -type f -regextype posix-extended -regex '.*shell\.json\.bak\.[0-9]+' 2>/dev/null
-  find "$PLUGINS" -mindepth 1 -maxdepth 1 -type d \( -name '.*.bak.*' -o -name '.notch-refused.*' \) 2>/dev/null | sort
+  find "$PLUGINS" -mindepth 1 -maxdepth 1 -type d -mtime "+$RETENTION_DAYS" \
+    \( -name '.kalinewb.notch*.bak.*' -o -name '.graveklar.notch*.bak.*' -o -name '.notch-refused.*' \) 2>/dev/null | sort
 }
 
 detect_stray_backups() {
@@ -745,20 +763,18 @@ detect_stray_backups() {
   local count; count=$(grep -c . <<<"$files")
   [[ -z $files ]] && count=0
   if (( count == 0 )); then
-    point stray-backups ok "No leftover backups" "No .bak files in your config."
+    point stray-backups ok "No leftover backups" "None of the notch's own old backups are left."
   else
     local items='[]' file
     while read -r file; do
       [[ -z $file ]] && continue
       items=$(jq -c --arg f "$file" '. + [{arg: $f, summary: $f}]' <<<"$items")
     done <<<"$files"
-    # Moving a folder out of the plugins folder reloads every plugin.
-    local reloads=false
-    grep -qF "$PLUGINS/" <<<"$files" && reloads=true
-    point stray-backups fix "Old backup files in your config" \
-      "$count old backup(s) are sitting in your config: files like bindings.lua.bak.1789067221, and plugin folders like .kalinewb.notch-menu.bak.20261022185832." \
-      "$(strings "Some may be Omarchy's own: \`omarchy-refresh-config\` and \`omarchy plugin remove\` make the same kind." "Fix moves them into a snapshot, so nothing is deleted until you Forget it, and Undo puts them back.")" \
-      "$items" "$(fixspec archive "Fix" "$(printf '%s\n' "$files" | jq -R . | jq -sc .)" '[]' low "$reloads")"
+    # Moving a folder out of the plugins folder reloads every plugin, once.
+    point stray-backups fix "Old backups are taking up room" \
+      "$count of the notch's own old plugin backups are older than $RETENTION_DAYS days." \
+      "$(strings "Fix moves them into a snapshot, so nothing is deleted until it expires, and Undo puts them back.")" \
+      "$items" "$(fixspec archive "Fix" "$(printf '%s\n' "$files" | jq -R . | jq -sc .)" '[]' low true)"
   fi
 }
 
@@ -1287,10 +1303,17 @@ apply_fix() { # apply_fix <point> <arg> <snapshot name>
       meta_set "$name" '.undo = [["omarchy-toggle-bar", "on"]]'
       [[ -f $TOGGLES/bar-off ]] && return 1
       ;;
-    menu-replace-companion|osd-companion|notifications-companion)
+    notifications-companion)
+      # Back to Omarchy's pop-ups: the helper off (Omarchy restores its own
+      # service), and "Notch only" off with it.
+      "${OMARCHY[@]}" plugin disable "$NOTIFICATIONS_COMPANION" >/dev/null 2>&1
+      "${OMARCHY_SHELL[@]}" notch set suppressNativeToast false >/dev/null 2>&1
+      meta_set "$name" --arg id "$NOTIFICATIONS_COMPANION" '.undo = [["omarchy", "plugin", "enable", $id],
+        ["omarchy-shell", "notch", "set", "suppressNativeToast", "true"]]'
+      ;;
+    menu-replace-companion|osd-companion)
       local cid=$COMPANION
       [[ $point == osd-companion ]] && cid=$OSD_COMPANION
-      [[ $point == notifications-companion ]] && cid=$NOTIFICATIONS_COMPANION
       if [[ $(companion_state "$cid") == disabled ]]; then
         "${OMARCHY[@]}" plugin enable "$cid" >/dev/null 2>&1
         meta_set "$name" --arg id "$cid" '.undo = [["omarchy", "plugin", "disable", $id]]'
@@ -1463,6 +1486,23 @@ rollback() { # rollback <snapshot name>
   meta_state "$name" rolled-back
 }
 
+# What an Earlier fixes row calls a snapshot: the plain account of what was done,
+# not the title of the point (that one names the fault).
+plain_title() { # plain_title <point> <fallback>
+  case $1 in
+    settings-stale-ids) echo "Tidied the notch's settings" ;;
+    stray-backups) echo "Moved old backups aside" ;;
+    layout-missing-plugin) echo "Removed a bar item that was gone" ;;
+    notifications-companion) echo "Switched back to Omarchy's pop-ups" ;;
+    menu-keys-bypass) echo "Moved the menu keys back onto Omarchy's" ;;
+    oled-corners-still) echo "Added the OLED Corners animation rule" ;;
+    face-renamed) echo "Finished moving Face ID to its new name" ;;
+    menu-replace-companion) echo "Switched the notch menu on" ;;
+    osd-companion) echo "Switched the volume pop-ups on" ;;
+    *) echo "$2" ;;
+  esac
+}
+
 ORIGINAL_ARGV=()
 do_fix() {
   local point="" arg="" dry=0
@@ -1503,7 +1543,7 @@ do_fix() {
   # Detected? `layout-empty-widget` is the page's own finding, so the script trusts it.
   local detected; detected=$(detect_point "$point")
   local severity; severity=$(jq -r .severity <<<"$detected")
-  local title; title=$(jq -r .title <<<"$detected")
+  local title; title=$(plain_title "$point" "$(jq -r .title <<<"$detected")")
   if [[ $point != layout-empty-widget ]]; then
     if [[ $severity != fix ]]; then
       finish failed 4 "There is nothing to fix: this isn't happening here."
@@ -1864,6 +1904,29 @@ do_ack() {
   write_status "$file" '.seen = true'
 }
 
+# The notch's own litter, repaired without asking: each goes through the same
+# fix (a snapshot first, verified after, Undo kept under Earlier fixes), with
+# no status file because there is no page to tell. A broken "Notch only" helper
+# is looked at twice, a few seconds apart, so a start-up blip is not mistaken
+# for a fault.
+AUTO_POINTS=(notifications-companion settings-stale-ids stale-notch-binds layout-missing-plugin stray-backups)
+do_auto() {
+  check_guard run || return 2
+  session_locked && return 0
+  local id detected
+  for id in "${AUTO_POINTS[@]}"; do
+    detected=$(detect_point "$id")
+    [[ $(jq -r .severity <<<"$detected") == fix && -z $(jq -r '.fix.disabledReason // ""' <<<"$detected") ]] || continue
+    if [[ $id == notifications-companion ]]; then
+      sleep "${NOTCH_SETUP_AUTO_WAIT:-3}"
+      detected=$(detect_point "$id")
+      [[ $(jq -r .severity <<<"$detected") == fix ]] || continue
+    fi
+    "${BASH_SOURCE[0]}" fix "$id" --status "" >/dev/null 2>&1
+  done
+  return 0
+}
+
 usage() {
   sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
 }
@@ -1879,6 +1942,7 @@ case "${1:-}" in
   show) shift; show_snapshot "$@" ;;
   forget) shift; do_forget "$@" ;;
   prune) check_guard write || exit 2; prune ;;
+  auto) do_auto ;;
   ack) shift; do_ack "$@" ;;
   ""|-h|--help|help) usage ;;
   *) echo "notch-setup: unknown command: $1" >&2; usage >&2; exit 2 ;;

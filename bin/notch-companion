@@ -10,6 +10,7 @@
 #   notch-companion sync [--force] [<status file>]
 #                                             copy it in again when the files differ
 #   notch-companion remove <status file>      hand it to `omarchy plugin remove --yes`
+#   notch-companion park                      switch it off when the notch is no longer the bar
 #
 # The companion is kalinewb.notch-menu: a manifest that says
 # `clonedFrom: omarchy.menu`, a go-between (Facade.qml) and Omarchy's own menu
@@ -34,6 +35,8 @@
 #   NOTCH_COMPANION_LIST            instead of `omarchy plugin list --json`
 #   NOTCH_COMPANION_ENABLE          instead of `omarchy plugin enable`
 #   NOTCH_COMPANION_REMOVE          instead of `omarchy plugin remove`
+#   NOTCH_COMPANION_DISABLE         instead of `omarchy plugin disable` (park needs it with NOTCH_COMPANION_DIR)
+#   NOTCH_COMPANION_SHELL_JSON      the shell.json park reads the active bar from
 #   NOTCH_COMPANION_VALIDATE        instead of `omarchy plugin validate`
 #   NOTCH_COMPANION_SESSION_LOCKED  instead of `omarchy-hyprland-session-locked`
 #   NOTCH_COMPANION_STATE_DIR       where backups go
@@ -68,6 +71,9 @@ read -ra LIST_CMD <<<"${NOTCH_COMPANION_LIST:-omarchy plugin list --json}"
 read -ra ENABLE_CMD <<<"${NOTCH_COMPANION_ENABLE:-omarchy plugin enable}"
 read -ra REMOVE_CMD <<<"${NOTCH_COMPANION_REMOVE:-omarchy plugin remove}"
 read -ra VALIDATE_CMD <<<"${NOTCH_COMPANION_VALIDATE:-omarchy plugin validate}"
+read -ra DISABLE_CMD <<<"${NOTCH_COMPANION_DISABLE:-omarchy plugin disable}"
+SHELL_JSON="${NOTCH_COMPANION_SHELL_JSON:-$HOME/.config/omarchy/shell.json}"
+NOTCH_ID="kalinewb.notch"
 
 now_ms() { date +%s%3N; }
 
@@ -245,6 +251,18 @@ remove_companion() { # remove_companion <status file>
   done_ok "$status" "The $LABEL companion is gone; Omarchy's own $LABEL is back."
 }
 
+# Leaving the notch for another bar destroys the notch, so it cannot tidy up
+# after itself; it asks for this as it goes. A companion that stands in for one
+# of Omarchy's services must not be left on for a bar that does not talk to it:
+# when shell.json no longer names the notch as the bar, switch it off, and
+# Omarchy's own service comes back. Coming back, the notch switches it on again.
+park_companion() {
+  [[ -n ${NOTCH_COMPANION_DIR:-} && -z ${NOTCH_COMPANION_DISABLE:-} ]] && { echo "notch-companion: NOTCH_COMPANION_DIR needs NOTCH_COMPANION_DISABLE" >&2; return 2; }
+  [[ $(jq -r '.bar.id // ""' "$SHELL_JSON" 2>/dev/null) == "$NOTCH_ID" ]] && return 0
+  [[ $(plugin_list | jq -r --arg id "$ID" '[.[] | select(.id == $id) | .enabled] | first // false' 2>/dev/null) == true ]] || return 0
+  "${DISABLE_CMD[@]}" "$ID" >/dev/null 2>&1
+}
+
 check_hooks || { echo '{"error":"sandbox"}'; exit 2; }
 
 case "${1:-}" in
@@ -264,5 +282,6 @@ case "${1:-}" in
     sync_companion "$force" "${1:-}"
     ;;
   remove) [[ -n ${2:-} ]] || { echo "notch-companion: remove needs a status file" >&2; exit 2; }; remove_companion "$2" ;;
-  *) echo "usage: notch-companion status | install <status file> | sync [--force] [<status file>] | remove <status file>" >&2; exit 2 ;;
+  park) park_companion ;;
+  *) echo "usage: notch-companion status | install <status file> | sync [--force] [<status file>] | remove <status file> | park" >&2; exit 2 ;;
 esac

@@ -2603,27 +2603,28 @@ Item {
   Companion {
     id: notificationsCompanionHelper
     bar: root; companionId: "kalinewb.notch-notifications"; sourceId: "omarchy.notifications"; label: "notifications"
+    version: "2.0.0"
     unitPrefix: "kalinewb-notch-notifications-companion"; statusName: "companion-notifications.json"
     wanted: root.notchSuppressNativeToast
     bridge: NotchNotificationsBridge
-    // Whether the notch is taking Omarchy's toasts right now, when its
-    // notification source started (anything older the notch never shows, so
-    // the companion leaves those on Omarchy's own toast), and whether it has
-    // drawn a given toast.
+    // Whether the notch is taking Omarchy's toasts right now, and whether it
+    // has drawn a given one. A card is named by its key in Omarchy's live.json,
+    // and `ts` says which version of it: a card Omarchy updates in place is
+    // a new thing to draw until the notch has drawn that.
     api: QtObject {
       readonly property bool takeOver: root.notchSuppressNativeToast && !root.barHidden && !!root.notificationsSource
         && root.notificationsSource.enabled
-      readonly property real since: root.notificationsSource ? root.notificationsSource.startedAt : 0
 
       // Whether the notch is drawing this toast, has it in line, or drew it and
-      // the user dismissed it there or its time ran out. A toast still being read, waiting for one
-      // of the notch's four lines in a burst, skipped as unreadable or declined
-      // is not, so Omarchy's own stays on screen for it. The file Omarchy writes
-      // per toast is "<timestamp>-<originalId>.json"; that name is the key.
-      function shows(originalId, timestamp) {
+      // the user dismissed it there or its time ran out. A toast not drawn yet,
+      // waiting for one of the notch's four lines in a burst, left to Omarchy
+      // (one with a code in it, or older than the notch) or declined is not,
+      // so Omarchy's own stays on screen for it.
+      function shows(key, ts) {
         var source = root.notificationsSource
-        var entry = source && source.entries ? source.entries[Number(timestamp) + "-" + Number(originalId) + ".json"] : undefined
-        return !!entry && (entry.state === "shown" || entry.state === "queued" || entry.state === "dismissed" || entry.state === "closed")
+        var entry = source && source.entries ? source.entries[String(key)] : undefined
+        return !!entry && Number(entry.stamp) + 0.0005 >= Number(ts)
+          && (entry.state === "shown" || entry.state === "queued" || entry.state === "dismissed" || entry.state === "closed")
       }
     }
   }
@@ -2932,8 +2933,19 @@ Item {
       return w ? JSON.stringify(w.paletteReport()) : "{}"
     }
 
-    // What the notifications source is tracking, and what it has claimed.
-    function notifications(): string { return JSON.stringify(root.notificationsSource.report()) }
+    // What the notifications source is tracking, and what it has claimed. Each
+    // entry also says what the companion would be told (`drawn`: this version
+    // of the card, `drawnNext`: one Omarchy has just updated).
+    function notifications(): string {
+      var report = root.notificationsSource.report()
+      var api = notificationsCompanionHelper.api
+      for (var i = 0; i < report.entries.length; i++) {
+        var e = report.entries[i]
+        e.drawn = api.shows(e.name, e.stamp)
+        e.drawnNext = api.shows(e.name, e.stamp + 1)
+      }
+      return JSON.stringify(report)
+    }
 
     // Clear one notification from the notch. Nothing is written and nothing is
     // sent to Omarchy: its own toast runs its own course.

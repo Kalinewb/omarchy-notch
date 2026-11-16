@@ -9,7 +9,7 @@
 #    Omarchy's own toast does -- and the pointer waits the clock.
 # 2. Pointing at a toast is not reaching for the hover view.
 # 3. Left click opens it, right click dismisses it, by Omarchy's own calls: its
-#    service when the companion has it loaded, its `notifications` IPC target
+#    service (`activate` / `closeToast`, by the card's key) when the companion has it loaded, its `notifications` IPC target
 #    (the one its keybinds use) when not, and for a toast that has already
 #    ended, what the service would have done with the toast's data.
 #
@@ -17,7 +17,9 @@
 # one, going down the same functions the real handlers call. A fake
 # `omarchy-shell` on PATH records the IPC calls instead of making them, and
 # dev/harness/notifications-interact-shell.qml stands in for the companion's
-# loaded service. Nothing here touches the user's notifications folder.
+# loaded service. Nothing here touches the user's notifications folder: the
+# rows are written to a sandbox live.json, replaced in one step the way
+# Omarchy 4.5 replaces its own.
 
 set -uo pipefail
 
@@ -39,7 +41,8 @@ cleanup() { [[ -n $qs_pid ]] && kill "$qs_pid" 2>/dev/null; rm -rf "${sb:?}"; }
 trap cleanup EXIT
 
 root="$sb/root"; dir="$sb/notifications"; bin="$sb/bin"; cli="$sb/cli.log"
-mkdir -p "$root" "$dir/history" "$bin"
+mkdir -p "$root" "$dir" "$bin"
+: >"$dir/live.json"
 ln -s "$SHELL_PATH/shell/Commons" "$root/Commons"
 ln -s "$SHELL_PATH/shell/Ui" "$root/Ui"
 ln -s "$SHELL_PATH/shell/services" "$root/services"
@@ -52,7 +55,7 @@ n() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
 t() { quickshell ipc -p "$root" call notifytest "$@" 2>/dev/null; }
 notifs() { n notifications; }
 state_of() { notifs | jq -r --arg n "$1" '.entries[] | select(.name == $n) | .state'; }
-key_of() { notifs | jq -r --arg n "$1.json" '.entries[] | select(.name == $n) | .key'; }
+key_of() { notifs | jq -r --arg n "$1" '.entries[] | select(.name == $n) | .key'; }
 st() { n geometry | jq -r .state; }
 wait_for() { # wait_for <jq filter over `notifications`> <expected> [tries]
   local tries=${3:-40} got
@@ -63,17 +66,26 @@ wait_for() { # wait_for <jq filter over `notifications`> <expected> [tries]
   done
   return 1
 }
-write() { # write <stamp> <id> <summary> [body] [execArgv json]
-  local f="$dir/$1-$2.json"
-  jq -nc --argjson id "$2" --arg summary "$3" --arg body "${4:-}" --arg exec "${5:-}" --argjson ts "$1" \
-     '{id: $id, originalId: $id, app: "test", appIcon: "", summary: $summary, body: $body,
-       image: "", glyph: "", execArgv: $exec, urgency: 1, expireTimeout: 0, timestamp: $ts}' >"$f.tmp"
-  mv "$f.tmp" "$f"
+live="$dir/live.json"
+# Omarchy rewrites the whole file and replaces it in one step; put() and drop()
+# do the same to the row list: oldest first, a key already there replaced in place.
+rows() { local r; r=$(jq -c . "$live" 2>/dev/null); echo "${r:-[]}"; }
+put() { # put <key> <ts> <summary> [body] [execArgv json]
+  rows | jq -c --arg key "$1" --argjson ts "$2" --arg summary "$3" --arg body "${4:-}" --arg exec "${5:-}" \
+     '{key: $key, originalId: 1, senderPid: 0, execArgv: $exec, execActions: "", glyph: "", app: "test", appIcon: "",
+       summary: $summary, body: $body, rawBody: "", source: "", groupKey: "app:test", urgency: 1,
+       expireTimeout: 0, duration: 8000, ts: $ts} as $r
+     | (map(.key) | index($key)) as $i | if $i == null then . + [$r] else .[$i] = $r end' >"$live.tmp"
+  mv "$live.tmp" "$live"
 }
-expire() { mv "$dir/$1.json" "$dir/history/$1.json"; }
+drop() { rows | jq -c --arg key "$1" 'map(select(.key != $key))' >"$live.tmp"; mv "$live.tmp" "$live"; }
+now_s() { date +%s.%3N; }
 now_ms() { date +%s%3N; }
-clear_files() { find "$dir" -maxdepth 1 -name '*.json' -delete; }
-calls_or_empty() { [[ -s $cli ]] && echo calls || echo empty; }
+clear_files() { echo '[]' >"$live.tmp"; mv "$live.tmp" "$live"; }
+# What was asked of Omarchy, leaving out the read-only isDnd the notch's menu
+# makes to decide which of its entries to show (Omarchy 4.5's menu file asks).
+cli_calls() { grep -v ' isDnd$' "$cli" | paste -sd'|'; }
+calls_or_empty() { [[ -n $(cli_calls) ]] && echo calls || echo empty; }
 within() { (( $1 >= $2 && $1 <= $3 )) && echo true || echo false; }
 
 start() { # start <notch config json>
@@ -105,8 +117,7 @@ d=$(notifs | jq -r .lifetimeMs)
 check "2. the seconds are held to 1..60, a whole number, and nonsense is the default" "1000 60000 6000 2000" "$a $b $c $d"
 setnotch '{"batteryPeek":false,"notificationSeconds":2}'
 
-stamp=$(now_ms)
-write "$stamp" 1 "Timed"
+put k1 "$(now_s)" "Timed"
 wait_for '.claimed' 1
 t0=$(now_ms)
 sleep 1.0
@@ -115,17 +126,16 @@ wait_for '.claimed' 0 40
 took=$(( $(now_ms) - t0 ))
 check "4. …gone about two seconds after it appeared (${took} ms)" "true" "$(within "$took" 1700 3300)"
 check "5. …its file untouched, and it does not come back while the file stays" "true closed compact" \
-  "$([[ -f $dir/$stamp-1.json ]] && echo true || echo false) $(state_of "$stamp-1.json") $(sleep 1.5; st)"
-expire "$stamp-1"
+  "$(rows | jq "any(.key == \"k1\")") $(state_of k1) $(sleep 1.5; st)"
+drop k1
 wait_for '.entries | length' 0
 check "6. when the file goes too it is forgotten" "0" "$(notifs | jq -r '.entries | length')"
 
 # Omarchy's toast ending does not end the copy.
 setnotch '{"batteryPeek":false,"notificationSeconds":4}'
-stamp=$(now_ms)
-write "$stamp" 2 "Outlives its toast"
+put k2 "$(now_s)" "Outlives its toast"
 wait_for '.claimed' 1
-expire "$stamp-2"
+drop k2
 sleep 2.0
 check "7. Omarchy's toast ended two seconds ago: the notch's copy is still up, no longer linked" "1 false activity" \
   "$(notifs | jq -r .claimed) $(notifs | jq -r '.entries[0].live') $(st)"
@@ -134,10 +144,9 @@ check "8. …and goes on its own clock, taking its entry with it" "0 0" "$(notif
 
 # Stay until I act.
 setnotch '{"batteryPeek":false,"notificationSeconds":2,"notificationStay":true}'
-stamp=$(now_ms)
-write "$stamp" 3 "Stays"
+put k3 "$(now_s)" "Stays"
 wait_for '.claimed' 1
-expire "$stamp-3"
+drop k3
 sleep 4.5
 check "9. stay until I act: 4.5 s on, past the seconds, its toast long gone: still up" "true 1 activity" \
   "$(notifs | jq -r .stay) $(notifs | jq -r .claimed) $(st)"
@@ -146,8 +155,7 @@ wait_for '.claimed' 0 60
 check "10. switching to close-after takes effect on the line already up" "0" "$(notifs | jq -r .claimed)"
 
 # The pointer waits the clock.
-stamp=$(now_ms)
-write "$stamp" 4 "Held under the pointer"
+put k4 "$(now_s)" "Held under the pointer"
 wait_for '.claimed' 1
 n pointer true >/dev/null
 sleep 3.6
@@ -155,7 +163,7 @@ check "11. the pointer on the notch holds the clock: well past 2 s, still up" "1
 n pointer false >/dev/null
 wait_for '.claimed' 0 50
 check "12. …and it closes once the pointer leaves" "0" "$(notifs | jq -r .claimed)"
-expire "$stamp-4"; sleep 0.5
+drop k4; sleep 0.5
 stop
 
 # --- pointing at it is not the hover view ---------------------------------------------
@@ -166,8 +174,7 @@ n pointer true >/dev/null; sleep 0.8
 check "13. with no toast, hovering shows the hover view (the chain works here)" "expanded hover" "$(n geometry | jq -r '"\(.state) \(.view)"')"
 n pointer false >/dev/null; sleep 1.0
 check "14. …and it settles back" "compact" "$(st)"
-stamp=$(now_ms)
-write "$stamp" 5 "Hover me"
+put k5 "$(now_s)" "Hover me"
 wait_for '.claimed' 1
 sleep 0.6
 n pointer true >/dev/null; sleep 1.0
@@ -179,8 +186,7 @@ n collapse >/dev/null
 # A toast arriving under a resting pointer replaces the hover view.
 n pointer true >/dev/null; sleep 0.8
 hv=$(st)
-stamp=$(now_ms)
-write "$stamp" 6 "Arrives under the pointer"
+put k6 "$(now_s)" "Arrives under the pointer"
 wait_for '.claimed' 1
 sleep 0.8
 check "17. hover view up, a toast arrives: it takes the notch rather than hiding under the hover view" "expanded activity" "$hv $(st)"
@@ -192,25 +198,23 @@ stop
 echo; echo "${BOLD}Acting on it${RESET}"
 clear_files; : >"$cli"
 start '{"batteryPeek":false,"openWith":["click"],"settingsWith":["rightClick"],"notificationStay":true}'
-stamp=$(now_ms)
-write "$stamp" 7 "Click me"
+put k7 "$(now_s)" "Click me"
 wait_for '.claimed' 1
 sleep 0.6
 n press click >/dev/null; sleep 0.6
 check "18. left click: opened through Omarchy's IPC (invokeLast), the notch copy gone" "-q notifications invokeLast|0 dismissed" \
-  "$(paste -sd'|' "$cli")|$(notifs | jq -r .claimed) $(state_of "$stamp-7.json")"
+  "$(cli_calls)|$(notifs | jq -r .claimed) $(state_of k7)"
 check "19. …and that click was not also the notch's: the widgets did not open" "compact" "$(st)"
-expire "$stamp-7"; sleep 0.5
+drop k7; sleep 0.5
 
 : >"$cli"
-stamp=$(now_ms)
-write "$stamp" 8 "Dismiss me"
+put k8 "$(now_s)" "Dismiss me"
 wait_for '.claimed' 1
 sleep 0.6
 n press rightClick >/dev/null; sleep 0.6
 check "20. right click: dismissed through Omarchy (dismissOne), and the settings did not open" "-q notifications dismissOne|0 compact false" \
-  "$(paste -sd'|' "$cli")|$(notifs | jq -r .claimed) $(st) $(n geometry | jq -r .settingsOpen)"
-expire "$stamp-8"; sleep 0.5
+  "$(cli_calls)|$(notifs | jq -r .claimed) $(st) $(n geometry | jq -r .settingsOpen)"
+drop k8; sleep 0.5
 
 # No toast: the same presses are the notch's own again.
 n press click >/dev/null; sleep 0.9
@@ -219,92 +223,85 @@ n collapse >/dev/null; sleep 0.6
 
 # Two toasts: the one clicked is not the newest Omarchy has.
 : >"$cli"; rm -f "$sb/ran"
-older=$(now_ms)
-write "$older" 9 "Older one" "" "[\"touch\",\"$sb/ran\"]"
+put k9 "$(now_s)" "Older one" "" "[\"touch\",\"$sb/ran\"]"
 wait_for '.claimed' 1
 sleep 0.05
-newer=$(now_ms)
-write "$newer" 10 "Newer one"
+put k10 "$(now_s)" "Newer one"
 wait_for '.claimed' 2
-k=$(key_of "$older-9")
+k=$(key_of k9)
 r=$(n interactNotification "$k" open)
 sleep 0.8
 check "22. open the older of two: not what invokeLast would act on, so its own action runs and it is dismissed by name" "local true -q notifications dismiss Older one" \
-  "$r $([[ -f $sb/ran ]] && echo true || echo false) $(paste -sd'|' "$cli")"
+  "$r $([[ -f $sb/ran ]] && echo true || echo false) $(cli_calls)"
 : >"$cli"
-k=$(key_of "$newer-10")
+k=$(key_of k10)
 n interactNotification "$k" dismiss >/dev/null
-check "23. dismiss the newer: dismissOne" "-q notifications dismissOne" "$(sleep 0.3; paste -sd'|' "$cli")"
+check "23. dismiss the newer: dismissOne" "-q notifications dismissOne" "$(sleep 0.3; cli_calls)"
 check "24. an unknown toast is answered as such" "no-such-notification" "$(n interactNotification nonsense open)"
-expire "$older-9"; expire "$newer-10"; sleep 0.5
+drop k9; drop k10; sleep 0.5
 
 # A toast Omarchy has already ended: not in its service any more.
 : >"$cli"; rm -f "$sb/ran"
-stamp=$(now_ms)
-write "$stamp" 11 "Already ended" "" "[\"touch\",\"$sb/ran\"]"
+put k11 "$(now_s)" "Already ended" "" "[\"touch\",\"$sb/ran\"]"
 wait_for '.claimed' 1
-expire "$stamp-11"
+drop k11
 wait_for '.entries[0].live' false
-k=$(key_of "$stamp-11")
+k=$(key_of k11)
 r=$(n interactNotification "$k" open)
 sleep 0.8
 check "25. open one whose toast has ended: its action runs, Omarchy is not asked" "local true empty 0" \
   "$r $([[ -f $sb/ran ]] && echo true || echo false) $(calls_or_empty) $(notifs | jq -r .claimed)"
-stamp=$(now_ms)
-write "$stamp" 12 "Ended and dismissed"
+put k12 "$(now_s)" "Ended and dismissed"
 wait_for '.claimed' 1
-expire "$stamp-12"
+drop k12
 wait_for '.entries[0].live' false
-k=$(key_of "$stamp-12")
+k=$(key_of k12)
 check "26. dismiss one whose toast has ended: only the notch's copy goes" "notch 0 empty" \
   "$(n interactNotification "$k" dismiss) $(notifs | jq -r .claimed) $(calls_or_empty)"
 
 # Through the companion's loaded service.
 : >"$cli"
 t facade true >/dev/null
-stamp=$(now_ms)
-t popup 99 $((stamp - 5)) >/dev/null
-write "$stamp" 13 "Via the service"
-t popup 13 "$stamp" >/dev/null
-t popup 98 $((stamp + 5)) >/dev/null
+t popup k99 >/dev/null
+put k13 "$(now_s)" "Via the service"
+t popup k13 >/dev/null
+t popup k98 >/dev/null
 wait_for '.claimed' 1
 check "27. with the service loaded the report says so" "true" "$(notifs | jq -r .service)"
 n press click >/dev/null; sleep 0.6
-check "28. left click: the service is asked to invoke this toast's own row (index 1 of 3), not Omarchy's IPC" '["invoke 1"] empty 0' \
+check "28. left click: the service is asked to open this toast by its key (one of three on its list), not Omarchy's IPC" '["activate k13"] empty 0' \
   "$(t calls | jq -c .) $(calls_or_empty) $(notifs | jq -r .claimed)"
-expire "$stamp-13"; sleep 0.4
-stamp=$(now_ms)
-write "$stamp" 14 "Dismissed via the service"
-t popup 14 "$stamp" >/dev/null
+drop k13; sleep 0.4
+put k14 "$(now_s)" "Dismissed via the service"
+t popup k14 >/dev/null
 wait_for '.claimed' 1
 sleep 0.4
 n press rightClick >/dev/null; sleep 0.6
-check "29. right click: the service dismisses that row" "invoke 1|dismiss 0 empty" \
+check "29. right click: the service closes that card by its key" "activate k13|close k14 dismissed empty" \
   "$(t calls | jq -r 'join("|")') $(calls_or_empty)"
-expire "$stamp-14"; sleep 0.4
+drop k14; sleep 0.4
 # …and a toast that is not on its list goes the IPC way.
-stamp=$(now_ms)
-write "$stamp" 15 "Not on the list"
+put k15 "$(now_s)" "Not on the list"
 wait_for '.claimed' 1
 sleep 0.4
 n press click >/dev/null; sleep 0.6
-check "30. a toast the service does not list falls back to the IPC target" "-q notifications invokeLast" "$(paste -sd'|' "$cli")"
-expire "$stamp-15"; sleep 0.4
+check "30. a toast the service does not list falls back to the IPC target" "-q notifications invokeLast" "$(cli_calls)"
+drop k15; sleep 0.4
 t facade false >/dev/null
 
 # --- stay mode, three at once -------------------------------------------------------------
 echo; echo "${BOLD}Three at once, staying${RESET}"
 clear_files; sleep 0.6
-a=$(now_ms); write "$a" 21 "First"; wait_for '.claimed' 1
-b=$((a + 10)); write "$b" 22 "Second"; wait_for '.claimed' 2
-c=$((a + 20)); write "$c" 23 "Third"; sleep 1.0
+put k21 "$(now_s)" "First"; wait_for '.claimed' 1
+put k22 "$(now_s)" "Second"; wait_for '.claimed' 2
+put k23 "$(now_s)" "Third"; sleep 1.0
 check "31. the newest is on the notch, the oldest steps back to waiting rather than being dropped" "Third|Second,Third|waiting" \
-  "$(n activities | jq -r '.visible | sort_by(.shownAt) | last | .title')|$(n activities | jq -r '[.visible[].title] | sort | join(",")')|$(state_of "$a-21.json")"
+  "$(n activities | jq -r '.visible | sort_by(.shownAt) | last | .title')|$(n activities | jq -r '[.visible[].title] | sort | join(",")')|$(state_of k21)"
 sleep 11
 check "32. …and nothing is dropped later (the queue would drop a waiting line after ten seconds)" "1 3" \
   "$(notifs | jq -r '[.entries[] | select(.state == "waiting")] | length') $(notifs | jq -r '.entries | length')"
 n press click >/dev/null; sleep 0.6
-check "33. acting on the newest brings the oldest back" "dismissed shown" "$(state_of "$c-23.json") $(state_of "$a-21.json")"
+check "33. acting on the newest brings the oldest back" "dismissed shown" "$(state_of k23) $(state_of k21)"
 clear_files
 
 check "34. no QML errors anywhere in the run" "none" \

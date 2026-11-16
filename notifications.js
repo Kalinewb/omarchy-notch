@@ -1,19 +1,26 @@
 .pragma library
 
-// Reading Omarchy's toast state files, as pure functions.
+// Reading Omarchy's live notification list, as pure functions.
 //
 // The notch is a display surface only: it does not own
 // org.freedesktop.Notifications, does not watch the bus and never closes a
-// notification. Omarchy writes one JSON file per toast into
-// ~/.local/state/omarchy/notifications while it is on screen and moves it to
-// history/ when it expires or is dismissed, so the folder *is* the live set.
+// notification. Omarchy keeps the cards on its screen in one file,
+// ~/.local/state/omarchy/notifications/live.json: a JSON list of rows, oldest
+// first, rewritten whole a moment after a card arrives, changes or leaves. So
+// the file *is* the live set, and a row's `key` names it for as long as it is
+// there. (Omarchy 4.5 and newer; before that it wrote one file per card.)
+//
+// What the file does not hold: a card that asked not to be kept (the
+// "transient" hint), one Do Not Disturb kept off the screen, a card replayed
+// from history, and any picture. A card with a verification code in it is
+// kept only as a placeholder, which the notch leaves to Omarchy's own toast.
 //
 // No QML and no clock: every function takes what it needs, so
 // dev/notifications.sh can drive it directly.
 
-var RETRIES = 3        // reads after the first, for a file caught mid-write
+var RETRIES = 3        // reads after the first, for a file that would not parse
 var RETRY_MS = 50
-var POLL_MS = 2000     // reconcile interval while inotify is watching
+var POLL_MS = 2000     // reconcile interval while the watch is on
 var POLL_ONLY_MS = 500 // …and when polling is all there is
 var OWNER_LIMIT = 4    // claimed at once; the rest wait their turn
 
@@ -33,14 +40,16 @@ function seconds(value) {
 // 0 means "until I act".
 function lifetimeMs(stay, value) { return stay === true ? 0 : seconds(value) * 1000 }
 
-// "<stamp>-<id>.json". Anything else -- history/, images/, .tmp files,
-// dotfiles -- is not a live toast.
-function parseName(name) {
-  var m = /^(\d+)-(\d+)\.json$/.exec(String(name || ""))
-  return m ? { stamp: Number(m[1]), id: Number(m[2]) } : null
-}
+// A row's key, the way Omarchy's Store.js allows one.
+var KEY = /^[A-Za-z0-9_-]{1,120}$/
+var ROWS_LIMIT = 100
+var ROW_CHARS = 16384
 
-function stem(name) { return String(name).replace(/\.json$/, "") }
+// What a placeholder says (Store.js REDACTED_SUMMARY and REDACTED_BODY): the
+// card had a code in it, so only the fact of it was kept.
+function redacted(row) {
+  return !!row && row.summary === "Verification notification" && row.body === "[redacted]"
+}
 
 // Omarchy's cards render Qt rich text, so a summary or body may carry markup.
 // The notch draws PlainText, so the markup has to come out rather than be
@@ -62,26 +71,39 @@ function stripMarkup(value) {
   return out.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").replace(/^ | $/g, "")
 }
 
-// A file caught between open and write is empty or half-written, which is why
-// the caller retries rather than giving up on the first failure.
-function entryFromText(text) {
+// live.json, read defensively: whatever is not a list of keyed objects is no
+// list at all (`ok: false`, so the caller keeps what it had and tries again),
+// an empty file is an empty list, and each row is cut down to what the notch
+// draws. Oldest first, as Omarchy wrote it.
+function parseLive(text) {
   var raw = String(text === undefined || text === null ? "" : text).replace(/^\s+|\s+$/g, "")
-  if (raw === "") return { ok: false }
+  if (raw === "") return { ok: true, rows: [] }
+  if (raw.length > ROWS_LIMIT * ROW_CHARS * 2) return { ok: false, rows: [] }
   var parsed
-  try { parsed = JSON.parse(raw) } catch (e) { return { ok: false } }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false }
-  return {
-    ok: true,
-    entry: {
-      app: String(parsed.app || parsed.appName || ""),
-      summary: String(parsed.summary || ""),
-      body: String(parsed.body || ""),
-      glyph: String(parsed.glyph || parsed.icon || ""),
-      execArgv: String(parsed.execArgv || ""),
-      urgency: Number(parsed.urgency === undefined ? 1 : parsed.urgency),
-      timestamp: Number(parsed.timestamp || 0)
+  try { parsed = JSON.parse(raw) } catch (e) { return { ok: false, rows: [] } }
+  if (!Array.isArray(parsed)) return { ok: false, rows: [] }
+  var rows = [], seen = ({})
+  for (var i = 0; i < parsed.length && rows.length < ROWS_LIMIT; i++) {
+    var p = parsed[i]
+    if (!p || typeof p !== "object" || Array.isArray(p)) continue
+    if (typeof p.key !== "string" || !KEY.test(p.key) || seen[p.key] === true) continue
+    var ts = Number(p.ts)
+    if (!isFinite(ts) || ts <= 0) continue
+    seen[p.key] = true
+    var row = {
+      key: p.key,
+      app: String(p.app || ""),
+      summary: String(p.summary || ""),
+      body: String(p.body || ""),
+      glyph: String(p.glyph || ""),
+      execArgv: String(p.execArgv || ""),
+      urgency: Number(p.urgency === undefined ? 1 : p.urgency),
+      ts: ts
     }
+    row.redacted = redacted(row)
+    rows.push(row)
   }
+  return { ok: true, rows: rows }
 }
 
 // What the activity queue is asked to show.
@@ -91,11 +113,11 @@ function entryFromText(text) {
 // queue never expires it. What ends a copy is the user acting on it, that
 // time, the notification source being switched off, or Omarchy's folder going
 // away -- not Omarchy's own toast ending, which has its own, shorter clock.
-function claimFor(name, entry) {
+function claimFor(key, entry) {
   var e = entry || {}
   var glyph = String(e.glyph || "")
   return {
-    key: "notch.notifications." + stem(name),
+    key: "notch.notifications." + key,
     priority: "transient",
     ttlMs: 0,
     title: stripMarkup(e.summary) || stripMarkup(e.app) || "Notification",

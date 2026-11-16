@@ -9,8 +9,8 @@ import "notch/bridge"
 // dev/notifications-interact.sh can see which calls a click makes:
 //
 //   notifytest facade <true|false>        the companion is loaded / is not
-//   notifytest popup <originalId> <ts>    a row on Omarchy's popup list (newest first)
-//   notifytest calls                      JSON list of "invoke <i>" / "dismiss <i>"
+//   notifytest popup <key>                a card on Omarchy's screen (newest first)
+//   notifytest calls                      JSON list of "activate <key>" / "close <key> <reason>"
 ShellRoot {
   id: harness
   property var notchConfig: JSON.parse(Quickshell.env("NOTCH_HARNESS_CONFIG") || "{}")
@@ -20,16 +20,20 @@ ShellRoot {
 
   QtObject {
     id: fakeService
-    property var popupModel: rows
-    function invokePopupDefault(index) { harness.calls = harness.calls.concat(["invoke " + index]) }
-    function dismissPopup(index) { harness.calls = harness.calls.concat(["dismiss " + index]) }
+    // The three calls Omarchy 4.5's service has that the notch uses.
+    function rowIndexFor(key) {
+      for (var i = 0; i < rows.count; i++) if (rows.get(i).key === key) return i
+      return -1
+    }
+    function activate(key, instant) { harness.calls = harness.calls.concat(["activate " + key]) }
+    function closeToast(key, reason, instant) { harness.calls = harness.calls.concat(["close " + key + " " + reason]) }
   }
 
   QtObject {
     id: fakeFacade
     property var stockItem: fakeService
     readonly property int apiVersion: 1
-    readonly property string version: "1.0.0"
+    readonly property string version: "2.0.0"
   }
 
   IpcHandler {
@@ -43,8 +47,8 @@ ShellRoot {
   IpcHandler {
     target: "notifytest"
     function facade(on: string): string { NotchNotificationsBridge.facade = on === "true" ? fakeFacade : null; return on }
-    function popup(originalId: string, timestamp: string): string {
-      rows.insert(0, { originalId: Number(originalId), timestamp: Number(timestamp) })
+    function popup(key: string): string {
+      rows.insert(0, { key: key })
       return String(rows.count)
     }
     function calls(): string { return JSON.stringify(harness.calls) }

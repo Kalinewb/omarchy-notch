@@ -7,13 +7,14 @@ import "notifications.js" as Notifications
 // Omarchy's toasts, shown in the notch.
 //
 // The notch does not own org.freedesktop.Notifications, never watches the bus,
-// never calls CloseNotification and never touches do-not-disturb. Omarchy
-// writes one JSON file per live toast into ~/.local/state/omarchy/notifications
-// and moves it to history/ when it expires or is dismissed, so watching that
-// folder is how a toast is found: a file appearing claims an activity. Omarchy's
-// own toast still draws as well, unless "Suppress Omarchy's own toast" is on:
-// then the notifications companion (Companion.qml) keeps it off screen while
-// this shows it.
+// never calls CloseNotification and never touches do-not-disturb. Omarchy keeps
+// the cards on its screen in one file, ~/.local/state/omarchy/notifications/
+// live.json, rewritten whole a moment after a card arrives, changes or leaves,
+// so watching that file is how a toast is found: a row appearing claims an
+// activity, a row changing claims it again, a row leaving lets it run out its
+// own time. Omarchy's own toast still draws as well, unless "Suppress Omarchy's
+// own toast" is on: then the notifications companion (Companion.qml) keeps it
+// off screen while this shows it.
 //
 // The notch's copy keeps its own time: it stays until the user acts on it, or
 // closes a number of seconds after it appears (the two settings), whatever
@@ -34,27 +35,32 @@ Item {
     if (!bar || bar.harnessed) return ""
     return (Quickshell.env("HOME") || "") + "/.local/state/omarchy/notifications"
   }
+  readonly property string livePath: dir === "" ? "" : dir + "/live.json"
   readonly property bool enabled: !!bar && bar.notchNotifications && dir !== ""
     && ((!!bar.shell && !bar.harnessed) || forced)
 
-  // When this source came up. A file stamped before it is never read: Omarchy
-  // rewrites restored toasts under their old names at restart, so anything
-  // older is something the user has already seen.
+  // When this source came up. A row stamped before it is never drawn: Omarchy
+  // restores the cards it had on screen when it restarts, and anything older
+  // is something the user has already seen.
   property real startedAt: 0
 
-  // name -> { stamp, state, key, parseAttempts, warned, dismissed, live, data, deadline }
-  // state: reading | shown | queued | declined:<r> | waiting | dismissed
-  //        | closed | dropped | skipped | ignored-old
-  // live: the file is still in Omarchy's folder (its toast has not ended).
-  // data: what was read from it, kept so the copy outlives the file.
+  // key -> { stamp, state, key, drawn, dismissed, live, data, deadline }
+  // The key is the row's own, in Omarchy's file; the stamp is the row's `ts`
+  // (seconds), which changes when Omarchy updates the card in place.
+  // state: shown | queued | declined:<r> | waiting | dismissed | closed
+  //        | dropped | ignored-old | stock
+  // stock: left to Omarchy's own toast (a card with a code in it).
+  // live: the row is still in Omarchy's file (its toast has not ended).
+  // drawn: it has been on the notch, so it may wait for a free line and still
+  //        be worth showing; a card that only ever waited is let go with its row.
+  // data: what the file said, kept so the copy outlives the row.
   // deadline: when the timed copy closes (0 until it is on screen).
   property var entries: ({})
-  property var readQueue: []
-  property string reading: ""
-  // inotify | poll | waiting-dir
-  property string watchMode: "waiting-dir"
-  property int watcherRestarts: 0
-  property real watcherStartedAt: 0
+  // inotify | poll | waiting-file
+  property string watchMode: "waiting-file"
+  // Reads in a row that would not parse, and whether that has been said.
+  property int readFailures: 0
+  property bool warned: false
   // The two settings: stay until acted on, or close after a number of seconds.
   readonly property bool stay: !!bar && bar.notchNotificationStay
   readonly property int lifetimeMs: Notifications.lifetimeMs(stay, bar ? bar.notchNotificationSeconds : Notifications.SECONDS_DEFAULT)
@@ -64,9 +70,12 @@ Item {
     for (var i = 0; i < windows.length; i++) if (windows[i].pointerOnNotch) return true
     return false
   }
-  property bool inotifyMissing: Quickshell.env("NOTCH_NOTIFICATIONS_WATCH") === "poll"
+  // Watching the file is what makes a read prompt; reading it on a timer is what
+  // makes it certain. `poll` asks for the timer alone (a test, or a machine
+  // where the watch will not hold).
+  readonly property bool pollOnly: Quickshell.env("NOTCH_NOTIFICATIONS_WATCH") === "poll"
 
-  function keyFor(name) { return "notch.notifications." + Notifications.stem(name) }
+  function keyFor(name) { return "notch.notifications." + name }
 
   function copyEntries() {
     var out = ({})
@@ -108,7 +117,7 @@ Item {
     if (stay) makeRoom(name)
     var result = bar.platform.claimInternal("notch.notifications", Notifications.claimFor(name, entry))
     // A claim again (the toast was updated in place) starts the clock again.
-    setEntry(name, { state: result, key: keyFor(name), data: entry, deadline: 0 })
+    setEntry(name, { stamp: Number(entry.ts), state: result, key: keyFor(name), data: entry, drawn: result === "shown" || result === "queued", deadline: 0 })
   }
 
   // The queue holds two lines and a third would wait ten seconds and be
@@ -134,35 +143,57 @@ Item {
     var best = "", bestStamp = -1
     for (var name in entries) {
       var e = entries[name]
-      if (e.state !== "waiting" || e.dismissed) continue
+      if (e.state !== "waiting" || e.dismissed || !e.data) continue
       if (e.stamp > bestStamp) { bestStamp = e.stamp; best = name }
     }
-    if (best === "") return
-    // One that was on screen already has what it needs; its file may be gone.
-    if (entries[best].data) claim(best, entries[best].data)
-    else queueRead(best)
+    if (best !== "") claim(best, entries[best].data)
   }
 
-  function changed(name) {
-    var parsed = Notifications.parseName(name)
-    if (!parsed) return
+  // A row, new or changed. A row Omarchy has not touched since the last read is
+  // nothing to do; one it has updated in place (a newer `ts`) is claimed again,
+  // even if the user had dismissed the copy: it says something new.
+  function changed(row) {
+    var name = row.key
     var existing = entries[name]
-    if (existing && existing.dismissed) return
-    if (parsed.stamp < startedAt) { setEntry(name, { stamp: parsed.stamp, state: "ignored-old" }); return }
-    if (!existing) setEntry(name, { stamp: parsed.stamp, state: "reading", parseAttempts: 0, warned: false, dismissed: false, live: true })
-    if (existing && existing.state === "skipped") setEntry(name, { parseAttempts: 0, state: "reading" })
-    if (!existing && claimedCount() >= Notifications.OWNER_LIMIT) { setEntry(name, { state: "waiting" }); return }
-    queueRead(name)
+    if (existing && Number(row.ts) <= existing.stamp + 0.0005) return
+    var base = { stamp: Number(row.ts), key: keyFor(name), data: row, live: true, dismissed: false, deadline: 0 }
+    if (row.ts * 1000 < startedAt) {
+      if (existing && (existing.state === "shown" || existing.state === "queued")) release(name)
+      setEntry(name, merged(base, { state: "ignored-old" }))
+      return
+    }
+    // A card with a code in it is kept in the file only as a placeholder, and
+    // its buttons are Omarchy's: its toast stays.
+    if (row.redacted) {
+      if (existing && (existing.state === "shown" || existing.state === "queued")) release(name)
+      setEntry(name, merged(base, { state: "stock" }))
+      promoteWaiting()
+      return
+    }
+    var onQueue = !!existing && (existing.state === "shown" || existing.state === "queued")
+    if (!onQueue && claimedCount() >= Notifications.OWNER_LIMIT) {
+      setEntry(name, merged(base, { state: "waiting", drawn: !!existing && existing.drawn === true }))
+      return
+    }
+    claim(name, row)
+    setEntry(name, { live: true, dismissed: false })
   }
 
-  // The file left Omarchy's folder: its toast ended, there or here. A copy the
+  function merged(a, b) {
+    var out = ({})
+    for (var k in a) out[k] = a[k]
+    for (var j in b) out[j] = b[j]
+    return out
+  }
+
+  // The row left Omarchy's file: its toast ended, there or here. A copy the
   // notch is showing (or has waiting, having shown it) runs on its own clock and
   // stays as it is -- only its link to Omarchy's toast is gone. Anything else
-  // lets go, and so does everything when `force` says the folder itself went.
+  // lets go, and so does everything when `force` says the file itself went.
   function gone(name, force) {
     var e = entries[name]
     if (e === undefined) return
-    var keeps = force !== true && (e.state === "shown" || e.state === "queued" || (e.state === "waiting" && e.data))
+    var keeps = force !== true && (e.state === "shown" || e.state === "queued" || (e.state === "waiting" && e.drawn === true))
     if (keeps) {
       if (e.live !== false) setEntry(name, { live: false })
       return
@@ -204,8 +235,8 @@ Item {
   // and by Omarchy's own calls rather than a copy of what they do:
   //
   //   - through the notifications companion, when it is loaded, straight into
-  //     Omarchy's real service: its invokePopupDefault / dismissPopup on the row
-  //     for this toast (found by the file's name: timestamp and original id);
+  //     Omarchy's real service: its `activate` / `closeToast` for the row's key
+  //     (the key in live.json is the key of the card on its screen);
   //   - otherwise through Omarchy's `notifications` IPC target, the one its own
   //     keybinds use, which acts on the newest popup (`invokeLast`, `dismissOne`)
   //     or, for a dismissal, one named by its summary;
@@ -215,21 +246,20 @@ Item {
   //     with Omarchy's helper.
   //
   // Answers which way it went: service | ipc | local | notch | no-such-notification.
+  //
+  // The service is only used when it has all three calls; any other Omarchy
+  // goes the IPC way, which is slower to name the card but never wrong.
   readonly property var service: {
     var facade = bar && bar.notificationsCompanion ? bar.notificationsCompanion.facade : null
     var stock = facade ? facade.stockItem : null
-    return stock && stock.popupModel && typeof stock.invokePopupDefault === "function" ? stock : null
+    return stock && typeof stock.activate === "function" && typeof stock.closeToast === "function"
+      && typeof stock.rowIndexFor === "function" ? stock : null
   }
 
-  function popupIndex(name) {
+  // Whether Omarchy's service still has a card for this key on its screen.
+  function inService(name) {
     var svc = service
-    var parsed = Notifications.parseName(name)
-    if (!svc || !parsed) return -1
-    for (var i = 0; i < svc.popupModel.count; i++) {
-      var row = svc.popupModel.get(i)
-      if (row && Number(row.originalId) === parsed.id && Number(row.timestamp) === parsed.stamp) return i
-    }
-    return -1
+    return !!svc && Number(svc.rowIndexFor(name)) >= 0
   }
 
   function newestLive() {
@@ -259,10 +289,9 @@ Item {
     var data = e.data || {}
     var open = how === "open"
     var via = "notch"
-    var index = e.live === false ? -1 : popupIndex(name)
-    if (index >= 0) {
-      if (open) service.invokePopupDefault(index)
-      else service.dismissPopup(index)
+    if (e.live !== false && inService(name)) {
+      if (open) service.activate(name, true)
+      else service.closeToast(name, "dismissed", true)
       via = "service"
     } else if (e.live !== false) {
       var newest = newestLive() === name
@@ -317,156 +346,59 @@ Item {
     onTriggered: source.tick()
   }
 
-  function queueRead(name) {
-    if (readQueue.indexOf(name) !== -1 || reading === name) return
-    var next = readQueue.slice()
-    next.push(name)
-    readQueue = next
-    pumpReads()
+  // --- the file ----------------------------------------------------------------
+  //
+  // live.json is read whole each time: it is a short list that Omarchy replaces
+  // in one step. FileView's watch makes a read prompt; the timer makes it
+  // certain, because a watch can go quiet (a file replaced under it, a dropped
+  // inotify instance) and one missed read must never leave a line up for good.
+  // A file that is not there is not an empty list: it means Omarchy's
+  // notification service is off or has not started, so nothing is live and the
+  // notch lets go rather than hold stale lines.
+  FileView {
+    id: liveFile
+    path: source.enabled ? source.livePath : ""
+    watchChanges: !source.pollOnly
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: source.read(text())
+    onLoadFailed: source.missing()
   }
 
-  function pumpReads() {
-    if (reading !== "" || readQueue.length === 0 || !enabled) return
-    var next = readQueue.slice()
-    var name = next.shift()
-    readQueue = next
-    reading = name
-    reader.command = ["cat", "--", dir + "/" + name]
-    reader.running = true
-  }
-
-  function readFinished(name, text) {
-    reading = ""
-    if (entries[name] === undefined) { pumpReads(); return }
-    // Nothing at all means the file went while this was reading it. An empty
-    // file is never a toast, so there is nothing to retry for.
-    if (String(text).replace(/^\s+|\s+$/g, "") === "") { gone(name); pumpReads(); return }
-    var parsed = Notifications.entryFromText(text)
-    if (parsed.ok) {
-      claim(name, parsed.entry)
-      pumpReads()
+  function read(text) {
+    var parsed = Notifications.parseLive(text)
+    if (!parsed.ok) {
+      // Omarchy replaces the file in one step, so this is not a half-written
+      // file; it is somebody else's. Keep what is on screen, ask again, and say
+      // so once.
+      readFailures++
+      if (readFailures <= Notifications.RETRIES) retryTimer.restart()
+      else if (!warned) {
+        console.warn("kalinewb.notch: skipped unreadable notification file " + livePath + " after " + readFailures + " reads")
+        warned = true
+      }
       return
     }
-    // Caught mid-write: Omarchy writes the file and the watch fires on close,
-    // but a poll can see it earlier than that.
-    var attempts = Number(entries[name].parseAttempts || 0) + 1
-    setEntry(name, { parseAttempts: attempts })
-    if (attempts <= Notifications.RETRIES) {
-      retryTimer.name = name
-      retryTimer.restart()
-    } else {
-      if (!entries[name].warned) {
-        console.warn("kalinewb.notch: skipped unreadable notification " + name + " after " + attempts + " reads")
-        setEntry(name, { warned: true })
-      }
-      setEntry(name, { state: "skipped" })
+    readFailures = 0
+    warned = false
+    if (watchMode === "waiting-file") watchMode = pollOnly ? "poll" : "inotify"
+    var listed = ({})
+    for (var i = 0; i < parsed.rows.length; i++) {
+      listed[parsed.rows[i].key] = true
+      changed(parsed.rows[i])
     }
-    pumpReads()
+    for (var known in entries) if (listed[known] === undefined) gone(known)
+  }
+
+  function missing() {
+    for (var name in entries) gone(name, true)
+    watchMode = "waiting-file"
   }
 
   Timer {
     id: retryTimer
-    property string name: ""
     interval: Notifications.RETRY_MS
-    onTriggered: if (source.enabled && name !== "") source.queueRead(name)
-  }
-
-  Process {
-    id: reader
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: source.readFinished(source.reading, text)
-    }
-  }
-
-  // --- what is in the folder ------------------------------------------------
-  //
-  // The watch can go quiet (a moved folder, a dropped inotify instance), so the
-  // listing is the source of truth and the watch is only what makes it prompt.
-  // `find` failing must never read as "the folder is empty", or one bad listing
-  // would release every live notification. It says so in words instead.
-  Process {
-    id: lister
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: source.listed(text)
-    }
-  }
-
-  function listed(text) {
-    {
-      if (String(text).indexOf("__failed__") !== -1) { dirProbe.running = true; return }
-      var listed = ({})
-      var lines = String(text).split("\n")
-      for (var i = 0; i < lines.length; i++) {
-        var name = lines[i].replace(/^\s+|\s+$/g, "")
-        if (name === "" || !Notifications.parseName(name)) continue
-        listed[name] = true
-        if (source.entries[name] === undefined) source.changed(name)
-      }
-      for (var known in source.entries) if (listed[known] === undefined) source.gone(known)
-    }
-  }
-
-  Process {
-    id: dirProbe
-    command: ["sh", "-c", 'test -d "$1" && echo yes || echo no', "sh", source.dir]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (String(text).indexOf("yes") === 0) {
-          if (source.watchMode === "waiting-dir") {
-            source.watcherRestarts = 0
-            source.watchMode = source.inotifyMissing ? "poll" : "inotify"
-          }
-          return
-        }
-        // The folder is gone: Omarchy's plugin is off, or it has not started
-        // yet. Nothing is live, so let go rather than hold stale lines.
-        for (var name in source.entries) source.gone(name, true)
-        source.watchMode = "waiting-dir"
-      }
-    }
-  }
-
-  Process {
-    id: inotifyProbe
-    command: ["sh", "-c", "command -v inotifywait >/dev/null && echo yes || echo no"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: source.inotifyMissing = String(text).indexOf("yes") !== 0
-        || Quickshell.env("NOTCH_NOTIFICATIONS_WATCH") === "poll"
-    }
-  }
-
-  Process {
-    id: watcher
-    running: source.enabled && source.watchMode === "inotify"
-    command: ["inotifywait", "-m", "-q", "-e", "close_write,moved_to,moved_from,delete", "--format", "%e %f", source.dir]
-    stdout: SplitParser {
-      onRead: function(line) {
-        var text = String(line)
-        var space = text.indexOf(" ")
-        if (space === -1) return
-        var flags = text.slice(0, space).split(",")
-        var name = text.slice(space + 1)
-        if (flags.indexOf("ISDIR") !== -1) return
-        var first = flags[0]
-        if (first === "CLOSE_WRITE" || first === "MOVED_TO") source.changed(name)
-        else if (first === "DELETE" || first === "MOVED_FROM") source.gone(name)
-      }
-    }
-    onRunningChanged: {
-      if (running) { source.watcherStartedAt = Date.now(); return }
-      if (!source.enabled || source.watchMode !== "inotify") return
-      // A watcher that ran a good while and then died is a fresh problem, not
-      // a folder that was never there: give it its restarts back.
-      if (Date.now() - source.watcherStartedAt > 60000) source.watcherRestarts = 0
-      source.watcherRestarts++
-      if (source.watcherRestarts > 5) { source.watchMode = "poll"; return }
-      source.watchMode = "waiting-dir"
-      dirProbe.running = true
-    }
+    onTriggered: if (source.enabled) liveFile.reload()
   }
 
   Timer {
@@ -474,18 +406,7 @@ Item {
     running: source.enabled
     repeat: true
     interval: source.watchMode === "inotify" ? Notifications.POLL_MS : Notifications.POLL_ONLY_MS
-    triggeredOnStart: true
-    onTriggered: {
-      if (source.watchMode === "waiting-dir") { dirProbe.running = true; return }
-      if (!lister.running) {
-        lister.command = ["sh", "-c",
-          'find "$1" -maxdepth 1 -type f -name "*.json" -printf "%f\\n" 2>/dev/null || echo __failed__',
-          "sh", source.dir]
-        lister.running = true
-      }
-      // A watcher that dropped to polling gets a chance to come back.
-      if (source.watchMode === "poll" && !source.inotifyMissing) source.watchMode = "inotify"
-    }
+    onTriggered: liveFile.reload()
   }
 
   // Turning it off lets go of everything at once: the setting is the whole of
@@ -493,17 +414,14 @@ Item {
   onEnabledChanged: {
     if (enabled) {
       startedAt = Date.now()
-      watcherRestarts = 0
-      watchMode = "waiting-dir"
-      inotifyProbe.running = true
-      dirProbe.running = true
+      readFailures = 0
+      warned = false
+      watchMode = "waiting-file"
       return
     }
     if (bar && bar.platform) bar.platform.releaseOwner("notch.notifications")
     entries = ({})
-    readQueue = []
-    reading = ""
-    watchMode = "waiting-dir"
+    watchMode = "waiting-file"
   }
 
   // Bar-off declines every claim, so nothing is lost when the bar comes back.
@@ -514,8 +432,8 @@ Item {
       if (!source.enabled || source.bar.barHidden) return
       for (var name in source.entries) {
         var e = source.entries[name]
-        if (e.dismissed || e.state === "dropped" || e.state === "skipped" || e.state === "ignored-old") continue
-        source.queueRead(name)
+        if (e.dismissed || !e.data || e.state === "dropped" || e.state === "ignored-old" || e.state === "stock") continue
+        source.claim(name, e.data)
       }
     }
   }
@@ -525,7 +443,7 @@ Item {
     for (var name in entries) {
       var e = entries[name]
       list.push({ name: name, stamp: e.stamp, state: e.state, key: keyFor(name),
-                  attempts: Number(e.parseAttempts || 0), dismissed: e.dismissed === true,
+                  dismissed: e.dismissed === true,
                   live: e.live !== false, deadline: Number(e.deadline || 0) })
     }
     list.sort(function(a, b) { return a.stamp - b.stamp })

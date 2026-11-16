@@ -6,11 +6,12 @@
 #
 # The notch is a display surface only. It does not own
 # org.freedesktop.Notifications, never watches the bus and never closes a
-# notification: Omarchy writes one JSON file per live toast into a folder, and
-# the notch watches that folder. So this drives the real thing -- a throwaway
-# notch, a sandbox folder, and files written and moved the way Omarchy's own
-# service writes and moves them (verified against a real file: the fields are
-# app, summary, body, glyph, urgency, timestamp).
+# notification: Omarchy keeps the cards on its screen in one file, live.json,
+# and the notch watches that file. So this drives the real thing -- a throwaway
+# notch, a sandbox folder, and a live.json rewritten whole and replaced in one
+# step the way Omarchy's own service writes it (rows as Omarchy 4.5's Store.js
+# persistable() writes them: key, originalId, app, summary, body, glyph,
+# execArgv, urgency, ts in seconds, ...).
 #
 # Nothing here touches the user's own notifications folder: the source only
 # reads $NOTCH_NOTIFICATIONS_DIR here, and a test notch is refused the real one.
@@ -34,8 +35,10 @@ qs_pid=""
 cleanup() { [[ -n $qs_pid ]] && kill "$qs_pid" 2>/dev/null; rm -rf "$sb"; }
 trap cleanup EXIT
 
-root="$sb/root"; dir="$sb/notifications"
-mkdir -p "$root" "$dir/history"
+root="$sb/root"; dir="$sb/notifications"; live="$dir/live.json"
+mkdir -p "$root" "$dir"
+# Omarchy makes the file, empty, before it writes anything to it.
+: >"$live"
 ln -s "$SHELL_PATH/shell/Commons" "$root/Commons"
 ln -s "$SHELL_PATH/shell/Ui" "$root/Ui"
 ln -s "$SHELL_PATH/shell/services" "$root/services"
@@ -45,8 +48,8 @@ cp "$REPO/dev/harness/shell.qml" "$root/shell.qml"
 n() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
 notifs() { n notifications; }
 state_of() { notifs | jq -r --arg n "$1" '.entries[] | select(.name == $n) | .state'; }
-# Wait for a condition rather than sleeping a guessed amount: the watcher is a
-# real process and its timing is the machine's, not ours.
+# Wait for a condition rather than sleeping a guessed amount: the watch is a
+# real one and its timing is the machine's, not ours.
 wait_for() { # wait_for <jq filter over `notifications`> <expected> [tries]
   local tries=${3:-40} got
   for _ in $(seq 1 "$tries"); do
@@ -57,19 +60,26 @@ wait_for() { # wait_for <jq filter over `notifications`> <expected> [tries]
   return 1
 }
 
-# Omarchy writes the file, then the watch fires on close. Writing to a .tmp and
-# moving it is how a half-written file is avoided; write() does the same.
-write() { # write <stamp> <id> <summary> [body] [urgency]
-  local f="$dir/$1-$2.json"
-  jq -nc --argjson id "$2" --arg app "test" --arg summary "$3" --arg body "${4:-}" \
-     --argjson urgency "${5:-1}" --argjson ts "$1" \
-     '{id: $id, originalId: $id, app: $app, appIcon: "", summary: $summary, body: $body,
-       image: "", glyph: "", execArgv: "", urgency: $urgency, expireTimeout: 0, timestamp: $ts}' \
-     >"$f.tmp"
-  mv "$f.tmp" "$f"
+now_s() { date +%s.%3N; }
+ago_s() { awk -v n="$(now_s)" -v a="$1" 'BEGIN { printf "%.3f", n - a }'; }
+
+# Omarchy rewrites the whole file and replaces it in one step (a temporary file,
+# then a rename), so a reader never sees half of it. put() and drop() do the
+# same to the row list: oldest first, a row for a key already there replaced in
+# place.
+replace() { jq -c "$@" <"$live" >"$live.tmp" && mv "$live.tmp" "$live"; }
+# An empty file, and one that will not parse, are no rows.
+rows() { local r; r=$(jq -c . "$live" 2>/dev/null); echo "${r:-[]}"; }
+put() { # put <key> <ts> <summary> [body] [urgency] [execArgv]
+  rows | jq -c --arg key "$1" --argjson ts "$2" --arg summary "$3" --arg body "${4:-}" \
+     --argjson urgency "${5:-1}" --arg exec "${6:-}" \
+     '{key: $key, originalId: 1, senderPid: 0, execArgv: $exec, execActions: "", glyph: "", app: "test", appIcon: "",
+       summary: $summary, body: $body, rawBody: "", source: "", groupKey: "app:test", urgency: $urgency,
+       expireTimeout: 0, duration: 8000, ts: $ts} as $r
+     | (map(.key) | index($key)) as $i | if $i == null then . + [$r] else .[$i] = $r end' >"$live.tmp"
+  mv "$live.tmp" "$live"
 }
-expire() { mv "$dir/$1.json" "$dir/history/$1.json"; }   # what Omarchy does when a toast ends
-now_ms() { date +%s%3N; }
+drop() { rows | jq -c --arg key "$1" 'map(select(.key != $key))' >"$live.tmp"; mv "$live.tmp" "$live"; }
 
 start() { # start [extra notch config json]
   NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 \
@@ -85,21 +95,20 @@ start() { # start [extra notch config json]
 # arrives is a hang, not a failure.
 stop() { kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""; }
 
-echo "${BOLD}Omarchy's notifications in the notch${RESET}  ${DIM}$dir${RESET}"
+echo "${BOLD}Omarchy's notifications in the notch${RESET}  ${DIM}$live${RESET}"
 
 start '{"batteryPeek":false,"notificationSeconds":3}'
 check "1. the source is on, watching the sandbox and nothing else" "true true" \
   "$(notifs | jq -r --arg d "$dir" '"\(.enabled) \(.dir == $d)"')"
-check "2. it watches rather than polls when inotifywait is there" "inotify" "$(notifs | jq -r .watch)"
+check "2. it watches rather than polls when the file is there" "inotify" "$(wait_for .watch inotify; notifs | jq -r .watch)"
 check "3. nothing is claimed before anything arrives" "0 compact" \
   "$(notifs | jq -r .claimed) $(n geometry | jq -r .state)"
 
 # --- a toast arrives ------------------------------------------------------------
-stamp=$(now_ms)
-write "$stamp" 1 "Time to recharge!" "Battery is down to 10%"
+put n1 "$(now_s)" "Time to recharge!" "Battery is down to 10%"
 wait_for '.claimed' 1
 g=$(n geometry)
-check "4. the file claims an activity, shown" "shown" "$(state_of "$stamp-1.json")"
+check "4. the row claims an activity, shown" "shown" "$(state_of n1)"
 check "5. the notch is showing it" "activity" "$(jq -r .state <<<"$g")"
 # It grows sideways for the title and DOWN for the body -- one elided row was a
 # notification you could watch arrive and could not read. Sampled once it has
@@ -120,150 +129,180 @@ check "7. the summary is the title and the body the detail" "Time to recharge! B
   "$(n activities | jq -r '.visible[0] | "\(.title) \(.detail)"')"
 check "8. it is the notch's own owner, at transient priority" "notch.notifications transient" \
   "$(n activities | jq -r '.visible[0] | "\(.owner) \(.priority)"')"
+check "8a. the companion is told it is drawn: this version of the card, not an update of it" "true false" \
+  "$(notifs | jq -r '.entries[0] | "\(.drawn) \(.drawnNext)"')"
 
 # --- it ends on the notch's own clock ---------------------------------------------
-# (3 s here, the setting; the file leaving is Omarchy's toast ending, which the
+# (3 s here, the setting; the row leaving is Omarchy's toast ending, which the
 # copy outlives -- dev/notifications-interact.sh has that, with the clock off.)
-expire "$stamp-1"
+drop n1
 wait_for '.claimed' 0 60
 check "9. it closes by itself, and the notch goes back to its resting size" "0 compact 180" \
   "$(notifs | jq -r .claimed) $(n geometry | jq -r '"\(.state) \(.target.width)"')"
 check "10. …and it is forgotten, not kept as a dead entry" "0" "$(notifs | jq -r '.entries | length')"
 
 # --- markup, which Omarchy's cards render and the notch must not ------------------
-stamp=$(now_ms)
-write "$stamp" 2 "<b>Bold</b> &amp; <i>italic" "line one
+put n2 "$(now_s)" "<b>Bold</b> &amp; <i>italic" "line one
 line two"
 wait_for '.claimed' 1
 check "11. markup is stripped and entities decoded, not drawn" "Bold & italic" \
   "$(n activities | jq -r '.visible[0].title')"
 check "12. newlines become spaces: one line, not a torn row" "line one line two" \
   "$(n activities | jq -r '.visible[0].detail')"
-expire "$stamp-2"; wait_for '.claimed' 0
+drop n2; wait_for '.claimed' 0 60
 
-# --- a file caught mid-write ------------------------------------------------------
-stamp=$(now_ms)
-printf '{"id":3,"summary":"half' >"$dir/$stamp-3.json"
-sleep 0.9
-check "13. an unparseable file is retried and then skipped, not claimed" "skipped 0" \
-  "$(state_of "$stamp-3.json") $(notifs | jq -r .claimed)"
-check "14. …and it said so once, naming the file" "1" \
-  "$(grep -ac "skipped unreadable notification $stamp-3.json" "$sb/qs.log")"
-# Finishing the write is a CLOSE_WRITE, and the notch tries again.
-write "$stamp" 3 "Finished after all"
+# --- a file that will not parse -----------------------------------------------------
+#
+# Omarchy replaces the file in one step, so this is somebody else's file. What is
+# on screen stays on screen.
+put n3 "$(now_s)" "Still here"
 wait_for '.claimed' 1
-check "15. a file that finishes being written is picked up on the next close" "shown Finished after all" \
-  "$(state_of "$stamp-3.json") $(n activities | jq -r '.visible[0].title')"
-expire "$stamp-3"; wait_for '.claimed' 0
+printf '[{"key":"n3","summ' >"$live"
+sleep 1.2
+check "13. a file that will not parse is read again and then left alone: what was shown is kept" "1 shown" \
+  "$(notifs | jq -r .claimed) $(state_of n3)"
+check "14. …and it said so once, naming the file" "1" \
+  "$(grep -ac "skipped unreadable notification file $live" "$sb/qs.log")"
+# Putting a whole file back is a change, and the notch reads it again.
+put n3 "$(now_s)" "Finished after all"
+wait_for '.entries[0].name' n3
+check "15. a file that is whole again is picked up, and the card it names is updated, not doubled" "1 Finished after all" \
+  "$(wait_for '.claimed' 1; notifs | jq -r .claimed) $(n activities | jq -r '.visible[0].title')"
+drop n3; wait_for '.claimed' 0 60
 
 # --- what predates the notch ------------------------------------------------------
 #
-# Omarchy rewrites restored toasts under their old names at restart, so the name's
-# stamp decides, not the mtime: otherwise every shell restart replays old toasts.
-old=$(( $(now_ms) - 600000 ))
-write "$old" 4 "From before this notch started"
-# Wait for the watcher to have seen it and decided, rather than for a guessed
+# Omarchy restores the cards it had on screen when it restarts, with their old
+# times, so a row's `ts` decides, not when the notch happened to look.
+put n4 "$(ago_s 600)" "From before this notch started"
+# Wait for the read to have seen it and decided, rather than for a guessed
 # second: an entry that has not been looked at yet reads as no entry at all,
 # which is indistinguishable here from one that was read and ignored.
-for _ in $(seq 1 40); do [[ -n $(state_of "$old-4.json") ]] && break; sleep 0.1; done
-check "16. a file stamped before the notch started is ignored, never read" "ignored-old 0" \
-  "$(state_of "$old-4.json") $(notifs | jq -r .claimed)"
-rm -f "$dir/$old-4.json"
+for _ in $(seq 1 40); do [[ -n $(state_of n4) ]] && break; sleep 0.1; done
+check "16. a row stamped before the notch started is ignored, never drawn" "ignored-old 0 false" \
+  "$(state_of n4) $(notifs | jq -r .claimed) $(notifs | jq -r '.entries[0].drawn')"
+drop n4
 
 # --- dismissing -------------------------------------------------------------------
-stamp=$(now_ms)
-write "$stamp" 5 "Dismiss me"
+put n5 "$(now_s)" "Dismiss me"
 wait_for '.claimed' 1
-key=$(notifs | jq -r --arg n "$stamp-5.json" '.entries[] | select(.name == $n) | .key')
+key=$(notifs | jq -r '.entries[] | select(.name == "n5") | .key')
 check "17. dismissing clears it from the notch" "dismissed 0 compact" \
   "$(n dismissNotification "$key") $(sleep 0.5; notifs | jq -r .claimed) $(n geometry | jq -r .state)"
-check "18. …and the file is left exactly as it was: nothing written, nothing told to Omarchy" "true dismissed" \
-  "$([[ -f $dir/$stamp-5.json ]] && echo true || echo false) $(state_of "$stamp-5.json")"
-check "19. …and it does not come back while its file stays" "0" \
-  "$(sleep 2.2; notifs | jq -r .claimed)"
-expire "$stamp-5"
+check "18. …and the file is left exactly as it was: nothing written, nothing told to Omarchy" "1 dismissed" \
+  "$(rows | jq length) $(state_of n5)"
+check "19. …and it does not come back while its row stays as it was" "0 dismissed" \
+  "$(sleep 2.2; notifs | jq -r .claimed) $(state_of n5)"
+# A card Omarchy updates in place says something new, as its own toast does.
+put n5 "$(now_s)" "Dismissed, then changed"
+wait_for '.claimed' 1
+check "19a. …but an update to that card brings it back, with its new words" "1 Dismissed, then changed" \
+  "$(notifs | jq -r .claimed) $(n activities | jq -r '.visible[0].title')"
+drop n5; wait_for '.claimed' 0 60
+
+# --- updated in place ---------------------------------------------------------------
+t1=$(now_s)
+put n6 "$t1" "First words"
+wait_for '.claimed' 1
+sleep 0.3
+t2=$(now_s)
+put n6 "$t2" "Second words"
+for _ in $(seq 1 40); do [[ $(n activities | jq -r '.visible[0].title') == "Second words" ]] && break; sleep 0.1; done
+check "20. a card updated in place is the same line with its new words, not a second one" "1 Second words 1" \
+  "$(notifs | jq -r .claimed) $(n activities | jq -r '.visible[0].title') $(notifs | jq -r '.entries | length')"
+check "20a. …and the companion is told the new version is drawn too" "true" "$(notifs | jq -r '.entries[0].drawn')"
+drop n6; wait_for '.claimed' 0 60
+
+# --- a card with a code in it -------------------------------------------------------
+#
+# Omarchy keeps such a card in the file only as a placeholder. The notch leaves
+# it to Omarchy's own toast, which has the button for the code.
+put n7 "$(now_s)" "Verification notification" "[redacted]"
+for _ in $(seq 1 40); do [[ -n $(state_of n7) ]] && break; sleep 0.1; done
+check "21. a placeholder is left to Omarchy's toast: not drawn, not claimed, and the companion told so" "stock 0 false" \
+  "$(state_of n7) $(notifs | jq -r .claimed) $(notifs | jq -r '.entries[0].drawn')"
+drop n7
+wait_for '.entries | length' 0
+check "21a. …and forgotten with its row" "0" "$(notifs | jq -r '.entries | length')"
 
 # --- more at once than the notch will hold -----------------------------------------
-base=$(now_ms)
-for i in 1 2 3 4 5 6; do write $((base + i)) "1$i" "Burst $i"; done
+for i in 1 2 3 4 5 6; do put "b$i" "$(now_s)" "Burst $i"; sleep 0.02; done
 sleep 1.5
 claimed=$(notifs | jq -r '[.entries[] | select(.state == "shown" or .state == "queued")] | length')
 waiting=$(notifs | jq -r '[.entries[] | select(.state == "waiting")] | length')
-check "20. a burst is capped at the owner limit, the rest wait rather than flood the queue" "4 2" \
+check "22. a burst is capped at the owner limit, the rest wait rather than flood the queue" "4 2" \
   "$claimed $waiting"
 # The queue holds two at once and the notch draws one of them (Bar.qml
 # activityLine): sideways placement has no room for a second line.
-check "21. …the queue holds at most its two, and the notch stays one row tall" "true 32" \
+check "23. …the queue holds at most its two, and the notch stays one row tall" "true 32" \
   "$(n activities | jq -r '.visible | length <= 2') $(n geometry | jq -r '.target.height')"
-for i in 1 2 3 4 5 6; do expire "$((base + i))-1$i"; done
-wait_for '.claimed' 0
-check "22. they all go when their files do" "0 0" \
+check "23a. …the ones still waiting are not drawn, so Omarchy's toast stays for them" "4 2" \
+  "$(notifs | jq -r '[.entries[] | select(.drawn)] | length') $(notifs | jq -r '[.entries[] | select(.drawn | not)] | length')"
+echo '[]' >"$live.tmp"; mv "$live.tmp" "$live"
+wait_for '.claimed' 0 80
+check "24. they all go when their rows do, and the ones that waited never come up late" "0 0" \
   "$(notifs | jq -r '.entries | length') $(notifs | jq -r .claimed)"
 
-# --- the folder going away ----------------------------------------------------------
-stamp=$(now_ms)
-write "$stamp" 7 "Before the folder goes"
+# --- the file going away ----------------------------------------------------------------
+put n8 "$(now_s)" "Before the file goes"
 wait_for '.claimed' 1
-mv "$dir" "$sb/moved"
-for _ in $(seq 1 40); do [[ $(notifs | jq -r .watch) == "waiting-dir" ]] && break; sleep 0.1; done
-check "23. the folder disappearing releases everything rather than holding stale lines" "waiting-dir 0 compact" \
+mv "$live" "$sb/moved.json"
+for _ in $(seq 1 40); do [[ $(notifs | jq -r .watch) == "waiting-file" ]] && break; sleep 0.1; done
+check "25. the file disappearing releases everything rather than holding stale lines" "waiting-file 0 compact" \
   "$(notifs | jq -r .watch) $(notifs | jq -r .claimed) $(n geometry | jq -r .state)"
-mv "$sb/moved" "$dir"
+mv "$sb/moved.json" "$live"
 for _ in $(seq 1 60); do [[ $(notifs | jq -r .watch) == "inotify" ]] && break; sleep 0.1; done
-check "24. …and it picks the folder back up by itself" "inotify" "$(notifs | jq -r .watch)"
-expire "$stamp-7"; wait_for '.claimed' 0
+check "26. …and it picks the file back up by itself" "inotify" "$(notifs | jq -r .watch)"
+drop n8; wait_for '.claimed' 0
 
 # --- the setting is the whole of the user's part --------------------------------------
-stamp=$(now_ms)
-write "$stamp" 8 "Switched off under it"
+put n9 "$(now_s)" "Switched off under it"
 wait_for '.claimed' 1
 quickshell ipc -p "$root" call harness setNotch '{"batteryPeek":false,"notifications":false}' >/dev/null 2>&1
 sleep 0.8
-check "25. switching it off lets go at once and leaves nothing behind" "false 0 0 compact" \
+check "27. switching it off lets go at once and leaves nothing behind" "false 0 0 compact" \
   "$(notifs | jq -r .enabled) $(notifs | jq -r .claimed) $(notifs | jq -r '.entries | length') $(n geometry | jq -r .state)"
 stop
 
-# --- polling, for a machine without inotifywait -----------------------------------------
-rm -f "$dir"/*.json
+# --- polling, for a machine where the watch will not hold -------------------------------
+echo '[]' >"$live"
 NOTCH_NOTIFICATIONS_WATCH=poll start '{"batteryPeek":false,"notificationSeconds":3}'
-check "26. told to poll, it polls" "poll" "$(notifs | jq -r .watch)"
-stamp=$(now_ms)
-write "$stamp" 9 "Found by polling"
+check "28. told to poll, it polls" "poll" "$(wait_for .watch poll; notifs | jq -r .watch)"
+put p1 "$(now_s)" "Found by polling"
 wait_for '.claimed' 1 60
-check "27. …and finds a toast anyway" "shown Found by polling" \
-  "$(state_of "$stamp-9.json") $(n activities | jq -r '.visible[0].title')"
-expire "$stamp-9"
+check "29. …and finds a toast anyway" "shown Found by polling" \
+  "$(state_of p1) $(n activities | jq -r '.visible[0].title')"
+drop p1
 wait_for '.claimed' 0 60
-check "28. …and lets go of it anyway" "0" "$(notifs | jq -r .claimed)"
+check "30. …and lets go of it anyway" "0" "$(notifs | jq -r .claimed)"
 stop
 
 # --- a notification must never be silently missed ----------------------------------------
-rm -f "$dir"/*.json
+echo '[]' >"$live"
 start '{"batteryPeek":false,"autoHide":true,"collapseDelay":0,"notificationSeconds":3}'
-check "29. with auto-hide on, the notch is tucked into the edge" "true hidden" \
+check "31. with auto-hide on, the notch is tucked into the edge" "true hidden" \
   "$(n geometry | jq -r '.autoHide.on') $(n geometry | jq -r .state)"
-stamp=$(now_ms)
-write "$stamp" 10 "Arrived while tucked away"
+put a1 "$(now_s)" "Arrived while tucked away"
 wait_for '.claimed' 1
-check "30. a toast arriving brings it back out rather than being missed" "activity false" \
+check "32. a toast arriving brings it back out rather than being missed" "activity false" \
   "$(n geometry | jq -r .state) $(n geometry | jq -r '.autoHide.hidden')"
-expire "$stamp-10"
+drop a1
 wait_for '.claimed' 0
-check "31. …and it tucks away again once the toast ends" "hidden true" \
+check "33. …and it tucks away again once the toast ends" "hidden true" \
   "$(sleep 0.8; n geometry | jq -r .state) $(n geometry | jq -r '.autoHide.hidden')"
 stop
 
 # --- the promise itself -------------------------------------------------------------------
 # Comments in those files say what the notch does not do, so only code counts.
-check "32. no D-Bus, no notification server, no closing, no do-not-disturb" "0" \
+check "34. no D-Bus, no notification server, no closing, no do-not-disturb" "0" \
   "$(grep -vE "^\s*(//|\*)" "$REPO/NotchNotifications.qml" "$REPO/notifications.js" \
       | grep -cE "NotificationServer|CloseNotification|org\.freedesktop\.Notifications|DBus|doNotDisturb")"
 # What a click does (open, dismiss) is Omarchy's, dev/notifications-interact.sh;
 # what is drawn is still text.
-check "33. no image or icon is read: text only" "0" \
-  "$(grep -cE "appIcon|\bimage\b" "$REPO/NotchNotifications.qml" "$REPO/notifications.js" \
-      | awk -F: '{s+=$2} END {print s+0}')"
-check "34. no QML errors anywhere in the run" "none" \
+check "35. no image or icon is read: text only" "0" \
+  "$(grep -vE "^\s*(//|\*)" "$REPO/NotchNotifications.qml" "$REPO/notifications.js" \
+      | grep -cE "appIcon|\bimage\b")"
+check "36. no QML errors anywhere in the run" "none" \
   "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" || echo none)"
 
 echo

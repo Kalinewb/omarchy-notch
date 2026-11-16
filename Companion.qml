@@ -52,8 +52,10 @@ Item {
   property var bridge: null
   property QtObject api: null
 
-  // The notch's own copy of the companion.
-  readonly property string version: "1.0.0"
+  // The notch's own copy of the companion. Each companion has its own number;
+  // Bar.qml sets this one per companion where it differs (the notifications
+  // companion is 2.0.0: Omarchy 4.5 and newer).
+  property string version: "1.0.0"
   readonly property bool bridged: !!bridge && bridge.target === api
   readonly property var facade: bridge ? bridge.facade : null
   readonly property string facadeRoute: facade ? String(facade.route || "") : ""

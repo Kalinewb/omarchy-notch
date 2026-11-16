@@ -10,12 +10,13 @@ import QtQuick
 // URL; both files resolve this same qmldir, so both see this one object.
 //
 // `target` is the notifications Companion's api (Bar.qml): whether the notch
-// is taking Omarchy's toasts right now, since when, and whether it has drawn a
-// given toast (`shows(originalId, timestamp)`). Nothing else.
+// is taking Omarchy's toasts right now, and whether it has drawn a given toast
+// (`shows(key, ts)`: the card's key and `ts` in Omarchy's live.json). Nothing
+// else.
 QtObject {
   // Bumped when that api's shape changes. The companion treats a
   // mismatch as "no notch" and leaves Omarchy's toast on screen.
-  readonly property int apiVersion: 1
+  readonly property int apiVersion: 2
 
   // The notifications Companion's api (Bar.qml), while a notch is running here.
   property var target: null

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "acme.pages",
+  "name": "Acme Pages",
+  "version": "1.0.0",
+  "description": "A panel with pages of its own, for dev/back.sh.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "surface": "SurfaceIntegration.qml"
+  },
+  "surface": {
+    "contract": 1
+  }
+}

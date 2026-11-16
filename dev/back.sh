@@ -10,6 +10,9 @@
 # 2. The logic, on a throwaway notch over IPC: when the strip is offered, what
 #    one press does at each depth, and that the menu goes up one level before it
 #    leaves. `notch back` is the call the strip makes.
+# 3. A plugin's panel with pages of its own (dev/fixtures/back): the first
+#    press goes back inside it, the one at its home closes it, and a panel with
+#    no such members is closed at once, as before.
 
 set -uo pipefail
 
@@ -92,6 +95,85 @@ check "…the second goes back to the settings" "back true" "$(ipc back) $(settl
 ipc collapse >/dev/null; settle
 
 check "no QML errors in the run" "none" "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs.log" || echo none)"
+
+kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""
+
+# --- 3. a plugin's panel with pages of its own ------------------------------------------
+
+echo; echo "${BOLD}A plugin's panel with pages of its own${RESET}  ${DIM}dev/fixtures/back, SURFACE-HOSTING.md section 4${RESET}"
+plugins="$work/plugins"; mkdir -p "$plugins" "$work/state" "$work/markers" "$work/bin"
+cp -r "$REPO/dev/fixtures/back/plugins/acme.pages" "$plugins/acme.pages"
+cp -r "$REPO/dev/fixtures/platform/plugins/acme.demo" "$plugins/acme.demo"
+root2="$work/root2"; mkdir -p "$root2"
+ln -s "$SHELL_PATH/shell/Commons" "$root2/Commons"
+ln -s "$SHELL_PATH/shell/Ui" "$root2/Ui"
+ln -s "$SHELL_PATH/shell/services" "$root2/services"
+ln -s "$REPO" "$root2/notch"
+cp "$REPO/dev/harness/platform-shell.qml" "$root2/shell.qml"
+printf 'import QtQuick\nimport qs.Commons\nimport qs.Ui\nItem { }\n' >"$root2/Probe.qml"
+printf '#!/bin/bash\necho "$*" >> "%s/omarchy-shell.log"\necho "Target not found." >&2\nexit 1\n' "$work" >"$work/bin/omarchy-shell"
+chmod +x "$work/bin/omarchy-shell"
+ipc() { quickshell ipc -p "$root2" call notch "$@" 2>/dev/null; }
+rep() { ipc backReport | jq -r '"\(.offered) \(.depth) \(.panel) [\(.inner)]"'; }
+pages() { grep -a 'PAGES ' "$work/qs2.log" | tail -n 1 | sed 's/.*PAGES //'; }
+
+env PATH="$work/bin:$PATH" NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 \
+  NOTCH_FORCE_PLATFORM=1 NOTCH_PLUGINS_DIR="$plugins" NOTCH_PLATFORM_ENABLED="*" \
+  NOTCH_PLATFORM_STATE_DIR="$work/state" NOTCH_FIXTURE_MARKER_DIR="$work/markers" \
+  NOTCH_PLATFORM_WIDGETS='{}' NOTCH_HARNESS_CONFIG='{"batteryPeek":false}' \
+  quickshell -p "$root2" -n >"$work/qs2.log" 2>&1 &
+qs_pid=$!
+for _ in $(seq 1 60); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
+for _ in $(seq 1 60); do sleep 0.1; [[ $(ipc integrations | jq -r '.scannedAt > 0') == true ]] && break; done
+sleep 0.5
+check "both fixture panels are accepted" "acme.demo,acme.pages" \
+  "$(ipc integrations | jq -r '[.list[] | select(.accepted) | .id] | join(",")')"
+check "the notch says it can ask a panel to go back (the feature word)" "true" \
+  "$(ipc integrations | jq -r '.features | index("panelBack") != null')"
+
+# The pages, three deep.
+check "opened three pages deep" "opened" "$(ipc panel acme.pages deep:2)"; settle
+check "…the panel is on its last page" "home/p1/p2" "$(pages)"
+check "the strip is offered, and the report names the panel that will take the press" "true 0 true [acme.pages]" "$(rep)"
+check "press 1 goes back one page inside the panel and leaves the notch open" "inside home/p1 true" \
+  "$(ipc back) $(settle; pages) $(ipc geometry | jq -r .integration.open)"
+check "press 2 goes back to the home page, still open" "inside home true" \
+  "$(ipc back) $(settle; pages) $(ipc geometry | jq -r .integration.open)"
+check "at the home the panel has nothing to give: not named in the report" "true 0 true []" "$(rep)"
+check "press 3 closes the notch's panel" "closed false" "$(ipc back) $(settle; ipc geometry | jq -r .integration.open)"
+
+# The same panel at its home from the start.
+ipc panel acme.pages main >/dev/null; settle
+check "opened at the home: the first press closes, as before" "closed false" "$(ipc back) $(settle; ipc geometry | jq -r .integration.open)"
+
+# The panel's pages come before the notch's own history. (A panel opened over
+# another one is the way a step lands behind it; the open functions that clear
+# the page they replace first, openIntegration over the settings among them,
+# push nothing -- that is the notch's own, and not what is measured here.)
+ipc panel acme.demo main >/dev/null; settle
+ipc panel acme.pages deep:1 >/dev/null; settle
+check "a panel opened over another: a page inside it and one step behind it" "true 1 true [acme.pages] home/p1" "$(rep) $(pages)"
+check "press 1 goes back inside the panel, the notch's history untouched" "inside home acme.pages 1" \
+  "$(ipc back) $(settle; pages) $(ipc geometry | jq -r .integration.id) $(rep | cut -d' ' -f2)"
+check "press 2 goes back to the panel under it, as it always did" "back acme.demo 0" \
+  "$(ipc back) $(settle; ipc geometry | jq -r .integration.id) $(rep | cut -d' ' -f2)"
+check "press 3 closes them" "closed false" "$(ipc back) $(settle; ipc geometry | jq -r .integration.open)"
+
+# A panel that cannot say whether it moved, or that fails, never traps the press.
+ipc panel acme.pages mute:2 >/dev/null; settle
+check "a panel that answers nothing: its page moved, and the press is not claimed (the notch closes)" "closed home/p1 false" \
+  "$(ipc back) $(settle; pages) $(ipc geometry | jq -r .integration.open)"
+ipc panel acme.pages raises:2 >/dev/null; settle
+check "a panel whose goBackInside throws: the press still closes the notch" "closed false" \
+  "$(ipc back) $(settle; ipc geometry | jq -r .integration.open)"
+check "…and the failure is in the log, not a crash" "1" "$(grep -ac "goBackInside failed" "$work/qs2.log")"
+
+# A panel with neither member.
+ipc panel acme.demo main >/dev/null; settle
+check "a panel with no members: offered, and no inner back named" "true 0 true []" "$(rep)"
+check "…the first press closes it, as before" "closed false" "$(ipc back) $(settle; ipc geometry | jq -r .integration.open)"
+
+check "no QML errors in the run" "none" "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs2.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs2.log" || echo none)"
 
 echo
 if ((failures == 0)); then echo "${GREEN}All $checks checks pass.${RESET}"

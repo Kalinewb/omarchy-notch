@@ -144,7 +144,7 @@ Item {
   function rows() { return groups.reduce(function(all, g) { return all.concat(g.rows()) }, []) }
 
   // The header's buttons, as the report and `press` see them.
-  readonly property var headerButtons: [{ name: "updates", item: updatesButton }, { name: "setup", item: setupButton },
+  readonly property var headerButtons: [{ name: "plugins", item: pluginsButton }, { name: "setup", item: setupButton },
                                         { name: "guide", item: guideButton }, { name: "close", item: closeButton }]
 
   // dev/settings.sh reads this through Bar's settingsReport.panel.
@@ -162,7 +162,7 @@ Item {
       advanced: { open: advanced.open },
       contentHeight: settingsFlick.contentHeight, viewHeight: settingsFlick.height, footHeight: foot.height, width: root.width,
       header: [{ name: "title", text: "Notch", x: root.padding, width: Number(titleText.width.toFixed(1)) }].concat(header),
-      badges: [{ name: "updates", count: updates }, { name: "setup", count: issues }].filter(function(b) { return b.count > 0 })
+      badges: [{ name: "plugins", count: updates }, { name: "setup", count: issues }].filter(function(b) { return b.count > 0 })
     }, nav.report())
   }
 
@@ -190,8 +190,8 @@ Item {
   readonly property Item tip: foot
   NotchSettingsCursor { id: nav; panel: root; flick: settingsFlick }
 
-  // Header, on the resting notch's row. Badges are counts on its buttons,
-  // shown only above 0, and a button appears only when it has a target.
+  // Header, on the resting notch's row. A badge is a count on a button, shown only
+  // above 0. Plugins is always there: it is the only way in to the page that installs things.
   Item {
     x: root.padding
     width: parent.width - 2 * root.padding
@@ -212,7 +212,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(6)
 
-      HeaderButton { id: updatesButton; visible: root.updates > 0; text: "Updates · " + root.updates; onClicked: root.pluginsRequested() }
+      HeaderButton { id: pluginsButton; text: root.updates > 0 ? "Plugins · " + root.updates : "Plugins"; onClicked: root.pluginsRequested() }
       HeaderButton { id: setupButton; visible: root.issues > 0; text: root.issues === 1 ? "1 needs attention" : root.issues + " need attention"; onClicked: root.setupRequested() }
       HeaderButton { id: guideButton; visible: !!root.bar && typeof root.bar.openWizard === "function"; text: "Guided setup"; onClicked: root.bar.openWizard() }
       HeaderButton { id: closeButton; text: "✕"; horizontalPadding: Style.space(8); onClicked: root.closeRequested() }

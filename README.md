@@ -44,7 +44,7 @@ a sandbox git remote.
 
 ### Plugins
 
-The Settings header's **Updates · n** (or the Plugins hand-off) grows the notch into the Plugins page. It lists the plugins the notch installs,
+The Settings header's **Plugins** button (**Plugins · n** when n of them have an update) grows the notch into the Plugins page; it is always there. It lists the plugins the notch installs,
 updates and removes, **Face ID** (`kalinewb.face`, once `graveklar.face`), **Profiles**
 (`kalinewb.profiles`) and **OLED Corners** (`kalinewb.oled-corners`), each at the commit the
 Omarchy plugin marketplace verified, with what each is doing: not installed, pinned to the

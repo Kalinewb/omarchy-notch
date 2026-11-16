@@ -19,19 +19,20 @@ second press inside that time deletes your settings. Escape answers no.
 
 `Notch`, then up to three buttons, then `✕`.
 
-- **Updates · n** opens the Plugins page. `n` counts the notch's own update (1 when GitHub has
-  a newer version) plus every plugin with a verified update ready.
+- **Plugins** is always there and opens the Plugins page, where Face ID, Profiles and OLED
+  Corners are installed. It reads **Plugins · n** when something has an update: `n` counts the
+  notch's own update (1 when GitHub has a newer version) plus every plugin with a verified update
+  ready. At zero it is just **Plugins**.
 - **n need attention** (**1 needs attention**) opens the Needs attention page. It is not there at zero; Advanced → **Check for problems** (*None*, or the count) opens the same page. The notch counts 20 seconds after it starts, every 6 hours and when Settings opens, so this is current without anyone asking.
 - **Guided setup** appears once the notch has a guided setup to start.
 
 A badge is a count on a header button, shown only above 0. It is never on a row or a section.
 
-**The Updates count is partly blind.** It only counts what the notch already knows and never
+**The Plugins count is partly blind.** It only counts what the notch already knows and never
 goes looking. The notch checks for its own update 20 seconds after it starts and every 6 hours
 (unless *Check for updates* is off), so that half is current. Plugin updates are checked when
 the Plugins page opens, so the plugin half reads 0 until you have visited Plugins once in this
-session. Opening Plugins (it is one press away, from this very button once there is news) brings
-it up to date.
+session. Opening Plugins (it is one press away, from this very button) brings it up to date.
 
 ## Settings with no row
 

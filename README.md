@@ -204,7 +204,9 @@ summary on the resting row, the body wrapped underneath. **Suppress Omarchy's ow
 - **Omarchy 4.5 or newer.** The notch reads the cards on Omarchy's screen from the one file Omarchy
   keeps them in (`~/.local/state/omarchy/notifications/live.json`), and the companion finds
   Omarchy's toast list and windows by their shape. On an older Omarchy, which wrote one file per
-  card, the notch shows nothing and Omarchy's own toast is untouched.
+  card, the notch shows nothing and Omarchy's own toast is untouched. If you bring the notch up to
+  date by hand (`git pull` in its folder), run `omarchy restart shell` afterwards: Omarchy's live
+  plugin reload can keep running the old notch code. The notch's own update does the restart.
 - **A notification is never shown nowhere.** Omarchy's toast is back whenever the notch can't show
   it: no notch running, the bar hidden, the notch's notifications off, a toast the notch
   wouldn't show anyway (one restored after a shell restart, or your notification history replayed

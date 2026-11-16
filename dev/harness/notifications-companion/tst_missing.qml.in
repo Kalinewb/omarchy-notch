@@ -5,16 +5,34 @@ import Quickshell
 TestCase {
   id: tc
   name: "MissingStock"
-  function test_missingStock_reports() {
+  function make(url) {
     Quickshell.envMap = {
-      NOTCH_NOTIFICATIONS_STOCK_URL: "file://@HARNESS@/nowhere/Service.qml",
+      NOTCH_NOTIFICATIONS_STOCK_URL: url,
       NOTCH_NOTIFICATIONS_CONNECTOR_URL: "file://@REPO@/bridge/Connector.qml"
     }
     var comp = Qt.createComponent("file://@REPO@/companion/kalinewb.notch-notifications/Service.qml").createObject(tc)
     verify(comp !== null)
+    return comp
+  }
+  function test_missingStock_reports() {
+    var comp = make("file://@HARNESS@/nowhere/Service.qml")
     compare(comp.stockItem, null)
     verify(comp.stockError.indexOf("couldn't load") === 0, comp.stockError)
     compare(comp.suppressible, false)
     compare(comp.hideToasts, false)
+  }
+  // Omarchy moved things: no list of toasts, or two lists that could each be
+  // it. Nothing is bound, so Omarchy's windows keep their own binding and its
+  // toast shows exactly as without us.
+  function test_unrecognisedService_leavesOmarchyAlone() {
+    var names = ["NoModel", "TwoModels"]
+    for (var i = 0; i < names.length; i++) {
+      var comp = make("file://@HARNESS@/shapes/" + names[i] + ".qml")
+      verify(comp.stockItem !== null, comp.stockError)
+      compare(comp.windowsBound, 0, names[i])
+      compare(comp.suppressible, false, names[i])
+      var win = comp.stockItem.variantsObj.instances[0]
+      compare(win.visible, true, names[i] + ": Omarchy's own idle")
+    }
   }
 }

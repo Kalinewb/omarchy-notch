@@ -201,11 +201,19 @@ summary on the resting row, the body wrapped underneath. **Suppress Omarchy's ow
   Omarchy's own code. The only thing it changes is whether the toast window is visible. Nothing on
   disk is patched, which is what makes it work on a packaged install, where `$OMARCHY_PATH` belongs
   to root.
+- **Omarchy 4.5 or newer.** The notch reads the cards on Omarchy's screen from the one file Omarchy
+  keeps them in (`~/.local/state/omarchy/notifications/live.json`), and the companion finds
+  Omarchy's toast list and windows by their shape. On an older Omarchy, which wrote one file per
+  card, the notch shows nothing and Omarchy's own toast is untouched.
 - **A notification is never shown nowhere.** Omarchy's toast is back whenever the notch can't show
   it: no notch running, the bar hidden, the notch's notifications off, a toast the notch
   wouldn't show anyway (one restored after a shell restart, or your notification history replayed
-  on request), or one it hasn't drawn yet (in a burst, the fifth waits for a free line, and
-  Omarchy's toast stays until it has one).
+  on request), one Omarchy doesn't keep in that file (a card that asks not to be kept; one held
+  back by Do Not Disturb never shows at all), a card with a verification code in it (Omarchy keeps
+  only a placeholder, and its toast has the button that copies the code), or one the notch hasn't
+  drawn yet (in a burst, the fifth waits for a free line, and Omarchy's toast stays until it has
+  one). A card Omarchy updates in place, such as a progress message, comes back to the notch with
+  its new words.
 - **Click it like Omarchy's own.** Left click opens the notification (its default action, or its
   app), right click dismisses it. Both are Omarchy's own calls, not a copy of what they do: through
   the companion, straight into Omarchy's service for that toast; without it, through the

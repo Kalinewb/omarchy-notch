@@ -9,6 +9,8 @@ TestCase {
   property var comp: null
   property var stock: null
   property var api: null
+  // A while ago: every row below that is not about the grace is this old.
+  property real old: Date.now() / 1000 - 60
 
   function initTestCase() {
     Quickshell.envMap = {
@@ -23,62 +25,119 @@ TestCase {
     verify(stock !== null, "stock service loaded: " + comp.stockError)
   }
 
+  // A row as Omarchy's Store.normalise() shapes it: every field, always.
+  function row(key, ts, extra) {
+    var r = { key: key, ts: ts, originalId: 1, transient: false, restored: false, code: "", codes: "" }
+    for (var k in extra) r[k] = extra[k]
+    return r
+  }
+  function model() { return stock.modelForTest }
   function wins() { return stock.variantsObj.instances }
   function vis() { var l = wins(); var out = []; for (var i = 0; i < l.length; i++) out.push(l[i].visible); return out.join(",") }
+  function drawn(key, ts) { return key + "@" + ts }
 
-  function test_01_bound() {
+  function test_01_found() {
     compare(comp.windowsBound, 2)
     compare(comp.suppressible, true)
+    verify(comp.toastModel !== null, "the list of toasts is found by shape")
     compare(NotchNotificationsBridge.facade, comp)
+    compare(comp.apiVersion, 2)
   }
-  function test_02_noNotch_showsLikeOmarchy() {
-    compare(vis(), "false,false")
-    stock.popupModel.append({ originalId: 1, timestamp: 2000 })
+  // No notch: Omarchy's own binding, untouched -- idle windows stay mapped.
+  function test_02_noNotch_isOmarchysOwn() {
     compare(vis(), "true,true")
+    model().append(row("a", old))
+    compare(vis(), "true,true")
+    model().clear()
   }
   function test_03_notchTakesOver_hides() {
     tc.api = Qt.createComponent("Api.qml").createObject(tc)
+    tc.api.drawn = []
     NotchNotificationsBridge.target = tc.api
     compare(comp.takeOver, true)
+    compare(vis(), "false,false", "idle: unmapped, the notch is taking them")
+    tc.api.drawn = [drawn("a", old)]
+    model().append(row("a", old))
     compare(comp.hideToasts, true)
     compare(vis(), "false,false")
   }
   function test_04_newArrival_staysHidden() {
-    stock.popupModel.insert(0, { originalId: 2, timestamp: 3000 })
+    tc.api.drawn = tc.api.drawn.concat([drawn("b", old + 1)])
+    model().insert(0, row("b", old + 1))
     compare(vis(), "false,false")
   }
-  function test_05_olderRow_showsOmarchy() {
-    stock.popupModel.append({ originalId: 3, timestamp: 500 })
+  function test_05_undrawnRow_showsOmarchy() {
+    model().append(row("c", old + 2))
     compare(vis(), "true,true")
-    stock.popupModel.remove(stock.popupModel.count - 1)
+    model().remove(model().count - 1)
     compare(vis(), "false,false")
   }
   // Six at once: the notch draws four and the last two wait for a free line,
   // so Omarchy's toast stays until the notch has drawn those too.
   function test_05b_burst_waitingRows_showOmarchy() {
-    tc.api.drawn = ["2000-1", "3000-2"]
-    compare(vis(), "false,false")
-    for (var i = 1; i <= 6; i++) stock.popupModel.insert(0, { originalId: 10 + i, timestamp: 5000 + i })
+    var keep = tc.api.drawn
+    for (var i = 1; i <= 6; i++) model().insert(0, row("k" + i, old + 10 + i))
     compare(vis(), "true,true", "none of the burst drawn yet")
-    for (i = 1; i <= 4; i++) tc.api.drawn = tc.api.drawn.concat([(5000 + i) + "-" + (10 + i)])
+    for (i = 1; i <= 4; i++) tc.api.drawn = tc.api.drawn.concat([drawn("k" + i, old + 10 + i)])
     compare(vis(), "true,true", "rows 5-6 wait for a line")
-    tc.api.drawn = tc.api.drawn.concat(["5005-15"])
+    tc.api.drawn = tc.api.drawn.concat([drawn("k5", old + 15)])
     compare(vis(), "true,true", "row 6 still waits")
-    tc.api.drawn = tc.api.drawn.concat(["5006-16"])
+    tc.api.drawn = tc.api.drawn.concat([drawn("k6", old + 16)])
     compare(vis(), "false,false")
     // A notch that can't say which toasts it has drawn hides none.
-    NotchNotificationsBridge.target = Qt.createQmlObject("import QtQuick; QtObject { property bool takeOver: true; property real since: 1000 }", tc)
+    NotchNotificationsBridge.target = Qt.createQmlObject("import QtQuick; QtObject { property bool takeOver: true }", tc)
     compare(vis(), "true,true")
     NotchNotificationsBridge.target = tc.api
-    stock.popupModel.remove(0, 6)
-    tc.api.drawn = null
+    model().remove(0, 6)
     compare(vis(), "false,false")
   }
-  function test_06_placeholder_showsOmarchy() {
-    stock.popupModel.append({ originalId: -1, timestamp: 9999 })
+  // A card Omarchy updates in place gets a newer ts; until the notch has drawn
+  // that, the toast shows (a row old enough to be past the grace).
+  function test_05c_updatedInPlace_showsUntilDrawn() {
+    var at = model().count - 1
+    model().setProperty(at, "ts", old + 30)
     compare(vis(), "true,true")
-    stock.popupModel.remove(stock.popupModel.count - 1)
+    tc.api.drawn = tc.api.drawn.concat([drawn("a", old + 30)])
     compare(vis(), "false,false")
+  }
+  // Rows the file will never hold: a card that asked not to be kept, a replay,
+  // the empty-history notice, a card with a code. No grace for those.
+  function test_06_neverInTheFile_showOmarchyAtOnce() {
+    var now = Date.now() / 1000
+    var kinds = [row("t", now, { transient: true }), row("r", now, { restored: true }),
+                 row("placeholderx", now), row("o", now, { codes: "123456" }), row("p", now, { code: "123456" })]
+    for (var i = 0; i < kinds.length; i++) {
+      model().insert(0, kinds[i])
+      compare(vis(), "true,true", kinds[i].key)
+      model().remove(0)
+      compare(vis(), "false,false")
+    }
+  }
+  // A row of the kind the file keeps, a moment old: Omarchy has not written the
+  // file yet, so it is let through only if the notch has still not drawn it
+  // once the grace is up.
+  function test_06b_justArrived_graceThenOmarchy() {
+    var now = Date.now() / 1000
+    model().insert(0, row("n", now))
+    compare(vis(), "false,false", "within the grace")
+    wait(1200)
+    compare(vis(), "true,true", "grace over, still not drawn")
+    tc.api.drawn = tc.api.drawn.concat([drawn("n", now)])
+    compare(vis(), "false,false", "drawn: off again")
+    model().remove(0)
+  }
+  function test_06c_justArrived_drawnInTime_neverFlashes() {
+    var now = Date.now() / 1000
+    var seen = []
+    model().insert(0, row("q", now))
+    seen.push(vis())
+    wait(200)
+    tc.api.drawn = tc.api.drawn.concat([drawn("q", now)])
+    seen.push(vis())
+    wait(1200)
+    seen.push(vis())
+    compare(seen.join("|"), "false,false|false,false|false,false")
+    model().remove(0)
   }
   function test_07_notchDeclines_showsOmarchy() {
     tc.api.takeOver = false
@@ -92,11 +151,23 @@ TestCase {
     NotchNotificationsBridge.target = tc.api
     compare(vis(), "false,false")
   }
-  function test_09_empty_invisible() {
-    stock.popupModel.clear()
-    compare(vis(), "false,false")
+  function test_09_empty() {
+    model().clear()
+    compare(vis(), "false,false", "taking them: idle is off")
     tc.api.takeOver = false
-    compare(vis(), "false,false")
+    compare(vis(), "true,true", "not taking them: Omarchy's own idle")
+    tc.api.takeOver = true
+  }
+  // Omarchy's own reason for a window to be off is kept: it steps aside for a
+  // fullscreen window until a card arrives.
+  function test_09b_stepAside_isKept() {
+    tc.api.takeOver = false
+    wins()[0].stepAside = true
+    compare(vis(), "false,true")
+    model().append(row("z", old + 40))
+    compare(vis(), "true,true")
+    model().clear()
+    wins()[0].stepAside = false
     tc.api.takeOver = true
   }
   function test_10_newScreen_bound() {
@@ -104,9 +175,21 @@ TestCase {
     var l = [wins()[0], wins()[1], w]
     stock.variantsObj.instances = l
     compare(comp.windowsBound, 3)
-    stock.popupModel.append({ originalId: 5, timestamp: 4000 })
     compare(vis(), "false,false,false")
+    model().append(row("y", old + 50))
+    compare(vis(), "true,true,true")
+    model().clear()
     tc.api.takeOver = false
     compare(vis(), "true,true,true")
+  }
+  // A click goes to Omarchy's service by the card's key.
+  function test_11_serviceCalls_byKey() {
+    compare(stock.rowIndexFor("nothing"), -1)
+    model().append(row("x", old + 60))
+    compare(stock.rowIndexFor("x"), 0)
+    stock.activate("x", true)
+    stock.closeToast("x", "dismissed", true)
+    compare(stock.calls.join("|"), "activate x|close x dismissed")
+    model().clear()
   }
 }

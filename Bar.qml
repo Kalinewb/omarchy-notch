@@ -2802,7 +2802,8 @@ Item {
     }
 
     // One step back, the same as pressing the strip at the top centre.
-    // Answers "back" or "closed".
+    // Answers "back", "inside" (a hosted panel went back a page of its own) or
+    // "closed".
     function back(): string {
       var w = root.focusedNotchWindow() || root.notchWindows[0]
       return w ? w.goBack() : "no notch"
@@ -3302,10 +3303,24 @@ Item {
     // nothing, which read as the strip not working; now it closes the panel,
     // the last step back.
     readonly property bool backOffered: panelOpen
+    // Another plugin's panel navigates inside itself too, and the notch cannot
+    // see that. A panel that declares `goBackInside()` (and, optionally,
+    // `canGoBack`) is asked first; see SURFACE-HOSTING.md section 4. Anything
+    // else -- no members, `canGoBack` false -- leaves the press to the notch.
+    // Read at the moment of the press (not a binding): a panel's own history
+    // may be a plain property the notch has no signal for.
+    function hostedInnerBack() {
+      var panel = integrationOpen ? integrationHost.item : null
+      if (!panel || typeof panel.goBackInside !== "function") return null
+      if (panel.canGoBack === false) return null
+      return panel
+    }
     function backReport() {
       var menu = menuHost.item
+      var inner = hostedInnerBack()
       return { offered: backOffered, depth: viewStack.length, panel: panelOpen,
-               menu: menuOpen && menu ? String(menu.activeMenu) : "" }
+               menu: menuOpen && menu ? String(menu.activeMenu) : "",
+               inner: inner !== null ? integrationId : "" }
     }
     function pushState() {
       if (restoring) return
@@ -3314,9 +3329,21 @@ Item {
     }
     // The menu navigates inside itself, so the first step back is up one of
     // its own levels; only from its top does the press leave it.
+    //
+    // A hosted panel is the same: its own pages come before the notch's
+    // history, and only a press at its first page leaves it. Answers "inside"
+    // when the panel took the press, "back" or "closed" otherwise.
     function goBack() {
       var menu = menuHost.item
       if (menuOpen && menu && menu.opened && menu.mode === "menu" && menu.activeMenu !== "root" && menu.goBack()) return "back"
+      var inner = hostedInnerBack()
+      // Only an answer of exactly true counts: a panel that cannot say whether
+      // it moved gets the press back, rather than a notch that does nothing.
+      if (inner) {
+        var took = false
+        try { took = inner.goBackInside() === true } catch (e) { console.warn("notch: a panel's goBackInside failed:", e) }
+        if (took) return "inside"
+      }
       if (viewStack.length === 0) { closePanels(); return "closed" }
       var shot = viewStack[viewStack.length - 1]
       viewStack = viewStack.slice(0, -1)

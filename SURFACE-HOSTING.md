@@ -168,7 +168,7 @@ do through it is attributed to your id, and it reaches nothing else.
 | member | type | what |
 |---|---|---|
 | `contract` | int | the notch's contract version |
-| `features` | list | `["panel", "activityViews", "heartbeat"]`; feature-detect against it |
+| `features` | list | `["panel", "activityViews", "heartbeat", "panelBack"]`; feature-detect against it |
 | `pluginId` | string | your id |
 | `present` | bool | this notch is alive and is the bar |
 | `accepted` | bool | it accepted *your* integration |
@@ -221,6 +221,34 @@ sets, where you declare them:
 
 It also calls `open(route)` on every open and `close()` when it closes, if you
 declare them.
+
+**Pages inside your panel, and the strip at the top centre.** The notch draws a
+back strip over the resting notch's footprint at the top centre of every panel.
+A press goes back one step, and with nothing behind it closes the panel. If your
+panel has pages of its own (a list, then a record, then its settings), the first
+press should step back inside it, not close it. Declare, optionally:
+
+| member | what the notch does with it |
+|---|---|
+| `goBackInside()` | called on a press of the strip, before the notch looks at its own history. Go back one page and **return `true`**. Return anything else (`false`, nothing) when you did not, and the press carries on to the notch: back through its history, or close |
+| `canGoBack` | `bool`, optional. `false` means the call is skipped; leave it out and `goBackInside()` is called anyway. It is read at the moment of the press, so a plain property is enough, and it is what `backReport` shows |
+
+Neither member is required: a panel without them is closed by the press, as it
+always was. They are only for a panel whose own pages the notch cannot see. The
+order of one press is **an open menu level, then your panel's pages, then the
+notch's own history, then close**. Your own Escape handler is yours and the
+notch does not touch it. Feature-detect with `features.indexOf("panelBack")`;
+a notch without it never calls them, which is harmless.
+
+```qml
+property var pages: ["home"]
+readonly property bool canGoBack: pages.length > 1
+function goBackInside() {
+  if (pages.length < 2) return false
+  pages = pages.slice(0, -1)
+  return true
+}
+```
 
 Size yourself with `implicitWidth` and `implicitHeight`; the notch grows to
 them on its own spring. Do not animate your own container — the notch is already
@@ -334,7 +362,7 @@ A service, a CLI or a panel that never gets a `surfaceHost` reads a small file t
 notch keeps fresh at `$XDG_RUNTIME_DIR/kalinewb.notch/platform.json`:
 
 ```json
-{ "contract": 1, "features": ["panel", "activityViews", "heartbeat"],
+{ "contract": 1, "features": ["panel", "activityViews", "heartbeat", "panelBack"],
   "generation": "1789650000123-4821", "beatAt": 1789650004123, "staleAfterMs": 6000,
   "present": true, "hidden": false, "screens": ["eDP-1"],
   "accepted": { "acme.demo": { "contract": 1 } },

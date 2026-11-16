@@ -146,10 +146,7 @@ check "press 3 closes the notch's panel" "closed false" "$(ipc back) $(settle; i
 ipc panel acme.pages main >/dev/null; settle
 check "opened at the home: the first press closes, as before" "closed false" "$(ipc back) $(settle; ipc geometry | jq -r .integration.open)"
 
-# The panel's pages come before the notch's own history. (A panel opened over
-# another one is the way a step lands behind it; the open functions that clear
-# the page they replace first, openIntegration over the settings among them,
-# push nothing -- that is the notch's own, and not what is measured here.)
+# The panel's pages come before the notch's own history.
 ipc panel acme.demo main >/dev/null; settle
 ipc panel acme.pages deep:1 >/dev/null; settle
 check "a panel opened over another: a page inside it and one step behind it" "true 1 true [acme.pages] home/p1" "$(rep) $(pages)"
@@ -172,6 +169,59 @@ check "…and the failure is in the log, not a crash" "1" "$(grep -ac "goBackIns
 ipc panel acme.demo main >/dev/null; settle
 check "a panel with no members: offered, and no inner back named" "true 0 true []" "$(rep)"
 check "…the first press closes it, as before" "closed false" "$(ipc back) $(settle; ipc geometry | jq -r .integration.open)"
+
+# --- opened from one of the notch's own pages: back goes there, not to nothing ------------
+
+echo; echo "${BOLD}A panel opened from the settings, the menu or Plugins${RESET}"
+# The notch's own page is what a panel was opened from, so it is what Back
+# returns to once the panel's own pages are used up (the open used to clear the
+# page first and then take its snapshot, which was empty).
+ipc view settings >/dev/null; settle
+ipc panel acme.pages deep:2 >/dev/null; settle
+check "from the settings: two pages deep, one step behind" "true 1 true [acme.pages] home/p1/p2" "$(rep) $(pages)"
+check "…press 1 goes back a page inside the panel" "inside home/p1" "$(ipc back) $(settle; pages)"
+check "…press 2 goes back to its home, the settings still behind it" "inside home 1" "$(ipc back) $(settle; pages) $(rep | cut -d' ' -f2)"
+check "…press 3 lands on the settings: the panel is closed, the notch is not" "back true false" \
+  "$(ipc back) $(settle; ipc geometry | jq -r '"\(.settingsOpen) \(.integration.open)"')"
+check "…press 4 closes them: that was the way in" "closed false compact" \
+  "$(ipc back) $(settle; ipc geometry | jq -r '"\(.settingsOpen) \(.state)"')"
+
+ipc menu root >/dev/null; settle
+ipc panel acme.demo main >/dev/null; settle
+check "from the menu: the panel is open, the menu one step behind" "true 1 true [] true" \
+  "$(rep) $(ipc geometry | jq -r .integration.open)"
+check "…Back returns to the menu" "back true false" \
+  "$(ipc back) $(settle; ipc geometry | jq -r '"\(.menu.open) \(.integration.open)"')"
+check "…and the next one closes it" "closed false" "$(ipc back) $(settle; ipc geometry | jq -r .menu.open)"
+
+ipc plugins open >/dev/null; settle
+ipc panel acme.pages deep:1 >/dev/null; settle
+check "from the Plugins page: a page deep, the Plugins page one step behind" "true 1 true [acme.pages] home/p1" "$(rep) $(pages)"
+check "…press 1 goes back inside the panel" "inside home" "$(ipc back) $(settle; pages)"
+check "…press 2 returns to the Plugins page" "back true false" \
+  "$(ipc back) $(settle; ipc geometry | jq -r '"\(.plugins.open) \(.integration.open)"')"
+check "…press 3 closes it" "closed false" "$(ipc back) $(settle; ipc geometry | jq -r .plugins.open)"
+
+# One panel over another over the settings: each step is kept.
+ipc view settings >/dev/null; settle
+ipc panel acme.demo main >/dev/null; settle
+ipc panel acme.pages main >/dev/null; settle
+check "a panel over a panel over the settings: two steps behind" "true 2 true [] acme.pages" "$(rep) $(ipc geometry | jq -r .integration.id)"
+check "…Back goes to the first panel, then the settings, then closes" "back acme.demo back true closed false" \
+  "$(ipc back) $(settle; ipc geometry | jq -r .integration.id) $(ipc back) $(settle; ipc geometry | jq -r .settingsOpen) $(ipc back) $(settle; ipc geometry | jq -r .settingsOpen)"
+
+# Opened from the resting notch the last press closes, and a step taken in
+# another visit leaves nothing behind to jump to.
+ipc view settings >/dev/null; settle
+ipc panel acme.demo main >/dev/null; settle
+ipc panel acme.demo main >/dev/null; settle
+check "the same panel asked for again closes it, and the settings under it with it" "false 0 compact" \
+  "$(ipc geometry | jq -r .integration.open) $(rep | cut -d' ' -f2) $(ipc geometry | jq -r .state)"
+ipc panel acme.pages main >/dev/null; settle
+check "…and the next panel, opened from rest, has no history: depth 0" "true 0 true [] closed" \
+  "$(rep) $(ipc back)"
+settle
+
 
 check "no QML errors in the run" "none" "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs2.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs2.log" || echo none)"
 

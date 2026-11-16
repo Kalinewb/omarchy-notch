@@ -3492,16 +3492,19 @@ Item {
       if (!root.platform.accepted(id)) return "declined:not-accepted"
       if (!root.platform.panelFor(id)) return "declined:no-panel"
       if (integrationOpen && integrationId === id && integrationRoute === route) {
-        integrationOpen = false
+        closePanels()
         return "closed"
       }
+      // Before the flags below are cleared: panelOpen goes false with the last
+      // of them, and a snapshot taken after that is null, so a panel opened
+      // from the settings, the menu, Plugins or Setup had nothing to go back to.
+      pushState()
       expandTimer.stop()
       peeking = false
       settingsOpen = false
       menuOpen = false
       pluginsOpen = false
       setupOpen = false
-      pushState()
       integrationId = id
       integrationRoute = String(route || "")
       view = "integration"

@@ -341,9 +341,11 @@ is on the left of that row and their buttons on the right), a chevron appears
 under the pointer, and it is there on every page of the notch's own: with a step
 behind it a press goes back to that page, and at the first page it closes the panel.
 In the menu the first press goes up one menu level. It is also there on a hosted panel and an
-integration, where a press closes them -- unless that panel has pages of its
-own and says so (Face ID does), in which case the first press goes back a page
-inside it. Over IPC: `notch back`, which answers `back`, `inside` (a panel
+integration, where a press goes back to wherever it was opened from -- the
+settings, the menu, the Plugins page or another panel -- and closes it only when it
+was opened from the resting notch or a bar button. A panel with pages of its
+own that says so (Face ID does) takes the first presses to go back a page inside
+it. Over IPC: `notch back`, which answers `back`, `inside` (a panel
 went back a page of its own) or `closed`.
 
 **Close it here, open it here** (`stateKey`, Settings → How it opens) shuts the

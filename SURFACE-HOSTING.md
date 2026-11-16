@@ -224,7 +224,9 @@ declare them.
 
 **Pages inside your panel, and the strip at the top centre.** The notch draws a
 back strip over the resting notch's footprint at the top centre of every panel.
-A press goes back one step, and with nothing behind it closes the panel. If your
+A press goes back one step -- to the page the panel was opened from (the settings,
+the menu, the Plugins page, another panel) -- and with nothing behind it, as when it
+was opened from the resting notch or a bar button, closes the panel. If your
 panel has pages of its own (a list, then a record, then its settings), the first
 press should step back inside it, not close it. Declare, optionally:
 

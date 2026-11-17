@@ -22,14 +22,17 @@ Item {
     source: Quickshell.env("NOTCH_OSD_CONNECTOR_URL") || Qt.resolvedUrl("../kalinewb.notch/bridge/Connector.qml")
   }
   readonly property var bridge: link.item ? link.item.osdBridge : null
-  readonly property var service: bridge ? bridge.service : null
+  // Not called `service`: when Omarchy loads a panel entry it assigns the
+  // matching service to a `service` property if the item has one, and a
+  // read-only one made that assignment a TypeError at every shell start.
+  readonly property var backend: bridge ? bridge.service : null
 
-  readonly property bool opened: !!service && service.opened === true
+  readonly property bool opened: !!backend && backend.opened === true
 
   function open(payloadJson) {
-    if (service) service.open(payloadJson)
+    if (backend) backend.open(payloadJson)
     else console.warn("kalinewb.notch-osd: no service to show an OSD with")
   }
 
-  function close() { if (service) service.close() }
+  function close() { if (backend) backend.close() }
 }

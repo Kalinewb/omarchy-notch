@@ -486,14 +486,14 @@ check "…the header fits, and no row or section carries it" "true " "$(jq -r "\
 res=$(ipc settingsPress header:plugins); sleep 0.9
 check "…pressing it opens Plugins" "ok true" "$res $(ipc geometry | jq -r '.plugins.open')"
 stop
-# Both at once: the widest header, three buttons and the title in 368 px.
+# Both at once: the widest header, three buttons (four with Guide) and the title in 368 px.
 XENV=("${SETUP_ENV[@]}" "${UPDATE_ENV[@]}")
 start '{"batteryPeek":false}'
 ipc setup check "" >/dev/null
 ipc settings >/dev/null
 settle '(.panel.badges | length) == 2' || true
 rep=$(report)
-check "both at once: Plugins · 1 then 2 need attention" "plugins=1,setup=2 title,plugins,setup,close" "$(jq -r "[($badge_text), ($header_names)] | join(\" \")" <<<"$rep")"
+check "both at once: Plugins · 1 then 2 need attention" "plugins=1,setup=2 title,plugins,setup,$(grep -q 'function openWizard' "$REPO/Bar.qml" && echo guide,)close" "$(jq -r "[($badge_text), ($header_names)] | join(\" \")" <<<"$rep")"
 check "…with both badges the header still fits: the title is overlapped by nothing" "true" "$(jq -r "$header_fits" <<<"$rep")"
 stop
 XENV=()

@@ -88,6 +88,8 @@ Item {
   // service's children.
   property var toastModel: null
   property var variants: null
+  // Omarchy's NotificationServer, found by its model of tracked notifications.
+  property var stockServer: null
   property int windowsBound: 0
   // Bumped when a row changes without the count moving (a card updated in place).
   property int revision: 0
@@ -160,6 +162,7 @@ Item {
   function attach() {
     toastModel = null
     variants = null
+    stockServer = null
     var svc = stock.item
     if (!svc) return
     var data = svc.data
@@ -167,7 +170,8 @@ Item {
     for (var i = 0; i < data.length; i++) {
       var o = data[i]
       if (!o) continue
-      if (o.instances !== undefined && o.model !== undefined && !variants) variants = o
+      if (o.trackedNotifications !== undefined) stockServer = o
+      else if (o.instances !== undefined && o.model !== undefined && !variants) variants = o
       else if (typeof o.count === "number" && typeof o.get === "function" && typeof o.insert === "function"
                && typeof o.remove === "function") models.push(o)
     }
@@ -176,6 +180,23 @@ Item {
     if (!variants) console.warn("kalinewb.notch-notifications: no popup window found in Omarchy's service; its toast will show as usual")
     if (!toastModel) console.warn("kalinewb.notch-notifications: no list of toasts found in Omarchy's service; its toast will show as usual")
     bindWindows()
+  }
+
+  // The server, where a plugin that counts notifications looks for it. Omarchy's
+  // own service has the NotificationServer among its children, and a plugin that
+  // reaches it through `firstPartyServiceFor("omarchy.notifications")` takes the
+  // child that has `trackedNotifications` (Arc Dock's counter does). Here that
+  // service is inside the Loader above, one level down, so this is the same
+  // thing at the level they look: the model and the signal, passed on.
+  QtObject {
+    id: serverMirror
+    readonly property var trackedNotifications: root.stockServer ? root.stockServer.trackedNotifications : undefined
+    signal notification(var notification)
+  }
+  Connections {
+    target: root.stockServer
+    ignoreUnknownSignals: true
+    function onNotification(notification) { serverMirror.notification(notification) }
   }
 
   // The window's own test (Omarchy's), and ours on top of it.

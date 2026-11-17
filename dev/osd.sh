@@ -198,6 +198,12 @@ comp sync "$root/state/companion-osd.json" >/dev/null
 check "26a. …and a sync says so in the OSD's words, not the menu's" "true" \
   "$(jq -r '.message | test("OSD")' "$root/state/companion-osd.json")"
 
+# Omarchy assigns the matching service to a panel entry's `service` property when
+# it has one (shell.qml, panelLoader.onLoaded); a read-only one is a TypeError
+# at every shell start. The panel entry is Facade.qml.
+check "26b. the panel entry has no read-only \`service\` for Omarchy to assign to" "none" \
+  "$(grep -nE 'readonly property [a-z]+ service\b' "$REPO"/companion/*/Facade.qml | head -1)$(grep -qE 'readonly property [a-z]+ service\b' "$REPO"/companion/*/Facade.qml || echo none)"
+
 check "27. no QML errors anywhere in the run" "none" \
   "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log" | head -1 | cut -c1-80)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$root/qs.log" || echo none)"
 

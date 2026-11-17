@@ -191,7 +191,7 @@ Item {
   NotchSettingsCursor { id: nav; panel: root; flick: settingsFlick }
 
   // Header, on the resting notch's row. A badge is a count on a button, shown only
-  // above 0. Plugins is always there: it is the only way in to the page that installs things.
+  // above 0. Plugins is always there: it is the only way in to the page that installs things. The buttons pad 6 and say "Guide" because all four share 392 px with the title.
   Item {
     x: root.padding
     width: parent.width - 2 * root.padding
@@ -214,7 +214,7 @@ Item {
 
       HeaderButton { id: pluginsButton; text: root.updates > 0 ? "Plugins · " + root.updates : "Plugins"; onClicked: root.pluginsRequested() }
       HeaderButton { id: setupButton; visible: root.issues > 0; text: root.issues === 1 ? "1 needs attention" : root.issues + " need attention"; onClicked: root.setupRequested() }
-      HeaderButton { id: guideButton; visible: !!root.bar && typeof root.bar.openWizard === "function"; text: "Guided setup"; onClicked: root.bar.openWizard() }
+      HeaderButton { id: guideButton; visible: !!root.bar && typeof root.bar.openWizard === "function"; text: "Guide"; tooltipText: "Guided setup"; onClicked: root.bar.openWizard() }
       HeaderButton { id: closeButton; text: "✕"; horizontalPadding: Style.space(8); onClicked: root.closeRequested() }
     }
   }
@@ -758,7 +758,7 @@ Item {
   }
 
   component ActionButton: NotchPanelButton { page: root }
-  component HeaderButton: NotchPanelButton { page: root; header: true }
+  component HeaderButton: NotchPanelButton { page: root; header: true; horizontalPadding: Style.space(6) }
 
   component CursorFill: NotchCursorFill { page: root }
 

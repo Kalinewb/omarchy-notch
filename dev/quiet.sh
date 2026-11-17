@@ -225,12 +225,18 @@ check "…it is on screen" "true acme.pages" "$(ipc geometry | jq -r '"\(.integr
 ipc quiet on probe >/dev/null; settle
 check "quiet: its panel is closed and the notch hidden" "false hidden" \
   "$(ipc geometry | jq -r '"\(.integration.open) \(.state)"')"
+# Nothing of the notch is left drawn while it is away: both of its surfaces are empty and input is off
+# (a stale shape here would be a black rectangle on the screen where the notch used to be).
+check "…no surface is left drawing: the bar is 0 x 0 and neither window paints a shape, nor holds the keyboard" "0x0 false false none" \
+  "$(ipc geometry | jq -r '"\(.bar.width)x\(.bar.height) \(.panel.shape) \(.panel.barShapeHidden) \(.panel.keyboard)"')"
 check "asking for another panel meanwhile is declined, with the reason" "declined:quiet" "$(ipc panel acme.demo main)"
 check "a claim meanwhile is declined the way a hidden bar declines it" "declined:quiet" \
   "$(ipc claim acme.demo '{"title":"x","priority":"persistent","ttlMs":4000}')"
 ipc quiet off probe >/dev/null; settle
 check "off: the same panel is back" "true acme.pages expanded" \
   "$(ipc geometry | jq -r '"\(.integration.open) \(.integration.id) \(.state)"')"
+check "…and is drawn by the panel window alone, as before it was put away" "true true onDemand" \
+  "$(ipc geometry | jq -r '"\(.panel.shape) \(.panel.barShapeHidden) \(.panel.keyboard)"')"
 check "…it is at the page it was opened on, so the strip goes back a page inside it first, then closes" "inside true closed false" \
   "$(ipc back) $(settle; ipc geometry | jq -r .integration.open) $(ipc back) $(settle; ipc geometry | jq -r .integration.open)"
 

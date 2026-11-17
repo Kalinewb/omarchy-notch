@@ -296,6 +296,7 @@ omarchy-shell notch panel <id> <route>     # open one plugin's panel
 omarchy-shell notch hostPanel <widget>     # draw a bar widget's own panel inside the notch
 omarchy-shell notch hosting                # what it is holding right now
 omarchy-shell notch activities             # the resting-notch queue
+omarchy-shell notch quiet on <owner>       # step out of the way; `off <owner>` brings it back as it was
 ```
 
 `dev/fixtures/platform/plugins/acme.demo` is a complete worked example, and it
@@ -354,6 +355,16 @@ view. It is for working on a panel: testing a change means shutting the notch
 and opening it again, and without it that is the walk back in through the menus
 every time. Over IPC: `notch state`, which answers `stashed`, `restored` or
 `nothing to restore`.
+
+**Quiet** is how another plugin asks the notch to step out of the way for a moment. Face ID's
+scan card and Test card are drawn over the top centre of the screen, so while one is up the notch
+hides, and when it goes the notch comes back to what it was showing: the same page, the same way back
+to it, a view opened by a click or a key. It is `omarchy-shell notch quiet on|off <owner>` (and
+`status`), or `surfaceHost.quiet(true|false)` from an integration, and it is only ever a lease: it
+lapses 35 s after the last `on`, is cut off at 120 s whatever the requester does, and goes with the plugin
+that asked if that is switched off. Nothing is dropped meanwhile: the space the notch reserves stays, a
+notification is drawn by Omarchy's own toast and the notch's copy picks up its time where it stopped.
+`SURFACE-HOSTING.md` section 14 has every answer word.
 
 **Keep the notch open** (`stayOpen`, with `stayOpenKey`) keeps the open view up whatever the
 pointer does. The settings and the menu still open over it, and it comes back when they close. Keybinds go into the running

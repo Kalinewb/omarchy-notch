@@ -332,7 +332,8 @@ Item {
       if (!onScreen[key]) { if (e.deadline) setEntry(name, { deadline: 0 }); continue }
       if (lifetimeMs <= 0) continue
       if (!e.deadline) { setEntry(name, { deadline: now + lifetimeMs }); continue }
-      if (pointerOver && key === shownKey) { setEntry(name, { deadline: e.deadline + dt }); continue }
+      // The pointer is on it, or the notch is quiet and nobody can see it: the clock waits.
+      if ((pointerOver && key === shownKey) || bar.quiet) { setEntry(name, { deadline: e.deadline + dt }); continue }
       if (now >= e.deadline) finish(name, "closed")
     }
   }
@@ -433,6 +434,19 @@ Item {
       for (var name in source.entries) {
         var e = source.entries[name]
         if (e.dismissed || !e.data || e.state === "dropped" || e.state === "ignored-old" || e.state === "stock") continue
+        source.claim(name, e.data)
+      }
+    }
+
+    // A quiet notch (a plugin asked it to step aside, Bar.qml) is the same for
+    // anything that arrived meanwhile. What was already on the queue was never
+    // let go of -- only not drawn, with its clock stopped -- so it is left alone.
+    function onQuietChanged() {
+      if (!source.enabled || source.bar.notchAway) return
+      for (var name in source.entries) {
+        var e = source.entries[name]
+        if (e.dismissed || !e.data || e.state === "dropped" || e.state === "ignored-old" || e.state === "stock") continue
+        if (e.state === "shown" || e.state === "queued") continue
         source.claim(name, e.data)
       }
     }

@@ -168,7 +168,7 @@ do through it is attributed to your id, and it reaches nothing else.
 | member | type | what |
 |---|---|---|
 | `contract` | int | the notch's contract version |
-| `features` | list | `["panel", "activityViews", "heartbeat", "panelBack"]`; feature-detect against it |
+| `features` | list | `["panel", "activityViews", "heartbeat", "panelBack", "quiet"]`; feature-detect against it |
 | `pluginId` | string | your id |
 | `present` | bool | this notch is alive and is the bar |
 | `accepted` | bool | it accepted *your* integration |
@@ -186,6 +186,7 @@ do through it is attributed to your id, and it reaches nothing else.
 | `closePanel()` | string | `closed` or `unknown` |
 | `claim(activity)` | string | `shown`, `queued` or `declined:<reason>` |
 | `release(key)` | string | `released` or `unknown` |
+| `quiet(on)`, `quieted` | string, bool | step the notch out of the way and back; §14. Feature `quiet` |
 
 Your **bar widget** is handed the same host, plus `surfaceScreen` — the name of
 the screen that copy of the widget is on. Declare both and the notch fills them
@@ -364,9 +365,9 @@ A service, a CLI or a panel that never gets a `surfaceHost` reads a small file t
 notch keeps fresh at `$XDG_RUNTIME_DIR/kalinewb.notch/platform.json`:
 
 ```json
-{ "contract": 1, "features": ["panel", "activityViews", "heartbeat", "panelBack"],
+{ "contract": 1, "features": ["panel", "activityViews", "heartbeat", "panelBack", "quiet"],
   "generation": "1789650000123-4821", "beatAt": 1789650004123, "staleAfterMs": 6000,
-  "present": true, "hidden": false, "screens": ["eDP-1"],
+  "present": true, "hidden": false, "quiet": false, "screens": ["eDP-1"],
   "accepted": { "acme.demo": { "contract": 1 } },
   "declined": { "acme.future": "contract-newer" } }
 ```
@@ -456,6 +457,7 @@ works with no notch at all.
 | contract | notch release | changes |
 |---|---|---|
 | 1 | 0.1.0 | panels, activity claims, the heartbeat |
+| 1 (feature) | next | `quiet`: a plugin asks the notch to step out of the way for a moment (§14) |
 
 ---
 
@@ -593,6 +595,80 @@ an oversight, and the rules matter more than the membership:
 If you want a plugin listed, the honest answer today is that the list is
 maintained by hand, in this repository, by people who have read the plugin and
 can point at its verified commit. A general answer is an open question.
+
+## 14. Quiet: asking the notch to step out of the way
+
+A plugin that draws something over the top centre of the screen -- Face's scan card
+and its Test card are the case this was built for -- has the notch behind it: open, or
+showing a notification. `quiet` asks the notch to hide for as long as that lasts and to
+come back as it was. Feature word `quiet`; the contract version does not change.
+
+```sh
+omarchy-shell notch quiet on  kalinewb.face:record
+omarchy-shell notch quiet off kalinewb.face:record
+omarchy-shell notch quiet status x          # JSON; the owner is required and ignored
+```
+
+Both arguments are required (Quickshell checks arity). The **owner** is yours:
+`<plugin id>` or `<plugin id>:<what>`, letters, digits, `.`, `_` and `-`, at most 48
+characters each side of the colon. One plugin may hold several things at once. A
+plugin with a `surfaceHost` can call `surfaceHost.quiet(true)` and `quiet(false)` instead
+(owner: its own id); `surfaceHost.quieted` says whether the notch is quiet.
+
+| answer | meaning |
+|---|---|
+| `quiet` | a new hold; the notch is hidden |
+| `renewed` | the owner already held; its lease starts again (the cap does not move) |
+| `restored` | that was the last hold; the notch is back as it was |
+| `released` | the owner let go, others still hold; the notch stays away |
+| `idle` | `off` for an owner that holds nothing |
+| `declined:bad-owner` | the owner is not of the form above |
+| `declined:bad-state` | the first word is not `on`, `off` or `status` |
+| `declined:no-notch` | no notch window yet |
+| `declined:too-many` | eight owners already hold |
+| `declined:cooldown` | this owner was cut off at the cap, a moment ago |
+
+**What the notch does.** It puts away what each screen is showing -- a panel and the
+page it was on, the way back to it (the history behind it), a view opened by a click
+or a key -- and hides the way `omarchy toggle bar` does, except that it keeps the space
+it reserves, so no window moves. On `restored` it puts every screen back: the same
+panel at the route it was opened on (a panel's own pages are the panel's business; the menu
+returns at the route it was opened on), the same history, so the back strip goes back
+where it would have. The hover view belongs to the pointer and is not kept. If something
+was opened while the notch was away (a keybind), that is newer than what was put away and
+wins.
+
+**What it never does.** Drop anything.
+
+- Notifications: while quiet, a claim is declined as it is when the bar is hidden
+  (`declined:quiet`), so Omarchy's own toast, OSD and menu are drawn instead of the notch's;
+  a notification that arrived meanwhile is claimed again when the notch is back; one already
+  on the notch keeps its place and its clock stops (§5's lines get their time back).
+- Back strip and way back: the history is saved and restored, so the strip goes back where it
+  would have.
+- Your panel, declined in the same words: `openPanel` answers `declined:quiet`, which is
+  your cue to draw your own UI, as it is for `declined:hidden`.
+
+**It can never stay hidden.** A hold is a lease:
+
+- It lapses **35 s** after the last `on` for that owner. A requester that crashed, or a
+  panel that was destroyed, is forgotten at most that long after. While you are still up,
+  renew with another `on` (Face does, every 15 s).
+- A requester that keeps renewing is cut off **120 s** after its first `on`, and
+  refused (`declined:cooldown`) for **30 s**.
+- It lapses when the plugin that owns it (the part of the owner before the colon) is
+  switched off or removed from the notch.
+- Eight owners at most.
+
+Any process running as the user can send these words, as it can send every other IPC verb,
+so the worst a bad actor can do is what `omarchy toggle bar` does, for no longer than the cap.
+**Never take your own UI down because of it**: this is for getting the notch out of your
+way, and a surface that warns the user (an authentication prompt, an identity check) keeps
+drawing whatever the notch is doing (§6).
+
+A test notch (`NOTCH_HARNESS=1`) reads `NOTCH_QUIET_LEASE_MS`, `NOTCH_QUIET_CAP_MS` and
+`NOTCH_QUIET_COOLDOWN_MS` so a suite does not have to wait 35 s; the live notch never does.
+`dev/quiet.sh` proves every word above.
 
 ## Suite pins
 

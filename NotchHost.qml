@@ -78,6 +78,20 @@ QtObject {
     return platform.closePanelFor(pluginId)
   }
 
+  // --- quiet -----------------------------------------------------------------
+
+  // Ask the notch to step out of the way (`true`) and to come back as it was
+  // (`false`). The hold is this plugin's and lapses by itself (SURFACE-HOSTING.md
+  // section 14); a panel that asks from inside the notch is closed by it, so
+  // this is for a plugin that draws something of its own over the notch's place.
+  // Answers "quiet", "renewed", "restored", "released", "idle" or "declined:<reason>".
+  function quiet(on) {
+    if (!bar) return "declined:not-accepted"
+    return on === true ? bar.quietOn(pluginId) : bar.quietOff(pluginId)
+  }
+
+  readonly property bool quieted: !!bar && bar.quiet
+
   // --- activities -----------------------------------------------------------
 
   // Ask the notch to show a line at rest. Answers "shown", "queued" or

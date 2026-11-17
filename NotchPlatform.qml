@@ -240,6 +240,7 @@ Item {
         }
         releaseOwner(id)
         closePanelFor(id)
+        if (bar) bar.quietReleasePlugin(id)
       }
 
       // Switched off and on again inside the 300 ms fade: the file never left,
@@ -262,6 +263,7 @@ Item {
       if (next[old] === undefined) {
         releaseOwner(old)
         closePanelFor(old)
+        if (bar) bar.quietReleasePlugin(old)
       }
     }
 
@@ -431,7 +433,7 @@ Item {
 
   function openPanelFor(id, route, screenName) {
     if (!accepted(id)) return "declined:not-accepted"
-    if (bar && bar.barHidden) return "declined:hidden"
+    if (bar && bar.notchAway) return "declined:" + bar.awayReason
     if (!panelFor(id)) return "declined:no-panel"
     var window = windowForScreen(screenName || focusedScreen())
     if (!window) return "declined:no-screen"
@@ -500,7 +502,7 @@ Item {
 
   function claimFor(id, activity, fromIpc) {
     if (!accepted(id)) return "declined:not-accepted"
-    if (bar && bar.barHidden) return "declined:hidden"
+    if (bar && bar.notchAway) return "declined:" + bar.awayReason
     var checked = Platform.validClaim(id, activity, fromIpc === true)
     if (!checked.ok) return "declined:" + checked.reason
     var outcome = Activities.claim(activityState, checked.claim, Date.now())
@@ -515,7 +517,7 @@ Item {
   // owner is the notch itself. Everything after that is the same queue, so a
   // notification competes for the same two slots on the same rules.
   function claimInternal(owner, activity) {
-    if (bar && bar.barHidden) return "declined:hidden"
+    if (bar && bar.notchAway) return "declined:" + bar.awayReason
     var checked = Platform.validClaim(String(owner), activity, false, true)
     if (!checked.ok) return "declined:" + checked.reason
     var outcome = Activities.claim(activityState, checked.claim, Date.now())
@@ -535,11 +537,15 @@ Item {
 
   function releaseOwner(id) { activityState = Activities.releaseOwner(activityState, id) }
 
+  // The notch was quiet for `ms`: what was on it did not run out meanwhile.
+  function deferActivities(ms) { activityState = Activities.defer(activityState, ms) }
+
   Timer {
     id: activityTick
     interval: 250
     repeat: true
-    running: platform.activityState.visible.length > 0 || platform.activityState.queued.length > 0
+    // Not while the notch is quiet: nothing is drawn, so nothing runs out (deferActivities).
+    running: !(bar && bar.quiet) && (platform.activityState.visible.length > 0 || platform.activityState.queued.length > 0)
     onTriggered: platform.activityState = Activities.tick(platform.activityState, Date.now())
   }
 
@@ -581,7 +587,7 @@ Item {
       contract: contract, oldest: oldest, features: features,
       generation: generation, startedAt: startedAt, beatAt: Date.now(),
       beatMs: beatMs, staleAfterMs: staleAfterMs,
-      present: alive === true, hidden: !!bar && bar.barHidden,
+      present: alive === true, hidden: !!bar && bar.barHidden, quiet: !!bar && bar.quiet,
       screens: screens, accepted: acceptedMap, declined: declined
     })
   }

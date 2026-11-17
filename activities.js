@@ -184,6 +184,28 @@ function tick(state, now) {
   return next
 }
 
+// defer(state, ms): the notch was not showing anything for `ms`, so what was on
+// it has that long again, and what waited has waited that much less. Time is a
+// value here like everywhere else in this file.
+function defer(state, ms) {
+  var next = copy(state)
+  var by = Number(ms)
+  if (!(by > 0)) return state
+  next.visible = next.visible.map(function (entry) {
+    var kept = {}
+    for (var k in entry) kept[k] = entry[k]
+    if (kept.expiresAt > 0) kept.expiresAt = kept.expiresAt + by
+    return kept
+  })
+  next.queued = next.queued.map(function (entry) {
+    var kept = {}
+    for (var k in entry) kept[k] = entry[k]
+    kept.claimedAt = kept.claimedAt + by
+    return kept
+  })
+  return next
+}
+
 function report(state) {
   function line(entry) {
     return {

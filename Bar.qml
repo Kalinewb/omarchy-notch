@@ -49,6 +49,155 @@ Item {
   // killing the entire shell. Hidden panels stay mapped but park off-screen
   // without an exclusion zone; updated by the FileView watcher further down.
   property bool barHidden: false
+
+  // --- quiet -------------------------------------------------------------------
+  //
+  // A plugin can ask the notch to step out of the way for a moment: Face draws a
+  // card over the top centre of the screen while it scans or tests, and an open
+  // notch behind it is in the way. `omarchy-shell notch quiet on <owner>` hides
+  // the notch the way `omarchy toggle bar` does, except that it keeps the space
+  // it reserves (no window moves), and `quiet off <owner>` brings it back to what
+  // each screen was showing -- the open page, the way back to it, a view opened
+  // by a click or a key. SURFACE-HOSTING.md section 14 is the contract.
+  //
+  // Hidden is not dropped. While quiet, a claim is declined as it is when the
+  // bar is hidden (so Omarchy's own toast, OSD and menu draw instead), the
+  // lines already on the notch and the notice stop their clocks, and every one
+  // is put back when it ends; a notification that arrived meanwhile is claimed
+  // again (NotchNotifications.qml).
+  //
+  // It can never stay hidden. A hold is a lease: it lapses `quietLeaseMs` after
+  // the last `on` for that owner, which is how a requester that died is
+  // forgotten, and a requester that keeps renewing is cut off `quietCapMs` after
+  // its first `on` and refused for `quietCooldownMs`. It also lapses when the
+  // plugin that owns it is switched off or removed. Several owners can hold at
+  // once; the notch returns when the last lets go.
+  property var quietHolds: ({})
+  property var quietRefused: ({})
+  property real quietSince: 0
+  readonly property bool quiet: Object.keys(quietHolds).length > 0
+  // Why nothing of the notch is drawn, if nothing is: "hidden" (the bar is off),
+  // "quiet" (a plugin asked), or "".
+  readonly property string awayReason: barHidden ? "hidden" : quiet ? "quiet" : ""
+  readonly property bool notchAway: awayReason !== ""
+  // A test notch (harnessed) may shorten these; the live one never reads them.
+  function quietTime(name, fallback) {
+    var forced = harnessed ? Number(Quickshell.env(name)) : 0
+    return forced > 0 ? forced : fallback
+  }
+  readonly property int quietLeaseMs: quietTime("NOTCH_QUIET_LEASE_MS", 35000)
+  readonly property int quietCapMs: quietTime("NOTCH_QUIET_CAP_MS", 120000)
+  readonly property int quietCooldownMs: quietTime("NOTCH_QUIET_COOLDOWN_MS", 30000)
+  readonly property int quietOwnerLimit: 8
+
+  function quietOwnerOk(owner) {
+    return /^[A-Za-z0-9._-]{1,48}(:[A-Za-z0-9._-]{1,48})?$/.test(String(owner))
+  }
+
+  function quietCopy(map) {
+    var out = ({})
+    for (var key in map) out[key] = map[key]
+    return out
+  }
+
+  // Answers "quiet" (a new hold), "renewed", or "declined:<reason>".
+  function quietOn(owner) {
+    var who = String(owner || "")
+    if (!quietOwnerOk(who)) return "declined:bad-owner"
+    if (notchWindows.length === 0) return "declined:no-notch"
+    var now = Date.now()
+    if (quietRefused[who] !== undefined && now < quietRefused[who]) return "declined:cooldown"
+    var held = quietHolds[who]
+    if (held === undefined && Object.keys(quietHolds).length >= quietOwnerLimit) return "declined:too-many"
+    // The cap counts from the first `on`; a renewal does not move it.
+    var since = held !== undefined ? held.since : now
+    var next = quietCopy(quietHolds)
+    next[who] = { since: since, until: Math.min(now + quietLeaseMs, since + quietCapMs) }
+    quietHolds = next
+    return held !== undefined ? "renewed" : "quiet"
+  }
+
+  // Answers "restored" (that was the last hold), "released" (others still hold)
+  // or "idle" (nothing held under that owner).
+  function quietOff(owner) {
+    var who = String(owner || "")
+    if (quietHolds[who] === undefined) return "idle"
+    var next = quietCopy(quietHolds)
+    delete next[who]
+    quietHolds = next
+    return Object.keys(next).length === 0 ? "restored" : "released"
+  }
+
+  // A plugin was switched off or went away: whatever it held lapses with it.
+  function quietReleasePlugin(pluginId) {
+    var id = String(pluginId || "")
+    var next = quietCopy(quietHolds)
+    var changed = false
+    for (var who in next) {
+      if (who === id || who.indexOf(id + ":") === 0) { delete next[who]; changed = true }
+    }
+    if (changed) quietHolds = next
+  }
+
+  function quietExpire() {
+    var now = Date.now()
+    var next = quietCopy(quietHolds)
+    var refused = quietCopy(quietRefused)
+    var changed = false
+    for (var who in next) {
+      if (now < next[who].until) continue
+      // Out of the cap, not just out of lease: the requester is still asking.
+      if (next[who].until >= next[who].since + quietCapMs) refused[who] = now + quietCooldownMs
+      delete next[who]
+      changed = true
+    }
+    for (var name in refused) if (now >= refused[name]) delete refused[name]
+    quietRefused = refused
+    if (changed) quietHolds = next
+  }
+
+  function quietReport() {
+    var now = Date.now()
+    var holds = []
+    for (var who in quietHolds)
+      holds.push({ owner: who, heldMs: now - quietHolds[who].since, leftMs: Math.max(0, quietHolds[who].until - now) })
+    holds.sort(function(a, b) { return a.owner < b.owner ? -1 : 1 })
+    var stashed = 0
+    for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].quietStash) stashed++
+    var refused = Object.keys(quietRefused).filter(function(who) { return now < quietRefused[who] }).sort()
+    return { quiet: quiet, holds: holds, refused: refused, stashedWindows: stashed,
+             leaseMs: quietLeaseMs, capMs: quietCapMs, cooldownMs: quietCooldownMs }
+  }
+
+  Timer {
+    interval: harnessed ? 100 : 1000
+    repeat: true
+    running: root.quiet
+    onTriggered: root.quietExpire()
+  }
+
+  onQuietChanged: {
+    if (quiet) {
+      if (quietSince === 0) quietSince = Date.now()
+      for (var i = 0; i < notchWindows.length; i++) notchWindows[i].quietEnter()
+      return
+    }
+    // Not inside this handler: putting a panel back goes through functions that ask
+    // `notchAway`, which can still read the old answer until the bindings that depend
+    // on `quiet` have caught up (a panel put back inside it was declined as quiet).
+    Qt.callLater(root.quietResume)
+  }
+
+  function quietResume() {
+    // Asked for again in the meantime: what was put away stays put away.
+    if (quiet) return
+    for (var i = 0; i < notchWindows.length; i++) notchWindows[i].quietLeave()
+    // The clocks of what was on the notch stopped meanwhile; they start again
+    // where they were, not where the wall clock says.
+    platform.deferActivities(Date.now() - quietSince)
+    quietSince = 0
+  }
+
   property string home: Quickshell.env("HOME")
   property string stateHome: home + "/.local/state"
   property string omarchyConfigDir: home + "/.config/omarchy"
@@ -2029,7 +2178,7 @@ Item {
       if (screenName && windows[i].screen && windows[i].screen.name === screenName) window = windows[i]
     if (!window) window = focusedNotchWindow()
     if (!window) return "declined:no-screen"
-    if (barHidden) return "declined:hidden"
+    if (notchAway) return "declined:" + awayReason
     return window.openHosted(item)
   }
 
@@ -2579,7 +2728,7 @@ Item {
       function refreshMenus() { root.refreshMenus() }
       readonly property bool anyMenuOpen: root.anyMenuOpen
       readonly property bool notchReplaceMenu: root.notchReplaceMenu
-      readonly property bool barHidden: root.barHidden
+      readonly property bool barHidden: root.notchAway
     }
   }
   readonly property var menuCompanion: menuCompanionHelper
@@ -2596,7 +2745,7 @@ Item {
       function hideOsd() { root.hideOsd() }
       readonly property bool osdShown: root.osdShown
       readonly property bool notchReplaceOsd: root.notchReplaceOsd
-      readonly property bool barHidden: root.barHidden
+      readonly property bool barHidden: root.notchAway
     }
   }
   readonly property var osdCompanion: osdCompanionHelper
@@ -2612,7 +2761,7 @@ Item {
     // and `ts` says which version of it: a card Omarchy updates in place is
     // a new thing to draw until the notch has drawn that.
     api: QtObject {
-      readonly property bool takeOver: root.notchSuppressNativeToast && !root.barHidden && !!root.notificationsSource
+      readonly property bool takeOver: root.notchSuppressNativeToast && !root.notchAway && !!root.notificationsSource
         && root.notificationsSource.enabled
 
       // Whether the notch is drawing this toast, has it in line, or drew it and
@@ -2717,7 +2866,7 @@ Item {
   // notch window has focus, or its menu hasn't loaded -- the companion then
   // opens Omarchy's own menu, so the request is never dropped.
   function openMenuPayload(payloadJson) {
-    if (!notchReplaceMenu || barHidden) return false
+    if (!notchReplaceMenu || notchAway) return false
     var w = focusedNotchWindow()
     if (!w || !w.menuHostItem) return false
     for (var i = 0; i < notchWindows.length; i++)
@@ -2785,6 +2934,17 @@ Item {
     function state(): string {
       var w = root.focusedNotchWindow() || root.notchWindows[0]
       return w ? w.toggleState() : "no notch"
+    }
+
+    // Step out of the way for a moment, and come back as it was: `on` and `off`
+    // for an owner (`<plugin id>` or `<plugin id>:<what>`), `status` for the
+    // report. Answers "quiet", "renewed", "restored", "released", "idle", or
+    // "declined:<reason>"; SURFACE-HOSTING.md section 14 has every word.
+    function quiet(state: string, owner: string): string {
+      if (state === "on") return root.quietOn(owner)
+      if (state === "off") return root.quietOff(owner)
+      if (state === "status") return JSON.stringify(root.quietReport())
+      return "declined:bad-state"
     }
 
     // Omarchy's OSD, in the notch. The payload is Omarchy's own, passed
@@ -3193,7 +3353,7 @@ Item {
     readonly property bool dragHere: root.barDragSource !== null && root.barDragWindow === barWindow
     // stayOpen: the notch stays open on its open view.
     readonly property bool pinned: root.notchStayOpen && !root.barHidden
-    readonly property bool expanded: !root.barHidden
+    readonly property bool expanded: !root.notchAway
       && (panelOpen || hoverExpanded || clickExpanded || keyExpanded || pinned || popoutHere || dragHere
           || (root.notchForcedExpanded && root.focusedNotchWindow() === barWindow))
     // Auto-hide: tucked into the edge at rest until the pointer reaches the
@@ -3203,7 +3363,7 @@ Item {
     // An update notice pops down from the resting notch (see "updates"). It
     // shows over auto-hide and peeks; opening the notch covers it.
     // A finished plugin job's notice pops down the same way; the update's wins.
-    readonly property bool noticeShown: (root.updateNotice !== "" || root.pluginsNotice !== "") && !root.barHidden
+    readonly property bool noticeShown: (root.updateNotice !== "" || root.pluginsNotice !== "") && !root.notchAway
     // The notice kept while the notch shrinks away, so its text doesn't change
     // under it, and which of the two it is.
     property string shownNotice: ""
@@ -3226,7 +3386,7 @@ Item {
     // symmetric sideways expansion and nothing else -- so this is the peek's
     // geometry with the activity's content, on the same spring and silhouette.
     readonly property var activityLine: root.activityLine
-    readonly property bool activityPresent: !root.barHidden && activityLine !== null
+    readonly property bool activityPresent: !root.notchAway && activityLine !== null
     // The line on the notch is one of Omarchy's toasts. Pointing at it is
     // reaching for the toast, not for the notch's hover view.
     readonly property bool notificationShown: activityPresent && String(activityLine.owner) === "notch.notifications"
@@ -3234,7 +3394,7 @@ Item {
     // notch is tucked into the edge brings it back out on the existing reveal.
     readonly property bool autoHidden: root.notchAutoHide && !revealed && !expanded && !peeking && !noticeShown
       && !activityPresent && !osdShown
-    readonly property string notchState: root.barHidden || autoHidden ? "hidden" : expanded ? "expanded" : noticeShown ? "notice"
+    readonly property string notchState: root.notchAway || autoHidden ? "hidden" : expanded ? "expanded" : noticeShown ? "notice"
       : osdShown ? "osd" : activityPresent ? "activity" : peeking ? "peek" : "compact"
 
     function collapseNow() {
@@ -3367,6 +3527,45 @@ Item {
       return "restored"
     }
 
+    // Quiet (the root's block above): put away what this screen is showing, and put
+    // it back. Like the state key's stash, but it also keeps the way back, and a
+    // view opened by a click or a key, which have no panel for a snapshot to describe.
+    // The hover view is the pointer's and is not kept: the pointer decides again.
+    property var quietStash: null
+    function quietEnter() {
+      // Already away (asked for again before the notch was put back): what was
+      // put away first is what to put back.
+      if (quietStash === null) quietStash = {
+        shot: snapshot(), stack: viewStack.slice(),
+        view: view, viewPlugin: viewPlugin, click: clickExpanded, key: keyExpanded
+      }
+      expandTimer.stop()
+      peeking = false
+      hideOsd()
+      closePanels()
+      collapseNow()
+    }
+
+    function quietLeave() {
+      var kept = quietStash
+      quietStash = null
+      if (!kept) return
+      // Something opened while the notch was away (a keybind) is newer than what
+      // is being put back, and wins.
+      if (panelOpen || clickExpanded || keyExpanded) return
+      if (kept.shot) {
+        restore(kept.shot)
+        // A panel that could not be put back (its widget went) has no history to keep.
+        if (panelOpen) viewStack = kept.stack
+      } else if (kept.click || kept.key) {
+        view = kept.view
+        viewPlugin = kept.viewPlugin
+        clickExpanded = kept.click
+        keyExpanded = kept.key
+        keyVisited = false
+      }
+    }
+
     function closePanels() {
       viewStack = []
       settingsOpen = false
@@ -3488,7 +3687,7 @@ Item {
     // word the plugin acts on: only "opened" means the notch is showing it, so
     // anything else is the plugin's cue to open its own UI.
     function openIntegration(id, route) {
-      if (root.barHidden) return "declined:hidden"
+      if (root.notchAway) return "declined:" + root.awayReason
       if (!root.platform.accepted(id)) return "declined:not-accepted"
       if (!root.platform.panelFor(id)) return "declined:no-panel"
       if (integrationOpen && integrationId === id && integrationRoute === route) {
@@ -3705,7 +3904,7 @@ Item {
     // that did nothing.
     function showOsd(state) {
       if (!state) return "declined:no-payload"
-      if (root.barHidden) return "declined:hidden"
+      if (root.notchAway) return "declined:" + root.awayReason
       // A panel is what the user is looking at, and an OSD over it would cover
       // the thing they opened. Omarchy's own card is the better answer here.
       if (panelOpen) return "declined:panel-open"
@@ -3867,7 +4066,7 @@ Item {
 
     // --- battery glow -----------------------------------------------------------
 
-    readonly property bool glowOn: root.glowMode !== "none" && !root.barHidden
+    readonly property bool glowOn: root.glowMode !== "none" && !root.notchAway
     // 0 at rest, 1 once the notch is 24 px wider or taller than rest: how far
     // the glow has moved from the resting shape to the open notch's bottom.
     readonly property real glowWiden: Math.max(0, Math.min(1, Math.max(

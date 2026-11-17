@@ -192,4 +192,20 @@ TestCase {
     compare(stock.calls.join("|"), "activate x|close x dismissed")
     model().clear()
   }
+
+  // A plugin that counts notifications looks among the service's children for
+  // the one with `trackedNotifications` and listens to its `notification`. The
+  // service is inside the companion's Loader, so the companion carries one.
+  function test_12_serverIsFoundAmongTheChildren() {
+    var found = null
+    for (var i = 0; i < comp.data.length; i++)
+      if (comp.data[i] && comp.data[i].trackedNotifications !== undefined) found = comp.data[i]
+    verify(found !== null, "a child with trackedNotifications")
+    compare(found.trackedNotifications, stock.serverForTest.trackedNotifications)
+    var seen = []
+    found.notification.connect(function(n) { seen.push(n.id) })
+    stock.serverForTest.notification({ id: 7 })
+    stock.serverForTest.notification({ id: 8 })
+    compare(seen.join(","), "7,8", "every notification the server gets is passed on once")
+  }
 }

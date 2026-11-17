@@ -16,6 +16,15 @@ Item {
   function closeToast(key, reason, instant) { calls = calls.concat(["close " + key + " " + reason]) }
   property alias variantsObj: variants
 
+  // NotificationServer: the model of tracked notifications and the signal for a
+  // new one, which is how a plugin outside finds it (Arc Dock's counter).
+  property alias serverForTest: server
+  QtObject {
+    id: server
+    property var trackedNotifications: ListModel {}
+    signal notification(var notification)
+  }
+
   ListModel { id: toasts }
   // The test reaches the model through here; the real service has no such door.
   property alias modelForTest: toasts

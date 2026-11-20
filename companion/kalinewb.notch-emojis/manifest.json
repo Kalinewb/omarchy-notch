@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "kalinewb.notch-emojis",
+  "name": "Emoji picker (notch)",
+  "version": "1.0.0",
+  "author": "kalinewb",
+  "license": "MIT",
+  "description": "Opens Omarchy's emoji picker inside the notch while it is switched on in the notch's settings; otherwise Omarchy's own, unchanged.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Facade.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.emojis"
+  }
+}

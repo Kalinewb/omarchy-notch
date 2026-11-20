@@ -1537,6 +1537,13 @@ Item {
   // window of its own. Empty by default: nothing changes until it is asked for.
   readonly property var notchHostedPanels: notchItems("hostedPanels", []).map(function (id) { return canonicalWidgetId(id) })
   function hostsPanelOf(name) { return notchHostedPanels.indexOf(canonicalWidgetId(name)) !== -1 }
+  // Omarchy's pickers that open in the notch instead of a window of their own
+  // (OverlayHosting.qml). The same opt-in, off by default, and only ever the
+  // ones named here: the adapter is generic, but what it takes is the shape of
+  // these four's window, so nothing else is offered to it.
+  readonly property var overlayHostable: ["omarchy.clipboard", "omarchy.emojis", "omarchy.image-picker", "omarchy.reminders"]
+  readonly property var notchHostedOverlays: notchItems("hostedOverlays", []).filter(function (id) { return overlayHostable.indexOf(id) !== -1 })
+  function overlayHosted(id) { return notchHostedOverlays.indexOf(String(id)) !== -1 }
   readonly property var notchEffectiveHidden: Contract.effectiveHidden(notchHiddenPlugins, notchPlugins.byId)
 
   // --- the plugin contract (contract.js) --------------------------------------
@@ -2165,8 +2172,16 @@ Item {
   // Another plugin's pop-out panel, drawn inside the notch instead of in a
   // window of its own (PanelHosting.qml). One at a time, on one screen.
   PanelHosting { id: panelHosting; opted: root.notchHostedPanels }
+  // A window-based plugin's card, drawn the same way (OverlayHosting.qml,
+  // dev/own-window-hosting.md), and the one interface over both.
+  OverlayHosting {
+    id: overlayHosting
+    areaWidth: platformService.maxPanelWidth > 0 ? platformService.maxPanelWidth : 880
+    areaHeight: platformService.maxPanelHeight > 0 ? platformService.maxPanelHeight : 680
+  }
+  GuestHosting { id: guestHosting; panels: panelHosting; overlays: overlayHosting }
   readonly property var notificationsSource: notifications
-  readonly property var hosting: panelHosting
+  readonly property var hosting: guestHosting
 
   // Open `item`'s panel inside the notch, on the screen it was clicked on.
   // Answers "opened", or why not -- the caller draws its own panel on anything
@@ -2214,6 +2229,58 @@ Item {
   function releaseHostedPanel() {
     var windows = notchWindows
     for (var i = 0; i < windows.length; i++) if (windows[i].hostedOpen) windows[i].closePanels()
+  }
+
+  // --- the pickers that arrive from a companion -----------------------------------
+  //
+  // What the overlay companions (companion/kalinewb.notch-<picker>) may ask. A
+  // picker is armed first, so its window never maps, then taken; when it closes
+  // itself the notch's copy goes down the way the back strip takes it down.
+
+  // Does the notch want this picker right now? The user asked for it, and the
+  // notch is on screen to show it.
+  function overlayWanted(id) { return overlayHosted(id) && !notchAway }
+
+  function overlayArm(item, id) {
+    if (!overlayWanted(id)) return "declined:off"
+    return overlayHosting.arm(item, String(id))
+  }
+
+  function overlayHost(item, id) {
+    if (!overlayWanted(id)) return "declined:off"
+    if (overlayHosting.widget !== item) {
+      var armed = overlayArm(item, id)
+      if (armed !== "") return armed
+    }
+    return hostPanel(item, "")
+  }
+
+  function overlayDisarm(item) { if (overlayHosting.owns(item)) overlayHosting.disarm() }
+
+  // The picker closed itself. If the notch is showing it, the notch goes back a
+  // step -- the strip's path, so a picker opened from a menu returns to it.
+  function overlayReleased(item) {
+    if (!overlayHosting.owns(item)) return
+    var windows = notchWindows
+    for (var i = 0; i < windows.length; i++) if (windows[i].hostedOpen) { windows[i].goBack(); return }
+    overlayHosting.disarm()
+  }
+
+  function overlayShown(item) {
+    if (!overlayHosting.owns(item) || !overlayHosting.active) return false
+    for (var i = 0; i < notchWindows.length; i++) if (notchWindows[i].hostedOpen) return true
+    return false
+  }
+
+  // What the overlay companions can reach the notch through, and nothing else.
+  readonly property QtObject overlayApi: QtObject {
+    function wants(id) { return root.overlayWanted(id) }
+    function arm(item, id) { return root.overlayArm(item, id) }
+    function host(item, id) { return root.overlayHost(item, id) }
+    function hosting(item) { return root.overlayShown(item) }
+    function disarm(item) { root.overlayDisarm(item) }
+    function release(item) { root.overlayReleased(item) }
+    readonly property bool barHidden: root.notchAway
   }
   readonly property var platform: platformService
   // Activities are claimed and queued, but nothing draws them at rest yet, so a
@@ -2779,6 +2846,36 @@ Item {
   }
   readonly property var notificationsCompanion: notificationsCompanionHelper
 
+  // One companion per picker (Companion.qml's comment says why one each: Omarchy
+  // routes a plugin's calls to ONE clone). They share a bridge and one api, so
+  // a picker's own bridge state is looked up by its key.
+  readonly property var overlayCompanionSpecs: [
+    { id: "kalinewb.notch-clipboard", source: "omarchy.clipboard", label: "clipboard" },
+    { id: "kalinewb.notch-emojis", source: "omarchy.emojis", label: "emoji" },
+    { id: "kalinewb.notch-image-picker", source: "omarchy.image-picker", label: "image picker" },
+    { id: "kalinewb.notch-reminders", source: "omarchy.reminders", label: "reminders" }
+  ]
+  Repeater {
+    id: overlayCompanions
+    model: root.overlayCompanionSpecs
+    delegate: Companion {
+      required property var modelData
+      bar: root
+      companionId: modelData.id; sourceId: modelData.source; label: modelData.label; facadeKey: modelData.source
+      unitPrefix: "kalinewb-notch-" + modelData.id.slice(15) + "-companion"; statusName: "companion-" + modelData.id.slice(15) + ".json"
+      wanted: root.overlayHosted(modelData.source)
+      bridge: NotchOverlayBridge
+      api: root.overlayApi
+    }
+  }
+  function overlayCompanion(source) {
+    for (var i = 0; i < overlayCompanions.count; i++) {
+      var one = overlayCompanions.itemAt(i)
+      if (one && one.sourceId === source) return one
+    }
+    return null
+  }
+
   // The last write a setting made, as the object merged into `bar.notch`
   // (settingsReport.panel.lastWrite).
   property var lastNotchWrite: ({})
@@ -3056,6 +3153,29 @@ Item {
     function releasePanel(): string { root.releaseHostedPanel(); return "ok" }
 
     function hosting(): string { return JSON.stringify(root.hosting.report()) }
+
+    // The pickers that can open in the notch: which the user asked for, what each
+    // one's companion is doing, and what is held now. `overlayHosting <id> on|off`
+    // writes the same setting a settings row would.
+    function overlays(): string {
+      var companions = {}
+      for (var i = 0; i < root.overlayCompanionSpecs.length; i++) {
+        var spec = root.overlayCompanionSpecs[i]
+        var one = root.overlayCompanion(spec.source)
+        companions[spec.source] = one ? { state: one.companionState, status: one.statusKey, bridged: one.bridged,
+                                           route: one.facade ? String(one.facade.route || "") : "" } : null
+      }
+      return JSON.stringify({ hostable: root.overlayHostable, wanted: root.notchHostedOverlays,
+                              companions: companions, hosting: overlayHosting.report() })
+    }
+
+    function overlayHostingSetting(id: string, state: string): string {
+      if (root.overlayHostable.indexOf(id) === -1) return "declined:not hostable"
+      var next = root.notchHostedOverlays.filter(function (one) { return one !== id })
+      if (state === "on") next.push(id)
+      else if (state !== "off") return "declined:on or off"
+      return root.setNotchSetting("hostedOverlays", next) ? "ok" : "declined:no settings writer"
+    }
 
     // What Settings → Integrations is showing, so a check can read the same
     // list the user does. `hostable` is the walk done now; `panelHostable` is
@@ -5189,7 +5309,7 @@ Item {
               id: hostedSlot
               anchors.fill: parent
               anchors.margins: root.notchSidePadding
-              layer.enabled: barWindow.hostedOpen
+              layer.enabled: barWindow.hostedOpen && root.hosting.monochrome
               layer.effect: ShaderEffect { fragmentShader: "shaders/mono.frag.qsb" }
             }
           }

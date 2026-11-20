@@ -143,7 +143,9 @@ fi
 # repo's own script: nothing in the plugins folder is run. Nothing happens for
 # a companion that isn't installed.
 for pair in kalinewb.notch-menu:omarchy.menu kalinewb.notch-osd:omarchy.osd \
-            kalinewb.notch-notifications:omarchy.notifications; do
+            kalinewb.notch-notifications:omarchy.notifications \
+            kalinewb.notch-clipboard:omarchy.clipboard kalinewb.notch-emojis:omarchy.emojis \
+            kalinewb.notch-image-picker:omarchy.image-picker kalinewb.notch-reminders:omarchy.reminders; do
   companion=${pair%%:*}
   [[ -d "$PLUGINS/$companion" && -d "$DEST/companion/$companion" ]] || continue
   NOTCH_COMPANION_ID=$companion NOTCH_COMPANION_SOURCE_ID=${pair#*:} \

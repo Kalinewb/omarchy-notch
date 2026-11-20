@@ -57,7 +57,10 @@ Item {
   // companion is 2.0.0: Omarchy 4.5 and newer).
   property string version: "1.0.0"
   readonly property bool bridged: !!bridge && bridge.target === api
-  readonly property var facade: bridge ? bridge.facade : null
+  // A bridge shared by several companions keeps each one's go-between under a
+  // key of its own (the overlay bridge's `facades`); the others keep one.
+  property string facadeKey: ""
+  readonly property var facade: !bridge ? null : (facadeKey !== "" ? (bridge.facades || ({}))[facadeKey] || null : bridge.facade)
   readonly property string facadeRoute: facade ? String(facade.route || "") : ""
 
   // Only a hosted notch installs or updates anything; a test notch reports and

@@ -1,3 +1,4 @@
 singleton NotchMenuBridge 1.0 NotchMenuBridge.qml
 singleton NotchOsdBridge 1.0 NotchOsdBridge.qml
 singleton NotchNotificationsBridge 1.0 NotchNotificationsBridge.qml
+singleton NotchOverlayBridge 1.0 NotchOverlayBridge.qml

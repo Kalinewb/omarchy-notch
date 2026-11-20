@@ -268,6 +268,13 @@ check "…grown to the card the picker chose, not past the screen" "true" \
   "$(field "$g" '.hosted.report.wanted.width > 0 and (.hosted.width >= .hosted.report.wanted.width) and (.hosted.height >= .hosted.report.wanted.height)')"
 check "…with the card's own colours, not the notch's monochrome" "false" "$(field "$g" '.hosted.monoLayer')"
 check "…and the card paints no surface of its own over the notch's black" "true" "$(notch overlays | jq -r '.hosting.flat')"
+# back-one's rule: nothing of a guest sits in the strip's zone, which is the top of
+# the notch, and the notch grows by the inset so the card keeps its own size.
+check "…the card starts below the back strip's zone" "true" "$(field "$g" '.hosted.contentTop >= 32')"
+check "…and the notch grew by that inset, so the card is not squeezed" "true" \
+  "$(field "$g" '.hosted.height >= .hosted.report.wanted.height + .hosted.contentTop')"
+check "…and nothing of the card sits in the strip's zone (notch backZone: a zone, no hit)" "32 0" \
+  "$(notch backZone | jq -r '"\(.zone.height) \(.hits | length)"')"
 check "…it is told it is open, and the keyboard is where it asked" "true true" \
   "$(notch overlays | jq -r '"\(.hosting.told) \(.hosting.focused)"')"
 check "the notch's back control is offered on it" "true" "$(notch backReport | jq -r '.offered')"

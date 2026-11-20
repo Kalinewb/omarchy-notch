@@ -338,8 +338,8 @@ Escape closes the lot, which is what you want when you are done and not
 when you went one page too far. So the notch keeps one step of history per page
 you opened, and **the strip at the top centre — where the resting notch sits —
 goes back one step**. The notch's own pages leave that strip clear (their title
-is on the left of that row and their buttons on the right), it is an invisible area -- nothing is drawn
-in it, the pointer becomes a hand -- and it is there on every page of the notch's own: with a step
+is on the left of that row and their buttons on the right). At rest it is invisible; under the pointer a small
+back chevron fades in at its centre and the pointer becomes a hand. It is there on every page of the notch's own: with a step
 behind it a press goes back to that page, and at the first page it closes the panel.
 In the menu the first press goes up one menu level. It is also there on a hosted panel and an
 integration, where a press goes back to wherever it was opened from -- the
@@ -350,12 +350,13 @@ it. Over IPC: `notch back`, which answers `back`, `inside` (a panel
 went back a page of its own) or `closed`.
 
 **One way back.** The strip at the top centre is the notch's only back control, and it is the whole
-resting-notch footprint (180 by 32 by default) and draws nothing: an area, not a button; Esc is its
-invisible alias. From a plugin's home, back returns to where the panel was opened from: the widgets row
+resting-notch footprint (180 by 32 by default): invisible at rest, a small chevron under the pointer, no
+pill or box; Esc is its invisible alias. From a plugin's home, back returns to where the panel was opened from: the widgets row
 (grown by a key, a click or the pointer), the settings, the Plugins page or another panel; only when there
 is nowhere to go back to does it close. The Plugins and Needs-attention pages lost their "‹ Settings"
-buttons for it, and the ✕ that closed them: the strip is the way out. Panels keep every control out of the zone
-(`SURFACE-HOSTING.md` section 15; `omarchy-shell notch backZone` lists any that are in it).
+buttons for it, and the ✕ that closed them: the strip is the way out. Panels keep every control and every title out of the
+zone by their own layout, and are not pushed down for it (`SURFACE-HOSTING.md` section 15;
+`omarchy-shell notch backZone` lists any that are in it).
 
 **Close it here, open it here** (`stateKey`, Settings → How it opens) shuts the
 notch where it stands and opens it where it stood — the same page, the same

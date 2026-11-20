@@ -102,10 +102,11 @@ keybind / omarchy-menu / shell summon omarchy.emojis
 UI-rule status of what is built: no own back control exists in these pickers (they
 have Esc only, no hint); the strip is the one back control; Esc is the picker's own
 handler and goes through `goBack()` (so a picker opened from the menu returns to the
-menu: tested). **Not done here, deliberately:** the content inset below the strip
-(the strip hit zone and `hostedTopInset` belong to `back-one` /
-`plugins-in-notch`; `hostedHeight` already grows with `hosting.wantedHeight`, so
-their inset applies to a picker unchanged), and a Settings → Integrations row (the
+menu: tested). A picker is not pushed down for the strip: its card sits at the
+notch's side padding like any hosted panel (the strip is a keep-clear zone at the top
+centre, not a shelf; SURFACE-HOSTING.md section 15), and the picker draws its own
+search field and heading at the left, which `dev/overlays.sh` checks against
+`notch backZone`. **Not done here, deliberately:** a Settings → Integrations row (the
 setting is written by `notch overlayHostingSetting <id> on|off` and the same key).
 
 ### (a') Other first-party own-window plugins: wifiqr, speedtest, disk-speedtest, dev-gallery — **not built**

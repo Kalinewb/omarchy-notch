@@ -206,6 +206,11 @@ check "Settings names the quirks beside a widget it cannot fix, and only those" 
 check "the hosted slot's top inset is the strip's zone: one value (Bar.qml)" "1" \
   "$(grep -c 'notchHostedTopInset: Math.max(notchSidePadding, backZoneHeight)' "$REPO/Bar.qml")"
 
+check "the strip is an area, not a button: BackStrip.qml declares nothing that paints (no Rectangle, Text, Image, border or wash)" "0" \
+  "$(sed -E 's#//.*$##' "$REPO/BackStrip.qml" | grep -cE '\b(Rectangle|Text|Image|ShaderEffect|Canvas|border|opacity)\b')"
+check "…and the notch hands it no look to draw (no foreground, glyph or radius)" "0" \
+  "$(sed -n '/BackStrip {/,/^        }/p' "$REPO/Bar.qml" | grep -cE 'foreground|glyphSize|radius|fontFamily')"
+
 check "no QML errors in the run" "none" \
   "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs.log" | head -1 | cut -c1-120)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs.log" || echo none)"
 

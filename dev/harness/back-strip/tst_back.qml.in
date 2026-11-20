@@ -72,7 +72,7 @@ TestCase {
     compare(islandTaps, 1)
   }
 
-  // The whole zone is the target, not the chevron in the middle of it.
+  // The whole zone is the target; there is no chevron or anything else drawn in it.
   function test_05_every_corner_of_the_zone_goes_back() {
     mouseClick(island, 101, 1)
     wait(700)
@@ -99,5 +99,17 @@ TestCase {
     mouseClick(island, 150, 33)
     wait(700)
     compare(steps, 0)
+  }
+
+  // An area, not a button: nothing is drawn, and a screen reader still finds a button named Back.
+  function paints(item) {
+    if (item.visible && (item.text !== undefined || item.color !== undefined || item.source !== undefined)) return true
+    for (var i = 0; i < item.children.length; i++) if (paints(item.children[i])) return true
+    return false
+  }
+  function test_08_it_draws_nothing() {
+    compare(paints(strip), false)
+    compare(strip.Accessible.name, "Back")
+    compare(strip.Accessible.role, Accessible.Button)
   }
 }

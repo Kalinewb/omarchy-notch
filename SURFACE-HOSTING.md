@@ -688,8 +688,9 @@ does that is not obvious ("esc stops the check").
 **The zone.** The strip is `backZoneWidth` wide and `backZoneHeight` tall (the resting notch's own
 width and height: 180 by 32 by default, and it follows the `compactWidth` setting), centred on the
 panel at its top edge. Every pixel of it is the press target, whatever is drawn there, and it sits above
-the panel: a press in it never reaches a control of the panel underneath. Under the pointer the whole
-zone gets a faint wash, so it is plain that it is not the chevron alone.
+the panel: a press in it never reaches a control of the panel underneath. The zone is invisible: it draws no chevron, pill, border, wash or focus box, so it blends into the notch
+and the panel (the pointer becomes a hand over it, and for a screen reader it is a button named "Back").
+It is an area, not a button.
 
 **The rule for panels.** Nothing that takes a press may sit inside the zone: no button, no `MouseArea`,
 no item with a `TapHandler`, no text input, nothing that takes the tab key. Text and pictures may. Two ways to keep it:

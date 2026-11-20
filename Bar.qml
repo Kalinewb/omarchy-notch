@@ -5327,10 +5327,6 @@ Item {
           x: (panelIsland.barWidth - width) / 2
           y: 0
           offered: barWindow.backOffered
-          foreground: root.notchForeground
-          fontFamily: root.fontFamily
-          glyphSize: Style.font.title
-          radius: root.radiusFor(height)
           onActivated: barWindow.goBack()
         }
       }

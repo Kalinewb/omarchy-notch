@@ -15,7 +15,7 @@ import qs.Ui
 // at all: one calm line. The page is reached from the Settings header (shown
 // only while something needs attention), from Settings > Advanced > Check for
 // problems, or `omarchy-shell notch view setup`, and closes like the settings:
-// Escape, ✕, or a click outside.
+// Escape, the strip at the top centre, or a click outside.
 Item {
   id: root
 
@@ -160,12 +160,6 @@ Item {
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(6)
-
-      HeaderButton {
-        text: "✕"
-        horizontalPadding: Style.space(8)
-        onClicked: root.closeRequested()
-      }
     }
   }
 

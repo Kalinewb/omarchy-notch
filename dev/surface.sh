@@ -166,7 +166,7 @@ check "after cleanup no test bind is left" "[]" "$(binds)"
 
 # --- the way back, and the state key -------------------------------------------
 #
-# Escape and the ✕ close the lot, which is right for "I am done" and wrong for
+# Escape closes the lot, which is right for "I am done" and wrong for
 # "I went one page too far". The notch keeps one snapshot per step in, the
 # strip at the top centre pops one, and `notch back` is the same call the strip
 # makes. The state key (`notch state`) keeps one aside while the notch is shut,

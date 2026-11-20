@@ -720,6 +720,28 @@ from, and from the widgets row (grown by a key, a click or the pointer, where a 
 with nowhere to go back to it closes. The order of one press is: an open menu level, then your panel's own pages
 (`goBackInside()`), then the notch's history, then close.
 
+### Hosted panels you cannot edit
+
+The notch also draws the pop-out panel of a plain bar widget with no change to the plugin (section 1). It moves
+that panel's content below the zone, hands its own Esc and `close()` to the strip's step back
+(`stepBackFromHosted`), and builds a lazy `content:` Component before taking it (Omarchy 4.5 panels). It cannot
+edit the panel, so what a plugin draws itself stays, and the author has to change it:
+
+| Plugin | What stays | Who fixes it |
+|---|---|---|
+| omaplug | a `Back` button on its Layout and Updates sub-pages, and no `goBackInside()` (a hosted panel cannot be asked to step back inside itself, only an integration) | the plugin: declare a `surface` integration, or drop the button under a host with `panelBack` |
+| joramser.camera-test | `‹ 0 / 2 ›`, previous and next camera, top right: they read like a back arrow and are not | the plugin (a label, or an icon that is not a chevron) |
+| touchpad-comfortable | two elided device labels overprint each other in the chip row | the plugin |
+| omapods, Elsewhen, system-monitor, eGPU, OLED corners | titles and rows used to sit under the strip | fixed by the host's inset; eGPU and OLED corners also by their own integration |
+
+Settings → Integrations puts a short note beside the first two (`hosting-quirks.js`), so opting them in is an informed choice.
+
+**Not hostable today**, because they open a window of their own and have no `KeyboardPanel` and `PanelController` for
+the host to take: omaland, arcdock settings, voxtype settings, ming.keybindings, the Spotify full panel and mini popup
+(a `popupOpen`, not a controller), lock-explorer, Omarchy's modal overlays (clipboard, emojis, image picker,
+reminders, speedtest, wifiqr, dev-gallery). The polkit dialog and the lock screen stay their own windows on purpose
+(section 6). Making the modal overlays hostable is a design job, not a fix.
+
 ## Suite pins
 
 A profile switch (Profiles, `kalinewb.profiles`) rewrites which plugins are on

@@ -316,12 +316,6 @@ Item {
         opacity: enabled ? 1 : 0.35
         onClicked: root.bar.refreshPlugins()
       }
-
-      HeaderButton {
-        text: "✕"
-        horizontalPadding: Style.space(8)
-        onClicked: root.closeRequested()
-      }
     }
   }
 

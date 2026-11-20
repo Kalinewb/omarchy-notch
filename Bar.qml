@@ -2845,7 +2845,9 @@ Item {
   // target, so a guest that draws a title, a chip row or a hero there would be
   // pressed through. A guest is not written for the notch, so the notch moves
   // it down instead -- the resting notch's own height, which is the strip's.
-  readonly property real notchHostedTopInset: Math.max(notchSidePadding, notchCompactHeight)
+  // One value for both: it is the zone the strip publishes (`backZoneHeight`), so what an integration
+  // reads from the host and where a guest's slot starts cannot drift apart.
+  readonly property real notchHostedTopInset: Math.max(notchSidePadding, backZoneHeight)
   readonly property real notchSectionGap: Style.space(18)
   readonly property real notchExpandedHeight: notchCompactHeight
 

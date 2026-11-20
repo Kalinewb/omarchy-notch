@@ -107,23 +107,23 @@ TestCase {
     var page = settings()
     wait(100)
     var seen = tabWalk(page, 1)
-    compare(seen.join("|"), "✕", "Tab from the top: no Setup entry at zero")
+    compare(seen.join("|"), "?", "Tab from the top: nothing in the header to land on at zero")
   }
   function test_the_header_entry_shows_only_above_zero() {
     var texts = function(page) { return walk(page).filter(function(i) { return isButton(i) && i.visible }).map(function(b) { return b.text }).join("|") }
     var page = settings()
     wait(50)
-    compare(texts(page), "✕", "nothing at zero")
+    compare(texts(page), "", "nothing at zero")
     page.destroy()
     bar.setup.issueCount = 1
     page = settings()
     wait(50)
-    compare(texts(page), "1 needs attention|✕")
+    compare(texts(page), "1 needs attention")
     page.destroy()
     bar.setup.issueCount = 2
     page = settings()
     wait(50)
-    compare(texts(page), "2 need attention|✕")
+    compare(texts(page), "2 need attention")
     var opened = 0
     page.setupRequested.connect(function() { opened++ })
     page.press("header:setup")
@@ -436,8 +436,8 @@ TestCase {
     compare(page.rows().length, 0, "no rows")
     compare(said(page, "Everything is working."), 1)
     compare(said(page, "Checked just now."), 1)
-    compare(names(buttons(page)), "✕", "one button in the header and nothing else: going back is the strip at the top centre")
-    compare(allText(page), "Needs attention|✕|Everything is working.|Checked just now.", "the whole page")
+    compare(names(buttons(page)), "", "no button in the header: going back is the strip at the top centre")
+    compare(allText(page), "Needs attention|Everything is working.|Checked just now.", "the whole page")
   }
   function test_setup_two_problems_are_two_rows_with_one_button_each() {
     var page = setupPage()
@@ -580,7 +580,7 @@ TestCase {
     wait(100)
     page.forceActiveFocus()
     var seen = tabWalk(page, 1)
-    compare(seen.join("|"), "✕", "Tab walks the header")
+    compare(seen.join("|"), "?", "the header has nothing to Tab to: the strip is the way back")
   }
   function test_setup_a_handoff_row_opens_the_plugins_own_step() {
     bar.setup.points = [face]

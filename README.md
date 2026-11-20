@@ -334,7 +334,7 @@ and left. It doesn't rely on Hyprland's click-outside grab, which unrelated focu
 
 ### The way back
 
-Escape and ✕ close the lot, which is what you want when you are done and not
+Escape closes the lot, which is what you want when you are done and not
 when you went one page too far. So the notch keeps one step of history per page
 you opened, and **the strip at the top centre — where the resting notch sits —
 goes back one step**. The notch's own pages leave that strip clear (their title
@@ -354,7 +354,7 @@ resting-notch footprint (180 by 32 by default), not the chevron that shows under
 invisible alias. From a plugin's home, back returns to where the panel was opened from: the widgets row
 (grown by a key, a click or the pointer), the settings, the Plugins page or another panel; only when there
 is nowhere to go back to does it close. The Plugins and Needs-attention pages lost their "‹ Settings"
-buttons for it (✕ closes, which is not going back). Panels keep every control out of the zone
+buttons for it, and the ✕ that closed them: the strip is the way out. Panels keep every control out of the zone
 (`SURFACE-HOSTING.md` section 15; `omarchy-shell notch backZone` lists any that are in it).
 
 **Close it here, open it here** (`stateKey`, Settings → How it opens) shuts the
@@ -385,7 +385,7 @@ carries a bind of your own is never touched.
 ## Settings panel
 
 Open the settings with a long right-click (by default) or its keybind. The notch grows into the
-panel; click outside, press Escape or ✕ to close it. Every change is saved to `shell.json` straight
+panel; click outside, or press Escape to close it. Every change is saved to `shell.json` straight
 away. **Preview** (under Battery) shows the charging, full and low glow without touching the battery,
 until you pick Off or close the settings. It shows the glow at your current glow size. At a tiny size
 (under 4 px) or with the glow off there is nothing to see, and a note under Preview says so.

@@ -191,6 +191,20 @@ scenario "the menu: no control takes a press in the zone" "menu " sc_menu
 echo; echo "${BOLD}One control: the notch's pages have no back button of their own${RESET}"
 check "the Plugins and Setup pages no longer carry a '‹ Settings' button" "0" \
   "$(grep -c '‹ Settings\|backRequested' "$REPO/plugins/NotchPlugins.qml" "$REPO/NotchSetup.qml" | awk -F: '{s+=$2} END {print s}')"
+check "…nor a ✕: the strip closes at the first page, and Esc closes (the Settings, Plugins and Setup headers)" "0" \
+  "$(( $(grep -c 'closeButton' "$REPO/NotchSettings.qml") + $(grep -c 'text: "✕"' "$REPO/plugins/NotchPlugins.qml" "$REPO/NotchSetup.qml" | awk -F: '{s+=$2} END {print s}') ))"
+
+echo; echo "${BOLD}Hosted panels the notch cannot edit${RESET}"
+cat >"$work/q.js" <<JS
+const vm = require("vm"), fs = require("fs")
+const ctx = {}; vm.createContext(ctx)
+vm.runInContext(fs.readFileSync("$REPO/hosting-quirks.js", "utf8").replace(/^\.pragma library/m, ""), ctx)
+console.log(ctx.label("omaplug", "Omaplug") + "|" + ctx.label("joramser.camera-test", "Camera Test") + "|" + ctx.label("omarchy.audio", "Audio"))
+JS
+check "Settings names the quirks beside a widget it cannot fix, and only those" \
+  "Omaplug · has its own Back buttons on two pages|Camera Test · its ‹ › switch camera, not page|Audio" "$(node "$work/q.js" 2>&1)"
+check "the hosted slot's top inset is the strip's zone: one value (Bar.qml)" "1" \
+  "$(grep -c 'notchHostedTopInset: Math.max(notchSidePadding, backZoneHeight)' "$REPO/Bar.qml")"
 
 check "no QML errors in the run" "none" \
   "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs.log" | head -1 | cut -c1-120)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs.log" || echo none)"

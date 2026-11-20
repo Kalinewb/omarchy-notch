@@ -427,7 +427,7 @@ no_row_badge='[.panel.rows[] | select(((.label + " " + .state) | test(" · [0-9]
 start '{"batteryPeek":false}'
 open_panel || true
 rep=$(report)
-check "nothing to report: no badge, and the header is the title, Plugins and the close button" "0 title,plugins,close" "$(jq -r "\"\(.panel.badges | length) \(${header_names})\"" <<<"$rep")"
+check "nothing to report: no badge, and the header is the title and Plugins" "0 title,plugins" "$(jq -r "\"\(.panel.badges | length) \(${header_names})\"" <<<"$rep")"
 check "…no row or section carries a count" "" "$(jq -r "$no_row_badge" <<<"$rep")"
 check "…Guided setup stays hidden until Bar.openWizard exists, and its press does nothing" "$(grep -q 'function openWizard' "$REPO/Bar.qml" && echo ok || echo no-such-button)" "$(ipc settingsPress header:guide)"
 check "…the header fits: nothing overlaps, all inside the padding" "true" "$(jq -r "$header_fits" <<<"$rep")"
@@ -456,7 +456,7 @@ ipc setup check "" >/dev/null
 ipc settings >/dev/null
 settle '.panel.badges | length > 0' || true
 rep=$(report)
-check "two issues in the sandbox: one badge, 2 need attention" "setup=2 title,plugins,setup,close 2 need attention" \
+check "two issues in the sandbox: one badge, 2 need attention" "setup=2 title,plugins,setup 2 need attention" \
   "$(jq -r "[($badge_text), ($header_names), ($(button_text setup))] | join(\" \")" <<<"$rep")"
 check "…the header still fits" "true" "$(jq -r "$header_fits" <<<"$rep")"
 check "…and still no row or section carries a count" "" "$(jq -r "$no_row_badge" <<<"$rep")"
@@ -480,7 +480,7 @@ start '{"batteryPeek":false}'
 ipc settings >/dev/null
 settle '.panel.badges | length > 0' || true
 rep=$(report)
-check "an update available: Plugins · 1, on the Plugins button" "plugins=1 title,plugins,close Plugins · 1" \
+check "an update available: Plugins · 1, on the Plugins button" "plugins=1 title,plugins Plugins · 1" \
   "$(jq -r "[($badge_text), ($header_names), ($(button_text plugins))] | join(\" \")" <<<"$rep")"
 check "…the header fits, and no row or section carries it" "true " "$(jq -r "\"\(${header_fits}) \(${no_row_badge})\"" <<<"$rep")"
 res=$(ipc settingsPress header:plugins); sleep 0.9
@@ -493,7 +493,7 @@ ipc setup check "" >/dev/null
 ipc settings >/dev/null
 settle '(.panel.badges | length) == 2' || true
 rep=$(report)
-check "both at once: Plugins · 1 then 2 need attention" "plugins=1,setup=2 title,plugins,setup,$(grep -q 'function openWizard' "$REPO/Bar.qml" && echo guide,)close" "$(jq -r "[($badge_text), ($header_names)] | join(\" \")" <<<"$rep")"
+check "both at once: Plugins · 1 then 2 need attention" "plugins=1,setup=2 title,plugins,setup$(grep -q 'function openWizard' "$REPO/Bar.qml" && echo ,guide)" "$(jq -r "[($badge_text), ($header_names)] | join(\" \")" <<<"$rep")"
 check "…with both badges the header still fits: the title is overlapped by nothing" "true" "$(jq -r "$header_fits" <<<"$rep")"
 stop
 XENV=()

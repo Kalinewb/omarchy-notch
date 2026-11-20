@@ -329,8 +329,8 @@ add keybinds for opening the notch, the settings and the menu, and for toggling 
 
 The open keybind works from any state. From the settings or the menu it goes straight to the
 open view, or just closes the panel when the open action is that panel. A view opened by a
-keybind stays until you press the keybind again, or until the pointer has been over the notch
-and left. It doesn't rely on Hyprland's click-outside grab, which unrelated focus changes clear.
+keybind stays until you press the keybind again (or collapse, quiet or the state key close it); moving
+the pointer over the notch and away, using its menu or launching an app from it does not close it. It doesn't rely on Hyprland's click-outside grab, which unrelated focus changes clear.
 
 ### The way back
 

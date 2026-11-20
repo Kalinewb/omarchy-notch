@@ -4,13 +4,13 @@
 #
 #   ./dev/keepshown.sh
 #
-# The report: with the notch shown -- always (auto-hide off), or opened with the open key and so
-# shown until that key says otherwise, or kept open (stayOpen) -- opening an app or a panel from it and
+# The report: with the notch shown -- always (auto-hide off), or opened with the open key or a click and
+# so shown until that gesture says otherwise, or kept open (stayOpen) -- opening an app or a panel from it and
 # closing that put the notch back into its resting state, and with auto-hide on, into the screen edge.
 # The cause was the six handlers that run when a panel goes down (settings, menu, Plugins, Setup, an
-# integration, a hosted panel): each cleared the key's open state along with the pointer's and the
-# click's, so the notch was no longer open, and (Bar.qml `panelClosed`) a notch the key opened is now put
-# back on the view it was opened on. The pointer's and a click's way of opening end with the panel, as
+# integration, a hosted panel): each cleared the key's and the click's open state along with the pointer's,
+# so the notch was no longer open, and (Bar.qml `panelClosed`) a notch the key or a click opened is now
+# put back on the view it was opened on. The pointer's and a click's way of opening end with the panel, as
 # before, and so does the open key's own toggle.
 #
 #   A. shown always (auto-hide off): a panel, the menu, a picker hosted in the notch and the quiet cycle
@@ -18,6 +18,12 @@
 #   B. opened with the open key, auto-hide on: the same panels, closed by Back, by the picker's own Esc,
 #      by hide and by the key, leave it open on its view; the key closes it; quiet puts it back.
 #   C. kept open (stayOpen): the same.
+#      The pointer visiting the notch and leaving is not a way out of it (that used to close a key-opened
+#      notch -- `keyVisited` -- and is the live report: open it with the key, use the mouse on it to open
+#      the menu or an app, move off it, and it was in the edge).
+#   E. opened with a click (openWith: click, the user's own setting): the same panels and pickers, closed,
+#      leave it open; a real app window opened and closed while it is open does too; the same gesture
+#      closes it.
 #   D. the ordinary auto-hide notch is unchanged: from rest a panel closes into the edge, the pointer's
 #      hover view is gone with the panel, and an explicit collapse still collapses.
 #
@@ -148,6 +154,14 @@ check "the open key opens it, and the key is what holds it" "expanded widgets tr
 notch settings >/dev/null; settle "expanded settings" shape >/dev/null
 check "a panel opened from it and closed with Back: the notch is still open on its view" "expanded widgets" "$(notch back >/dev/null; settle "expanded widgets" shape)"
 check "…held by the key still" "true" "$(flags | cut -d' ' -f1)"
+# The pointer comes onto the notch (a click on its menu, a widget that launches an app) and goes away.
+visit() { notch pointer true >/dev/null; sleep 0.5; notch pointer false >/dev/null; sleep 1.4; }
+check "the pointer visiting the notch and leaving: still open, never hidden" "no" "$(never_hidden visit)"
+check "…on its view, held by the key" "expanded widgets true" "$(shape) $(flags | cut -d' ' -f1)"
+notch menu root >/dev/null; settle "expanded menu" shape >/dev/null
+notch pointer true >/dev/null; sleep 0.3
+notch back >/dev/null; notch pointer false >/dev/null
+check "using the menu with the pointer on the notch, closing it and moving off: still open" "expanded widgets" "$(sleep 1.5; shape)"
 notch menu root >/dev/null; settle "expanded menu" shape >/dev/null
 check "the menu opened from it and closed (an app launched from it): still open, never hidden" "no" "$(never_hidden notch back)"
 check "…on its view" "expanded widgets" "$(shape)"
@@ -193,6 +207,43 @@ check "quiet on and off: open again" "expanded widgets" "$(settle "expanded widg
 stop
 
 # ===================================================================================
+echo; echo "${BOLD}E. Opened with a click (openWith: click), auto-hide on${RESET}"
+# ===================================================================================
+start "$CFG_ON,\"autoHide\":true,\"openWith\":[\"click\"]}"
+check "at rest it is in the edge" "hidden" "$(state)"
+notch press click >/dev/null
+check "a click opens it, and the click is what holds it" "expanded widgets false true false" "$(settle "expanded widgets" shape) $(flags)"
+notch settings >/dev/null; settle "expanded settings" shape >/dev/null
+check "a panel opened from it and closed with Back: still open on its view" "expanded widgets" "$(notch back >/dev/null; settle "expanded widgets" shape)"
+check "…held by the click still" "true" "$(flags | cut -d' ' -f2)"
+notch menu root >/dev/null; settle "expanded menu" shape >/dev/null
+check "the menu opened from it and closed (an app launched from it): never hidden" "no" "$(never_hidden notch back)"
+check "…still open on its view" "expanded widgets" "$(shape)"
+hosted_open
+check "a picker hosted in it, closed by its own Esc: still open on its view" "expanded widgets" "$(harness dismiss >/dev/null; settle "expanded widgets" shape)"
+hosted_open
+check "…closed by hide: the same" "expanded widgets" "$(harness close >/dev/null; settle "expanded widgets" shape)"
+notch settings >/dev/null; settle "expanded settings" shape >/dev/null
+notch quiet on keepshown:e >/dev/null; settle hidden state >/dev/null
+notch quiet off keepshown:e >/dev/null
+check "quiet over a panel opened from it: put back" "expanded settings" "$(settle "expanded settings" shape)"
+notch back >/dev/null
+check "…and closing that, it is still open" "expanded widgets" "$(settle "expanded widgets" shape)"
+# A real window opening and closing while it is open (focus moves to it and back).
+if command -v foot >/dev/null && [[ -n ${WAYLAND_DISPLAY:-} ]]; then
+  app_cycle() { foot -T keepshown-probe sleep 30 >/dev/null 2>&1 & local fp=$!; sleep 1.5; kill "$fp" 2>/dev/null; wait "$fp" 2>/dev/null; sleep 0.8; }
+  check "a real app window opened and closed while it is open: never hidden" "no" "$(never_hidden app_cycle)"
+  check "…still open on its view" "expanded widgets" "$(shape)"
+fi
+notch press click >/dev/null
+check "the same gesture closes it: back into the edge" "hidden" "$(settle hidden state)"
+check "…and nothing is left open" "false false false" "$(flags)"
+notch press click >/dev/null; settle expanded state >/dev/null
+check "the pointer's hover view is not a click: hovering from rest still goes with the panel" "false" \
+  "$(notch collapse >/dev/null; settle hidden state >/dev/null; notch view widgets >/dev/null; settle expanded state >/dev/null; notch settings >/dev/null; sleep 0.5; notch back >/dev/null; sleep 1; notch geometry | jq -r '.open.click')"
+stop
+
+# ===================================================================================
 echo; echo "${BOLD}D. The ordinary auto-hide notch is unchanged${RESET}"
 # ===================================================================================
 start "$CFG_ON,\"autoHide\":true}"
@@ -204,6 +255,11 @@ hosted_open
 check "a picker hosted from rest, closed: back into the edge" "hidden" "$(harness dismiss >/dev/null; settle hidden state)"
 notch view widgets >/dev/null
 check "the pointer's hover view opens it" "expanded true" "$(settle expanded state >/dev/null; echo "expanded $(notch geometry | jq -r '.open.hover')")"
+notch collapse >/dev/null; settle hidden state >/dev/null
+notch view widgets >/dev/null; settle expanded state >/dev/null
+notch pointer true >/dev/null; sleep 0.4; notch pointer false >/dev/null
+check "the pointer's hover view still closes when the pointer leaves" "hidden" "$(settle hidden state)"
+notch view widgets >/dev/null; settle expanded state >/dev/null
 notch settings >/dev/null; settle "expanded settings" shape >/dev/null
 notch back >/dev/null
 check "a panel opened from the hover view and closed: the hover view goes with it (the pointer's, as before)" "false false false" "$(settle "false false false" flags)"

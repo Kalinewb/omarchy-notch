@@ -3560,10 +3560,12 @@ Item {
     property bool clickExpanded: false
     // Opened by a keybind (or IPC): it doesn't arm the click-outside focus
     // grab, which Hyprland clears on unrelated focus changes when the pointer
-    // is elsewhere. It closes on the keybind again, or once the pointer has
-    // been over the notch and left.
+    // is elsewhere. It is shown until the keybind is pressed again (or collapse, quiet,
+    // the state key, or the click that opens the notch, says otherwise) and NOT until the pointer has
+    // been over it and left: that used to close it, so using the notch with the mouse -- opening
+    // the menu, launching an app -- and moving off it put it back in the edge, which is the one
+    // thing "shown until I press the key" must not do.
     property bool keyExpanded: false
-    property bool keyVisited: false
     property bool peeking: false
     property bool mediaReady: false
     property string peekKind: "media"
@@ -3647,7 +3649,6 @@ Item {
       hoverExpanded = false
       clickExpanded = false
       keyExpanded = false
-      keyVisited = false
       if (pinned) showPinnedView()
     }
 
@@ -3689,7 +3690,6 @@ Item {
         hoverExpanded = shot.hover === true
         clickExpanded = shot.click === true
         keyExpanded = shot.key === true
-        keyVisited = islandOver
       } else if (shot.settings) openSettings()
       else if (shot.menu) openMenu(shot.menuRoute)
       else if (shot.plugins) openPlugins("")
@@ -3888,14 +3888,12 @@ Item {
         // afterwards would leave the notch in the edge.
         clickExpanded = kept.click
         keyExpanded = kept.key
-        keyVisited = false
-      } else if (kept.click || kept.key) {
+        } else if (kept.click || kept.key) {
         view = kept.view
         viewPlugin = kept.viewPlugin
         clickExpanded = kept.click
         keyExpanded = kept.key
-        keyVisited = false
-      }
+        }
     }
 
     function closePanels() {
@@ -3908,17 +3906,17 @@ Item {
       hostedOpen = false
     }
 
-    // A panel went down. The pointer's and a click's way of opening the notch end with the panel, as they
-    // always did; the key's does not. A notch opened with the open key (`keyExpanded`) is shown until that
-    // key, collapse or quiet says otherwise, so closing something that was opened from it -- by Esc, the
-    // back strip, a menu action that launches an app, a plugin closing itself, focus moving to another
-    // window -- puts it back on the view it was opened on, not away with the panel. (stayOpen does the
-    // same through `pinned`.) Without this the notch went back to its resting state, and with auto-hide on,
-    // into the screen edge, every time a panel or an app launched from it was closed.
+    // A panel went down. The pointer's hover view ends with the panel, as it always did; a notch opened
+    // with a click (`openWith: click`) or the open key is shown until a click outside, the same gesture
+    // or the key says otherwise, so closing something that was opened from it -- by Esc, the back strip,
+    // a menu action that launches an app, a plugin closing itself -- puts it back on the view it was
+    // opened on, not away with the panel. (stayOpen does the same through `pinned`.) Without this the
+    // notch went back to its resting state, and with auto-hide on, into the screen edge, every time a
+    // panel or an app launched from it was closed. A click OUTSIDE an open panel is the other way out
+    // and still takes the whole notch with it (the panel's focus grab, below).
     function panelClosed() {
       hoverExpanded = false
-      clickExpanded = false
-      if (pinned || keyExpanded) showPinnedView()
+      if (pinned || keyExpanded || clickExpanded) showPinnedView()
     }
 
     // The view stayOpen keeps: the open action, or the widgets when that is a panel.
@@ -4181,7 +4179,7 @@ Item {
       viewPlugin = requested === "plugin" ? plugin : ""
       view = requested
       if (how === "click") clickExpanded = true
-      else if (how === "key") { keyExpanded = true; keyVisited = islandOver }
+      else if (how === "key") keyExpanded = true
       else hoverExpanded = true
     }
 
@@ -4279,7 +4277,6 @@ Item {
 
     function islandHoverChanged(hovered) {
       root.setBarHovered(hovered)
-      if (hovered && keyExpanded) keyVisited = true
       if (hovered) {
         collapseTimer.stop()
         autoHideTimer.stop()
@@ -4373,7 +4370,6 @@ Item {
         // pointer still in the reveal strip is the same reach, not a new one.
         if (!(root.notchAutoHide && (revealHover.hovered || autoHideTimer.running)))
           barWindow.hoverExpanded = false
-        if (barWindow.keyVisited) { barWindow.keyExpanded = false; barWindow.keyVisited = false }
         if (barWindow.pinned && !barWindow.panelOpen) barWindow.showPinnedView()
       }
     }
@@ -4451,7 +4447,7 @@ Item {
     HyprlandFocusGrab {
       active: barWindow.panelOpen
       windows: [barWindow, barWindow.panelWindow]
-      onCleared: barWindow.closePanels()
+      onCleared: { barWindow.closePanels(); barWindow.clickExpanded = false }
     }
     // The keyboard goes to panelWindow, where the panels are.
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None

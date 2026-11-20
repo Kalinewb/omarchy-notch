@@ -59,7 +59,7 @@ a fiction about the plugin's state. The adapter moves what is real.
 keybind / omarchy-menu / shell summon omarchy.emojis
    -> Omarchy resolves to kalinewb.notch-emojis (clonedFrom), keepLoaded, entry = Facade.qml
    -> Facade.open(payload)
-        notch wants it? (bar.notch.hostedOverlays, notch on screen)
+        notch wants it? (bar.notch.hostedPanels, notch on screen)
           no  -> stock picker opens in its own window, unmodified (the fallback is the stock file)
           yes -> arm  (Binding: window visible=false, implicitWidth/Height = notch's max panel area)
                  stock.open(payload)           the picker runs its own code, believes it is open
@@ -74,8 +74,12 @@ keybind / omarchy-menu / shell summon omarchy.emojis
   quiet, focus, growth spring, fade timings are the existing ones. Bar.qml's reads
   of `root.hosting` now go through `GuestHosting.qml`, which answers for whichever
   of `PanelHosting` (bar widgets) or `OverlayHosting` (pickers) holds the slot.
-* **Opt-in, off by default,** like `hostedPanels`: `bar.notch.hostedOverlays`, a
-  list of Omarchy ids, filtered to the four the adapter has been proven on. The
+* **Opt-in, off by default,** in the list that already holds the widgets' panels,
+  `bar.notch.hostedPanels`: a picker's Omarchy id there (`omarchy.emojis`) is the
+  user asking for it, read as the four the adapter has been proven on and nothing
+  else. No new setting key, so nothing else that counts the notch's keys changes
+  (`dev/settings.sh` decides every key the notch reads), and the Integrations toggles
+  leave the pickers' entries alone. The
   companion for a picker is installed and kept in step by the existing `Companion`
   machinery (`bin/notch-companion`, one folder per clone, synced by `install.sh`)
   only while its picker is on; off means Omarchy's own picker, untouched.
@@ -175,7 +179,7 @@ notch rule.
 
 ## What was verified, and how
 
-`dev/overlays.sh` (142 checks):
+`dev/overlays.sh` (141 checks):
 
 * **A** drives `OverlayHosting.qml` against the REAL emoji picker, reminder flow,
   image picker and clipboard (the clipboard from a sandboxed copy: the real file

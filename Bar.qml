@@ -1538,11 +1538,12 @@ Item {
   readonly property var notchHostedPanels: notchItems("hostedPanels", []).map(function (id) { return canonicalWidgetId(id) })
   function hostsPanelOf(name) { return notchHostedPanels.indexOf(canonicalWidgetId(name)) !== -1 }
   // Omarchy's pickers that open in the notch instead of a window of their own
-  // (OverlayHosting.qml). The same opt-in, off by default, and only ever the
-  // ones named here: the adapter is generic, but what it takes is the shape of
-  // these four's window, so nothing else is offered to it.
+  // (OverlayHosting.qml). The same opt-in list and the same default -- off -- as
+  // the widgets' panels above: a picker's id in `hostedPanels` is the user asking
+  // for it. Only ever the ones named here: the adapter is generic, but what it
+  // takes is the shape of these four's window, so nothing else is offered to it.
   readonly property var overlayHostable: ["omarchy.clipboard", "omarchy.emojis", "omarchy.image-picker", "omarchy.reminders"]
-  readonly property var notchHostedOverlays: notchItems("hostedOverlays", []).filter(function (id) { return overlayHostable.indexOf(id) !== -1 })
+  readonly property var notchHostedOverlays: notchHostedPanels.filter(function (id) { return overlayHostable.indexOf(id) !== -1 })
   function overlayHosted(id) { return notchHostedOverlays.indexOf(String(id)) !== -1 }
   readonly property var notchEffectiveHidden: Contract.effectiveHidden(notchHiddenPlugins, notchPlugins.byId)
 
@@ -3155,8 +3156,8 @@ Item {
     function hosting(): string { return JSON.stringify(root.hosting.report()) }
 
     // The pickers that can open in the notch: which the user asked for, what each
-    // one's companion is doing, and what is held now. `overlayHosting <id> on|off`
-    // writes the same setting a settings row would.
+    // one's companion is doing, and what is held now. `overlayHostingSetting <id> on|off`
+    // writes `hostedPanels`, the list Settings → Integrations writes.
     function overlays(): string {
       var companions = {}
       for (var i = 0; i < root.overlayCompanionSpecs.length; i++) {
@@ -3171,10 +3172,11 @@ Item {
 
     function overlayHostingSetting(id: string, state: string): string {
       if (root.overlayHostable.indexOf(id) === -1) return "declined:not hostable"
-      var next = root.notchHostedOverlays.filter(function (one) { return one !== id })
+      // The whole list, so the widgets' entries in it are kept as they are.
+      var next = root.notchItems("hostedPanels", []).filter(function (one) { return one !== id })
       if (state === "on") next.push(id)
       else if (state !== "off") return "declined:on or off"
-      return root.setNotchSetting("hostedOverlays", next) ? "ok" : "declined:no settings writer"
+      return root.setNotchSetting("hostedPanels", next) ? "ok" : "declined:no settings writer"
     }
 
     // What Settings → Integrations is showing, so a check can read the same

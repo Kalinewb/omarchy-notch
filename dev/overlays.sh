@@ -255,7 +255,7 @@ check "…and one companion for each, bridged" "true true true true" \
 # the route is read, not exercised, here -- part C does it with a small window.
 check "off: the notch does not want the picker" "false" "$(notch overlays | jq -r '.wanted | index("omarchy.emojis") != null')"
 
-check "turning it on is one setting" "ok" "$(harness setNotch '{"hostedOverlays":["omarchy.emojis","omarchy.clipboard","nonsense"]}')"
+check "turning it on is one setting" "ok" "$(harness setNotch '{"hostedPanels":["omarchy.emojis","omarchy.clipboard","nonsense"]}')"
 check "…the notch keeps the ones it can host and drops the rest" '["omarchy.emojis","omarchy.clipboard"]' "$(settle '["omarchy.emojis","omarchy.clipboard"]' wants)"
 
 # The summons.
@@ -329,7 +329,7 @@ harness close >/dev/null
 check "…closing it closes its window" "stock false false 0" "$(settle "stock false false 0" fstate)"
 
 # Setting on: held, taken, and counted exactly once each way.
-harness setNotch '{"hostedOverlays":["omarchy.emojis"]}' >/dev/null
+harness setNotch '{"hostedPanels":["omarchy.emojis"]}' >/dev/null
 settle '["omarchy.emojis"]' wants >/dev/null
 host_up
 check "setting on: the notch takes it, its window never maps, the picker believes it is open once" "notch true false 1" "$(settle "notch true false 1" fstate)"
@@ -338,7 +338,7 @@ notch back >/dev/null
 check "back closes it, once: the picker's books balance" "notch false false 0" "$(settle "notch false false 0" fstate)"
 
 # The hold is let go: the picker's own window binding was put back, not broken.
-harness setNotch '{"hostedOverlays":[]}' >/dev/null
+harness setNotch '{"hostedPanels":[]}' >/dev/null
 settle '[]' wants >/dev/null
 harness open >/dev/null
 check "setting off again: its own window opens again -- the binding was put back, not left broken" "stock true true 1" \
@@ -347,7 +347,7 @@ harness close >/dev/null
 settle "stock false false 0" fstate >/dev/null
 
 # Declined at the moment of asking: the picker is never lost.
-harness setNotch '{"hostedOverlays":["omarchy.emojis"]}' >/dev/null
+harness setNotch '{"hostedPanels":["omarchy.emojis"]}' >/dev/null
 settle '["omarchy.emojis"]' wants >/dev/null
 # Away is a hold (quiet): the notch has stepped out of the way and draws nothing.
 notch quiet on probe:overlay >/dev/null

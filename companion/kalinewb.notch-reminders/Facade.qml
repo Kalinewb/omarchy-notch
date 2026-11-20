@@ -11,7 +11,7 @@ import Quickshell
 //
 //   the notch   when a notch is running here, the user has asked for this
 //               picker to open in it (Settings → Integrations, or
-//               `bar.notch.hostedOverlays`), and it is in a state to show one
+//               `bar.notch.hostedPanels`), and it is in a state to show one
 //   Omarchy's   otherwise -- loaded from $OMARCHY_PATH by URL, so it is the real
 //   own picker  thing and not a copy, and it opens in its own window as always
 //

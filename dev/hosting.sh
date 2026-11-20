@@ -338,6 +338,10 @@ check "47. …with the panel back on the notch's surface" "expanded hosted true"
 # Every way of closing a panel closes this one too.
 notch toggle >/dev/null
 check "48. the open keybind closes it, like every other panel" "false 0" "$(settle "false 0" holding)"
+# The key leaves the notch open on its widgets (it opened that view), and an open notch stays open when a
+# panel opened from it is closed (dev/keepshown.sh). What follows starts from rest.
+notch collapse >/dev/null
+settle compact bash -c "quickshell ipc -p '$notch_root' call notch geometry | jq -r .state" >/dev/null
 
 check "49. a widget the notch is not drawing is declined, in words" "declined:no such widget" \
   "$(notch hostPanel nosuchwidget)"

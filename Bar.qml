@@ -3116,7 +3116,7 @@ Item {
       if (!w) return
       var action = root.notchOpenAction
       if (w.panelOpen) {
-        if (action === "none" || w.setupOpen || (action === "settings" && w.settingsOpen) || (action === "menu" && w.menuOpen)) w.closePanels()
+        if (action === "none" || w.setupOpen || (action === "settings" && w.settingsOpen) || (action === "menu" && w.menuOpen)) { w.closePanels(); w.collapseNow() }
         else w.openView(action, "key")
         return
       }
@@ -3883,6 +3883,12 @@ Item {
         restore(kept.shot)
         // A panel that could not be put back (its widget went) has no history to keep.
         if (panelOpen) viewStack = kept.stack
+        // The panel was opened from a notch the key or a click had opened, and putting the panel
+        // away put that away with it (collapseNow): both come back, or closing the panel
+        // afterwards would leave the notch in the edge.
+        clickExpanded = kept.click
+        keyExpanded = kept.key
+        keyVisited = false
       } else if (kept.click || kept.key) {
         view = kept.view
         viewPlugin = kept.viewPlugin
@@ -3900,6 +3906,19 @@ Item {
       setupOpen = false
       integrationOpen = false
       hostedOpen = false
+    }
+
+    // A panel went down. The pointer's and a click's way of opening the notch end with the panel, as they
+    // always did; the key's does not. A notch opened with the open key (`keyExpanded`) is shown until that
+    // key, collapse or quiet says otherwise, so closing something that was opened from it -- by Esc, the
+    // back strip, a menu action that launches an app, a plugin closing itself, focus moving to another
+    // window -- puts it back on the view it was opened on, not away with the panel. (stayOpen does the
+    // same through `pinned`.) Without this the notch went back to its resting state, and with auto-hide on,
+    // into the screen edge, every time a panel or an app launched from it was closed.
+    function panelClosed() {
+      hoverExpanded = false
+      clickExpanded = false
+      if (pinned || keyExpanded) showPinnedView()
     }
 
     // The view stayOpen keeps: the open action, or the widgets when that is a panel.
@@ -4069,10 +4088,7 @@ Item {
 
     onHostedOpenChanged: {
       if (hostedOpen) return
-      hoverExpanded = false
-      clickExpanded = false
-      keyExpanded = false
-      if (pinned) showPinnedView()
+      panelClosed()
       // Given back only once the notch has shrunk past it, so the panel fades
       // with the surface instead of vanishing out of a closing box.
       hostedReturn.restart()
@@ -4171,47 +4187,32 @@ Item {
 
     onSettingsOpenChanged: {
       if (settingsOpen) return
-      hoverExpanded = false
-      clickExpanded = false
-      keyExpanded = false
-      if (pinned) showPinnedView()
+      panelClosed()
       // Leaving the settings stops any battery preview started there.
       if (root.batterySimulated) { root.batterySimulatedState = ""; root.batterySimulatedPercent = -1 }
     }
 
     onMenuOpenChanged: {
       if (menuOpen) return
-      hoverExpanded = false
-      clickExpanded = false
-      keyExpanded = false
-      if (pinned) showPinnedView()
+      panelClosed()
       // Closed from outside the menu (a click outside, a trigger, IPC).
       if (menuHost.item && menuHost.item.opened) menuHost.item.close()
     }
 
     onIntegrationOpenChanged: {
       if (integrationOpen) return
-      hoverExpanded = false
-      clickExpanded = false
-      keyExpanded = false
-      if (pinned) showPinnedView()
+      panelClosed()
       if (integrationHost.item && typeof integrationHost.item.close === "function") integrationHost.item.close()
     }
 
     onSetupOpenChanged: {
       if (setupOpen) return
-      hoverExpanded = false
-      clickExpanded = false
-      keyExpanded = false
-      if (pinned) showPinnedView()
+      panelClosed()
     }
 
     onPluginsOpenChanged: {
       if (pluginsOpen) return
-      hoverExpanded = false
-      clickExpanded = false
-      keyExpanded = false
-      if (pinned) showPinnedView()
+      panelClosed()
       // A card left open is cancelled by the page once it has faded out, so it
       // never changes under the shrinking notch (NotchPlugins.qml).
     }

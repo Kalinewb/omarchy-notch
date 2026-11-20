@@ -487,16 +487,22 @@ it`, `no panel controller`. The user sees the reason in Settings → Integration
 
 ### What the host does, in order
 
-1. Takes **every** item in your panel's `contentItem` — not just the first; a
-   panel with dialogs anchored over its column travels whole — recording each
-   one's parent and size first.
-2. Parents them into its own slot. An item that filled its parent is re-filled
-   to the slot; one that did not is given the size it had, because it was being
-   sized by the card it just left.
+1. Builds the panel's content if it is lazy (a `content:` Component, as every Omarchy panel
+   since 4.5 has: it is built when the window opens, and the window stays down), then takes
+   **every** item in your panel's `contentItem` — not just the first; a panel with dialogs
+   anchored over its column travels whole — recording each one's parent and size first.
+2. Parents them into its own slot, **below the back strip**: the slot starts at the resting
+   notch's height, because the strip at the top centre is the one way back and its whole width
+   takes the press. A panel that draws a title or a row of chips at the very top needs no
+   change; it is moved down by that much. An item that filled its parent is re-filled to the
+   slot; one that did not is given the size it had, because it was being sized by the card it
+   just left.
 3. Breaks the binding that maps your window (`open: root.opened` on every panel
    built on Omarchy's `Ui/Panel`) and sets it false, **then** opens your
    controller. In that order, or your window maps for the frame between the two.
-4. On close: tells your controller it closed — while the binding is still broken,
+4. Your own Escape, or your `close()`, is the strip's invisible alias: the host takes it as one
+   step back, to the page the panel was opened from, and closes only with nothing behind it.
+5. On close: tells your controller it closed — while the binding is still broken,
    so you pack up with nothing on screen — then puts the items back where they
    were, at the size they were, and restores the binding.
 

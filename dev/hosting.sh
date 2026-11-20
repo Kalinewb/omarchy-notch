@@ -289,6 +289,11 @@ check "38. every item of the panel came, not just the first" "true" \
 check "38b. …and its content is built: a panel with something in it, not an empty box" "true" \
   "$(field "$g" '.hosted.report.wanted.height > 100 and .hosted.report.contentSize.height > 100')"
 
+# The strip at the top centre is the one way back and all of its width takes the
+# press, so a guest that was never written for the notch is kept below it.
+check "38c. …and starts below the strip at the top centre, not under it" "true" \
+  "$(field "$g" '.hosted.contentTop >= 32')"
+
 # The size, not the curve that reaches it: the notch grows to what the PLUGIN
 # asked its own card for, and rests exactly there. (How it travels is
 # dev/motion.sh's.)
@@ -396,6 +401,8 @@ check "59. the plugin's own summon now opens inside the notch" "expanded hosted 
 check "60. …and the plugin's own window was put straight back down" "false false" \
   "$(settle "false false" own_down)"
 
+depth() { notch backReport | jq -r '.depth'; }
+
 # The other direction of the same state: a hosted panel's controller is open
 # for as long as the notch draws it, so the plugin closing itself -- its own
 # Escape, a timeout, `omarchy-shell <plugin> close` -- has to take the notch's
@@ -403,6 +410,19 @@ check "60. …and the plugin's own window was put straight back down" "false fal
 harness dismiss >/dev/null
 check "61. the plugin closing its own panel closes the notch's copy of it" "compact false 0" \
   "$(settle "compact false 0" rests)"
+
+# Escape is the strip's invisible alias, so it goes back too: opened from the
+# settings, a plugin that closes itself lands on the settings, not outside.
+notch settings >/dev/null
+settle "expanded settings false" shown >/dev/null
+harness summon >/dev/null
+settle "expanded hosted true" shown >/dev/null
+settle 1 depth >/dev/null
+harness dismiss >/dev/null
+check "61b. …and with a page behind it, that is where it goes: one step back, not out" "expanded settings false" \
+  "$(settle "expanded settings false" shown)"
+notch settings >/dev/null
+settle "compact settings false" shown >/dev/null
 
 harness summon >/dev/null
 settle "expanded hosted true" shown >/dev/null

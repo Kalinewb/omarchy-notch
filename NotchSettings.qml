@@ -128,8 +128,8 @@ Item {
   // Reset asks twice: a first press turns the button into "Sure?" for three seconds, in place.
   property bool resetSure: false
   Timer { id: resetTimer; interval: 3000; onTriggered: root.resetSure = false }
-  // Whether a question was waiting (the cursor's Escape answers no to it).
-  function cancelPending() { var waiting = resetSure; resetSure = false; resetTimer.stop(); return waiting }
+  // Whether a question was waiting (Reset's "Sure?", an import's preview): Escape and the back strip answer no.
+  function cancelPending() { var waiting = importer.cancel() || resetSure; resetSure = false; resetTimer.stop(); return waiting }
   function resetAsk() { if (cancelPending()) resetAll(); else { resetSure = true; resetTimer.restart() } }
 
   function resetAll() {
@@ -470,18 +470,17 @@ Item {
           buttons: ActionButton { text: root.issues > 0 ? String(root.issues) : "None"; onClicked: root.setupRequested() }
         }
 
-        // plan-export.md's rows: hidden until the notch can export.
-        ButtonRow {
-          rid: "share"; label: "Share settings"
-          visible: !!root.bar && typeof root.bar.shareSettings === "function"
-          buttons: [ActionButton { text: "Copy code"; onClicked: root.bar.shareSettings("copy") },
-                    ActionButton { text: "Save file"; onClicked: root.bar.shareSettings("file") }]
+        // Share and Import (NotchConfigTransfer): only where Setup runs, as its button does.
+        SettingRow {
+          id: shareRow
+          rid: "share"; label: "Share settings"; kind: "button"; visible: !!root.bar && root.bar.setup.enabled
+          NotchConfigTransfer { page: root; row: shareRow; mode: "export" }
         }
-
-        ButtonRow {
-          rid: "importer"; label: "Use someone's settings"
-          visible: !!root.bar && typeof root.bar.importSettings === "function"
-          buttons: ActionButton { text: "Import"; onClicked: root.bar.importSettings() }
+        SettingRow {
+          id: importRow
+          rid: "importer"; label: "Use someone's settings"; kind: "button"; visible: !!root.bar && root.bar.setup.enabled
+          lines: NotchConfigPreview { page: root; plan: importer.preview }
+          NotchConfigTransfer { id: importer; page: root; row: importRow; mode: "import" }
         }
 
         // Deletes `bar.notch` with no undo, so it asks twice (resetAsk).
@@ -660,7 +659,7 @@ Item {
       spacing: Style.space(2)
       bottomPadding: Style.space(4)
       opacity: row.open ? 1 : 0
-      visible: row.foldable && (row.open || opacity > 0)
+      visible: (row.foldable || row.kind === "button") && (row.open || opacity > 0)
       Behavior on opacity { NumberAnimation { duration: root.fadeMs; easing.type: Easing.OutCubic } }
     }
   }

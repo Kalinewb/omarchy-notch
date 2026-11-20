@@ -7,7 +7,7 @@ opens. A row is a label on the left and its state on the right. Rest the pointer
 walk to it with the arrow keys, and the line under the list says what it does.
 
 The keyboard does all of it. Up and Down walk the rows, Left and Right step a number or walk an
-open list, Space or Enter flips, opens or records, and Escape closes the tip, then the open list,
+open list, Space or Enter flips, opens or records, and Escape closes the tip, then a question waiting (Reset's *Sure?*, an import preview), then the open list,
 then the panel. **Tab** reaches the header buttons and the buttons inside a row. The Needs attention page answers to
 the same keys: Up and Down over its rows, Enter to press a row's button.
 **Reset to defaults** asks twice: the button turns into *Sure?* for three seconds, and only a
@@ -33,6 +33,42 @@ goes looking. The notch checks for its own update 20 seconds after it starts and
 (unless *Check for updates* is off), so that half is current. Plugin updates are checked when
 the Plugins page opens, so the plugin half reads 0 until you have visited Plugins once in this
 session. Opening Plugins (it is one press away, from this very button) brings it up to date.
+
+## Share and import
+
+Two rows at the foot of Advanced, shown only where the notch can run Setup (the same place the
+**Check for problems** button is). Each is a label with its state and buttons on the right.
+
+- **Share settings**: **Copy code** puts your settings on the clipboard as one line (`notch1.` and
+  about 200 to 900 characters), **Save file** writes `~/notch-config.json`. The word beside the buttons
+  says how it went: *Copied*, *Saved*, *Too long* (a code holds at most 12,000 characters; Save file
+  still works) or *Failed*.
+- **Use someone's settings**: **Import** reads the clipboard, which may hold a code or the path of a
+  saved file, and shows `3 changes` with **Apply** and **Cancel**. The lines under the row are the
+  panel's own rows and words (`Charging glow  Outline → Off`); keybinds and plugin lists come first
+  and are never folded, the rest are cut at five. `Skipped` lists what was left out and why, a value
+  past its ceiling as `Width  5000 → 2400  capped`. If the clipboard cannot be read the word says why:
+  *Nothing copied*, *Not a notch code*, *Damaged*, *Newer notch* or *Too long*.
+  **Apply** runs Setup's `config-import` fix: a snapshot, one write, a check, then *Imported* with
+  **Undo** (the snapshot is also under Earlier fixes on the Needs attention page). Escape and the
+  notch's back strip answer the preview no, and so does opening the panel again.
+
+What a code holds: the 50 `bar.notch` settings that have a row or are listed above (keybinds
+included) and the order of the bar's widgets as plugin ids. It never holds plugin settings, paths, or
+`replaceMenu`, `replaceOsd` and `suppressNativeToast`, which each lean on a companion plugin. An
+import **replaces** those 50 (a setting the code lacks returns to its default) and touches nothing
+else: not `bar.id`, plugins, other plugins' settings or the three above, unlike Reset to defaults.
+Widgets are only reordered; none is added or removed, so no plugin switches on or off. Numbers over
+a ceiling are applied at it: width 2400 px, height 120, corners 96, hover delay 2000 ms, close delay
+10000 ms, peek 60000 ms (at least 500), glow size 250 %, notification time 60 s, battery levels 100 %.
+Plugin ids the machine does not have are skipped. The code is a checked, compressed copy of a small
+JSON document, not a signature: an import never trusts one.
+
+```sh
+bin/notch-config export                    # prints the code
+bin/notch-config export --file settings.json
+bin/notch-config import <code|file|->      # the preview; --yes applies, --stage prints it as JSON
+```
 
 ## Settings with no row
 

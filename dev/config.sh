@@ -9,8 +9,10 @@
 # catalogue. Nothing here touches the live session. Sections 1 to 7 only read,
 # decode and plan (and say so: the calls they made are counted); 8 to 13 apply
 # through bin/notch-setup's `config-import` fix on the sandbox's shell.json, with
-# the real write path and a stub that only answers `reloadConfig`. The test closes
-# by checking that the real shell.json is as it was.
+# the real write path and a stub that only answers `reloadConfig`. Part B opens
+# the two Settings rows in a throwaway notch pointed at the same sandbox (B, below;
+# NOTCH_CONFIG_PART_A_ONLY=1 skips it). The test closes by checking that the real
+# shell.json is as it was.
 #
 #   1   export: the code's shape; the same twice and with shell.json reordered;
 #       no sentinel, withheld key, widget option or path; verbatim, never clamped
@@ -347,6 +349,9 @@ done
 check "4t. wrapped, quoted, backticked, full-stopped and bracketed-after codes all pass (9 forms)" "9" "$wrapped_ok"
 check "4u. so does the same text on standard input" "Auto-hide" "$(fold -w 30 <<<"\"$c4\".  " | nc import - --stage 2>/dev/null | jq -r '.changes[0].label')"
 check "4v. a code saved in a text file passes" "Auto-hide" "$(printf '%s\n' "$c4" >"$sb/code.txt"; nc import "$sb/code.txt" --stage 2>/dev/null | jq -r '.changes[0].label')"
+printf '%s\n' "$doc_ok" >"$HOME_SB/pasted.json"
+check "4v1. standard input holding the path of a saved file (as the clipboard would) reads that file, quoted or with ~" "Auto-hide Auto-hide not-code" \
+  "$(printf '"%s"\n' "$HOME_SB/pasted.json" | nc import - --stage 2>/dev/null | jq -r '.changes[0].label') $(printf '~/pasted.json\n' | nc import - --stage 2>/dev/null | jq -r '.changes[0].label') $(printf '/etc/hostname\n' | nc import - --stage 2>&1 >/dev/null | sed 's/.*: //')"
 check "4w. --yes on a code that is no code: exit 2 and nothing changed" "2 same" "$(nc import hello --yes >/dev/null 2>&1; echo -n "$? "; [[ $(shell_hash) == "$h" ]] && echo same || echo CHANGED)"
 
 # ---------------------------------------------------------------------------------
@@ -506,8 +511,8 @@ nc import "$code2" --yes >/dev/null 2>&1
 snap2=$(snaps | tail -1); jq '.bar.position = "bottom"' "$SHELL_SB" >"$sb/t" && cp "$sb/t" "$SHELL_SB"; edited=$(canon)
 setup restore "$(basename "$snap2")" >/dev/null 2>&1; rc=$?
 check "8j. after an unrelated edit Undo is a conflict, exit 3, and writes nothing" "3 $edited" "$rc $(canon)"
-ids=$(setup detect --json --all 2>/dev/null | jq -r '"\(.points | length) \([.points[].id] | index("config-import"))"')
-check "8k. detect still lists its 23 points and never config-import" "23 null" "$ids"
+listed=$(setup detect --json --all 2>/dev/null | jq -r '"\(.points | length) \([.points[].id] | index("config-import"))"')
+check "8k. detect still lists its 23 points and never config-import" "23 null" "$listed"
 
 # ---------------------------------------------------------------------------------
 # 9  Failure: the file is as it was, and the reloads are counted
@@ -678,6 +683,134 @@ check "10b. reading is not writing: export prints a code even then" "true" \
   "$(guard export 2>/dev/null | grep -qE '^notch1\.' && echo true || echo false)"
 check "r1. the real shell.json is as it was, and nothing was staged for real" "$real_before $real_staged_before" \
   "$(sha256sum "$REAL_SHELL_JSON" 2>/dev/null | cut -d' ' -f1) $(ls -A "$REAL_STAGED" 2>/dev/null | wc -l)"
+
+# NOTCH_CONFIG_PART_A_ONLY=1 stops here: part A needs no display, part B starts a notch.
+if [[ ${NOTCH_CONFIG_PART_A_ONLY:-} != 1 ]]; then
+
+# ---------------------------------------------------------------------------------
+# B  The two rows, in a throwaway notch pointed at the same sandbox
+# ---------------------------------------------------------------------------------
+echo; echo "${BOLD}The Share and Import rows${RESET}"
+SHELL_PATH=${OMARCHY_PATH:-/usr/share/omarchy}
+root_dir="$sb/shell"; mkdir -p "$root_dir"
+ln -s "$SHELL_PATH/shell/Commons" "$root_dir/Commons"
+ln -s "$SHELL_PATH/shell/Ui" "$root_dir/Ui"
+ln -s "$SHELL_PATH/shell/services" "$root_dir/services"
+ln -s "$REPO" "$root_dir/notch"
+cp "$REPO/dev/harness/settings-shell.qml" "$root_dir/shell.qml"
+# Part A sorts in the C locale; Qt warns about that on the output the reports are read from.
+ipc() { LC_ALL=C.UTF-8 quickshell ipc -p "$root_dir" call "${TARGET:-notch}" "$@" 2>/dev/null; }
+# The clipboard: wl-paste says what is in clip.txt, wl-copy keeps what it is given in copied.txt.
+printf '#!/bin/bash\nprintf "%%s\\n" "wl-paste" >>"%s"\ncat "%s"\n' "$CALLS" "$sb/clip.txt" >"$BIN/wl-paste"
+printf '#!/bin/bash\ncat >"%s"\n' "$sb/copied.txt" >"$BIN/wl-copy"
+chmod +x "$BIN/wl-paste" "$BIN/wl-copy"
+qs_pid=""
+start_notch() { # start_notch [extra env...]
+  env LC_ALL=C.UTF-8 NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 NOTCH_SETUP_DETACH=setsid PATH="$BIN:$PATH" \
+    "${env_common[@]}" NOTCH_HARNESS_CONFIG='{"batteryPeek":false}' "$@" quickshell -p "$root_dir" -n >>"$sb/qs.log" 2>&1 &
+  qs_pid=$!
+  for _ in $(seq 1 60); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done
+  sleep 0.6
+}
+stop_notch() { kill "$qs_pid" 2>/dev/null; wait "$qs_pid" 2>/dev/null; qs_pid=""; }
+report() { ipc settingsReport; }
+row() { report | jq -r --arg id "$1" --arg f "$2" '.panel.rows[] | select(.id == $id) | .[$f] | tostring'; }
+# settle <row> <field> <value>: wait up to 6 s for it
+settle() { for _ in $(seq 1 120); do [[ $(row "$1" "$2") == "$3" ]] && return 0; sleep 0.05; done; return 1; }
+settle_re() { for _ in $(seq 1 120); do [[ $(row "$1" "$2") =~ $3 ]] && return 0; sleep 0.05; done; return 1; }
+press() { ipc settingsPress "$1" >/dev/null; }
+# A picture of the notch alone: the region is the bar's own rectangle (its geometry report), inside it.
+shots() { [[ -n ${NOTCH_CONFIG_SHOTS:-} ]] && { sleep 0.6; grim -g "$(ipc geometry | jq -r '.bar | "\(.x + 1 | floor),\(.y + 1 | floor) \(.width - 2 | floor)x\(.height - 2 | floor)"')" "$NOTCH_CONFIG_SHOTS/$1.png" 2>/dev/null; }; return 0; }
+open_settings() { ipc settings >/dev/null; for _ in $(seq 1 60); do [[ $(report | jq '.panel.rows | length') -gt 0 ]] && break; sleep 0.1; done; }
+
+# Without NOTCH_FORCE_SETUP (the notch's own tests) the rows are absent and no clipboard is read.
+put "$RECEIVER"; : >"$CALLS"
+start_notch
+open_settings
+check "B. a test notch has neither row, and presses on them read no clipboard and start nothing" "false false 0" \
+  "$(row share visible) $(row importer visible) $(press set:importer:import; sleep 0.5; calls | grep -c '^wl-paste')"
+stop_notch
+
+# Setup's `auto` (run by a notch that does Setup) drops a stale cloneSourceRestores entry, so this receiver has none.
+RECEIVER_B=$(jq 'del(.cloneSourceRestores)' <<<"$RECEIVER")
+put "$RECEIVER_B"; before=$(canon); rm -rf "$STATE_SB/snapshots" "$STATE_SB/staged"; : >"$CALLS"
+code=$(put "$SENDER"; nc export); put "$RECEIVER_B"
+printf '%s\n' "$code" >"$sb/clip.txt"; rm -f "$sb/copied.txt" "$HOME_SB/notch-config.json"
+start_notch NOTCH_FORCE_SETUP=1
+open_settings
+press advanced; settle share visible true; sleep 0.8
+check "B1. where Setup runs, both rows show in Advanced: one control each, no state until pressed" "true true 1 1 Share settings Use someone's settings" \
+  "$(row share visible) $(row importer visible) $(row share controls) $(row importer controls) $(row share label) $(row importer label)"
+check "B2. the report's tip for each is the row's tip from settings-tips.js" "Copies your settings as a code, or saves a file|Shows what a pasted code would change, then asks" \
+  "$(row share tip)|$(row importer tip)"
+shots 01-rows-at-rest
+
+press set:share:copy; settle share state Copied
+own=$(nc export)
+check "B3. Copy code: the word is Copied, and the clipboard holds the code of this notch's own settings" "Copied $own" "$(row share state) $(cat "$sb/copied.txt" 2>/dev/null)"
+press set:share:save; settle share state Saved
+check "B4. Save file: the word is Saved, ~/notch-config.json is there and is a notch-config file" "Saved kalinewb.notch-config" \
+  "$(row share state) $(jq -r .format "$HOME_SB/notch-config.json" 2>/dev/null)"
+shots 02-saved
+
+h=$(canon); view0=$(report | jq '.panel.contentHeight')
+press set:importer:import; settle_re importer state '^[0-9]+ changes?$'
+n=$(row importer state)
+check "B5. Import reads the clipboard and previews: '$n', the row's fold open, the panel taller, one staged document, shell.json untouched" "true true true 1 $h" \
+  "$([[ $n =~ ^[0-9]+\ changes$ ]] && echo true || echo false) $(row importer open) $([[ $(report | jq '.panel.contentHeight') -gt $view0 ]] && echo true || echo false) $(staged_left) $(canon)"
+check "B6. the strip's zone is clear of controls and text with the preview open" "0 0" "$(ipc backZone | jq -r '"\(.hits | length) \(.texts | length)"')"
+shots 03-preview
+
+press key:escape; settle importer state ""
+sleep 0.4
+check "B7. Escape answers the preview no: closed, no word, the staged document gone, the panel still open" "false  0 true $h" \
+  "$(row importer open) $(row importer state) $(staged_left) $(ipc geometry | jq -r .settingsOpen) $(canon)"
+press set:importer:import; settle_re importer state '^[0-9]+ changes?$'
+ipc back >/dev/null; settle importer open false
+open_after=$(ipc geometry | jq -r .settingsOpen)
+sleep 0.8; ipc back >/dev/null; sleep 0.8
+check "B8. the back strip does the same: the preview goes first and the settings stay; the next press leaves them" "false true false" \
+  "$(row importer open) $open_after $(ipc geometry | jq -r .settingsOpen)"
+open_settings; sleep 0.9; press advanced; settle importer visible true; sleep 0.6
+
+# Applying: a job through Setup, the word Imported, then Undo.
+press set:importer:import; settle_re importer state '^[0-9]+ changes?$'
+press set:importer:apply; settle importer state Imported
+check "B9. Apply: the word is Imported, shell.json is the plan's (width 700), one snapshot, the staged document gone" "Imported 700 1 0" \
+  "$(row importer state) $(jq -r .bar.notch.compactWidth "$SHELL_SB") $(snaps | wc -l) $(staged_left)"
+shots 04-imported
+press set:importer:undo; settle importer state Undone
+check "B10. Undo: the word is Undone and shell.json is as it was before the import" "Undone $before" "$(row importer state) $(canon)"
+shots 05-undone
+
+# What the clipboard can hold instead of a code.
+for case in 'hello|Not a notch code' '|Nothing copied' "${code:0:40}${code:41}|Damaged" "notch2.${code#notch1.}|Newer notch"; do
+  printf '%s\n' "${case%%|*}" >"$sb/clip.txt"; press set:importer:import
+  settle importer state "${case#*|}"
+  check "B11. a clipboard that is ${case#*|}: that word, and nothing changed" "${case#*|} $before" "$(row importer state) $(canon)"
+done
+printf '%s\n' "$HOME_SB/notch-config.json" >"$sb/clip.txt"; press set:importer:import; settle_re importer state '^(Nothing to change|[0-9]+ changes?)$'
+check "B12. a path in the clipboard (what Save file made) reads that file" "true" "$([[ $(row importer state) =~ ^(Nothing\ to\ change|[0-9]+\ changes?)$ ]] && echo true || echo false)"
+press key:escape; sleep 0.3
+
+# A code too long to share.
+put "$(jq --argjson ids "$ids" '.bar.notch.hiddenPlugins = $ids' <<<"$RECEIVER_B")"
+press set:share:copy; settle share state "Too long"
+check "B13. a config too big for a code: the word is Too long, and the clipboard keeps what it had" "Too long $own" "$(row share state) $(cat "$sb/copied.txt")"
+put "$RECEIVER_B"
+stop_notch
+
+# A job that fails: verification rolls it back, and the word is Failed.
+printf '%s\n' "$code" >"$sb/clip.txt"; rm -rf "$STATE_SB/staged" "$STATE_SB/snapshots"; before=$(canon)
+start_notch NOTCH_FORCE_SETUP=1 NOTCH_SETUP_FAIL_AT=verify
+open_settings; press advanced; sleep 0.6
+press set:importer:import; settle_re importer state '^[0-9]+ changes?$'
+press set:importer:apply; settle importer state Failed
+check "B14. an apply that fails verification: the word is Failed, shell.json as it was, nothing staged" "Failed $before 0" "$(row importer state) $(canon) $(staged_left)"
+stop_notch
+check "B15. no QML errors in any of it" "none" \
+  "$(grep -E '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" | head -1 | cut -c1-120)$(grep -qE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" || echo none)"
+fi
 
 echo
 if (( failures )); then echo "${RED}$failures of $checks checks failed${RESET}"; exit 1; fi

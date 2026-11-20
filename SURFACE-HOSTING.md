@@ -685,6 +685,10 @@ does not draw another way back (a "←" or "‹ Back" in its header, a "Back" ro
 saying "esc goes back"); it answers the strip through `goBackInside()` (§4) and keeps hints for what Esc
 does that is not obvious ("esc stops the check").
 
+The notch's own Settings answers the strip first for a question waiting on it (Reset's "Sure?", an
+import preview): `cancelPending()` is asked before the notch's history, so the strip, like Esc, says no
+to it and leaves the panel open.
+
 **The zone.** The strip is `backZoneWidth` wide and `backZoneHeight` tall (the resting notch's own
 width and height: 180 by 32 by default, and it follows the `compactWidth` setting), centred on the
 panel at its top edge. Every pixel of it is the press target, whatever is drawn there, and it sits above

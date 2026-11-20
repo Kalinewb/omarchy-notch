@@ -160,6 +160,28 @@ touches a plugin's own setup; the only thing it moves out of the plugins folder 
 old backups. What may appear on the page at all, and what OLED Corners' install should carry, is in
 `docs/Needs-attention.md`.
 
+### Share your settings
+
+Settings → Advanced → **Share settings** copies your notch's settings as one line of text (a code,
+`notch1.…`) or saves them as `~/notch-config.json`. **Use someone's settings** reads a code, or the
+path of a saved file, from the clipboard and shows what it would change, in the panel's own words
+(`Corners  8 px → 12 px`), before anything is written. **Apply** takes a Setup snapshot first, writes
+once and checks the result; **Undo** puts everything back. Escape, or the notch's back strip, closes
+the preview and changes nothing. Both rows appear only where Setup runs, like the Needs attention
+button.
+
+What travels: the 50 settings the panel and the notch read, and the order of the bar's widgets. What
+never does: plugin settings, paths, and the three that lean on a companion plugin (the menu, the
+volume pop-ups, "Notch only"). An import replaces those 50 (a setting the code lacks goes back to
+its default), reorders widgets without adding or removing any, caps a value at a safe ceiling and says
+so, drops anything it cannot read, and never runs anything it was given. From a terminal:
+
+```sh
+~/.config/omarchy/plugins/kalinewb.notch/bin/notch-config export                 # prints the code
+~/.config/omarchy/plugins/kalinewb.notch/bin/notch-config export --file x.json
+~/.config/omarchy/plugins/kalinewb.notch/bin/notch-config import <code|file|->   # preview; --yes applies
+```
+
 ### The on-screen display
 
 Omarchy answers a volume key, a brightness key or a media button with a card at

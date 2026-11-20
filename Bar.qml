@@ -3830,6 +3830,9 @@ Item {
         try { took = inner.goBackInside() === true } catch (e) { console.warn("notch: a panel's goBackInside failed:", e) }
         if (took) return "inside"
       }
+      // A question waiting on the settings (an import's preview, Reset's "Sure?") is answered no first.
+      var asking = settingsOpen ? expandedHost.item : null
+      if (asking && typeof asking.cancelPending === "function" && asking.cancelPending()) return "back"
       if (viewStack.length === 0) { closePanels(); return "closed" }
       var shot = viewStack[viewStack.length - 1]
       viewStack = viewStack.slice(0, -1)

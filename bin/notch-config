@@ -261,7 +261,16 @@ read_document() { # read_document <code|file|-> -> DOC
   raw="$work/raw"
   local bare=${arg#"${arg%%[![:space:]\"\'\`]*}"}
   if [[ -z ${arg//[[:space:]]/} ]]; then reject empty
-  elif [[ $arg == - ]]; then head -c $((FILE_MAX + 1)) >"$raw"
+  elif [[ $arg == - ]]; then
+    head -c $((FILE_MAX + 1)) >"$raw"
+    # The clipboard may hold the path Save file reported rather than a code: one
+    # line naming a file, which is then what is read.
+    local one; one=$(head -c 4097 "$raw" | tr -d '\r')
+    one=${one#"${one%%[![:space:]\"\'\`]*}"}; one=${one%"${one##*[![:space:]\"\'\`]}"}
+    if [[ $one == [/~]* && $one != *$'\n'* ]]; then
+      one=${one/#\~\//$HOME_DIR/}
+      [[ -f $one ]] && head -c $((FILE_MAX + 1)) -- "$one" >"$raw"
+    fi
   elif [[ $bare == notch* ]]; then printf '%s' "$arg" >"$raw"
   else
     arg=${arg/#\~\//$HOME_DIR/}

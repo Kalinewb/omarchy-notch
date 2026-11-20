@@ -283,6 +283,11 @@ check "37. …with its hue taken out, which is not a preference" "true" \
   "$(field "$g" '.hosted.monoLayer')"
 check "38. every item of the panel came, not just the first" "true" \
   "$(field "$g" '.hosted.items >= 1')"
+# Omarchy 4.5 panels build their content when their window opens, and the window
+# stays down here. A panel taken before anything was built came to the notch as
+# a 64 px black box (34 px wanted: the card's padding and nothing in it).
+check "38b. …and its content is built: a panel with something in it, not an empty box" "true" \
+  "$(field "$g" '.hosted.report.wanted.height > 100 and .hosted.report.contentSize.height > 100')"
 
 # The size, not the curve that reaches it: the notch grows to what the PLUGIN
 # asked its own card for, and rests exactly there. (How it travels is

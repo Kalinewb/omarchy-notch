@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import Quickshell.Services.SystemTray
 import Quickshell.Services.UPower
 import Quickshell.Wayland
 import QtQuick
@@ -229,6 +230,9 @@ Item {
   property bool centerSectionRevealHeld: false
   property bool centerHoverRevealSuppressed: false
   property int barConfigSerial: 0
+  // Bumped when a write only changed inline widget settings, which patch the live layout in place
+  // (applySettingsDelta) and leave barConfigSerial alone: what reads those settings reads this too.
+  property int layoutSettingsSerial: 0
   property string position: "top"
   // Resolves through fontconfig at paint time (Style.font.family defaults
   // to "monospace"), so changing the system font (via `omarchy-font-set`)
@@ -801,6 +805,7 @@ Item {
         if (item && "settings" in item) item.settings = settings
       }
     }
+    layoutSettingsSerial++
   }
 
   onBarConfigChanged: applyBarConfig()
@@ -1598,6 +1603,92 @@ Item {
       .filter(function(p) { return p.kind === "widget" })
       .map(function(p) { return { value: p.id, label: p.label } })
   }
+  // --- the tray's icons ----------------------------------------------------------
+  //
+  // Omarchy's tray widget keeps which of an app's icons are hidden (and which are pinned) in its own
+  // layout entry -- `{ "id": "omarchy.tray", "pinned": [...], "hidden": [...] }` -- and its manage popup
+  // writes it, but a notch has no chevron to open that from, so there was no way to hide one. Settings →
+  // Hidden widgets now lists each icon the tray holds, by the name the app gives it, beside the widgets,
+  // and writes that same list: one source of truth, shared with the manage popup and any other bar. The
+  // whole tray is hidden like any widget (its own line in the same list).
+  readonly property var trayFixture: {
+    var raw = harnessed ? Quickshell.env("NOTCH_TRAY_FIXTURE") : ""
+    try { return raw ? JSON.parse(raw) : null } catch (e) { return null }
+  }
+  function liveTrayItems() {
+    // A test notch never asks the session bus what is in the tray: it is given a list, or has none.
+    if (harnessed) return trayFixture || []
+    var out = []
+    var values = SystemTray.items.values
+    for (var i = 0; i < values.length; i++) {
+      var item = values[i]
+      if (item.status === Status.Passive) continue
+      var id = String(item.id || "")
+      if (id) out.push({ id: id, title: String(item.title || item.tooltipTitle || id) })
+    }
+    return out
+  }
+  readonly property var trayRegions: ["left", "centerBegin", "center", "centerEnd", "right", "tray"]
+  readonly property var trayHiddenIds: {
+    var serial = barConfigSerial + layoutSettingsSerial
+    for (var r = 0; r < trayRegions.length; r++) {
+      var entries = layoutEntries(trayRegions[r])
+      for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i]
+        if (canonicalWidgetId(entryId(entry)) === "omarchy.tray" && Util.isPlainObject(entry) && Array.isArray(entry.hidden))
+          return entry.hidden.map(function (id) { return String(id) })
+      }
+    }
+    return []
+  }
+  // Each icon the tray holds now, and each hidden one that is not running (so it can be shown again).
+  readonly property var trayChoices: {
+    var items = liveTrayItems()
+    var seen = ({})
+    var out = []
+    for (var i = 0; i < items.length; i++) {
+      seen[items[i].id] = true
+      out.push({ value: "tray:" + items[i].id, label: "Tray · " + items[i].title })
+    }
+    for (var j = 0; j < trayHiddenIds.length; j++)
+      if (!seen[trayHiddenIds[j]]) out.push({ value: "tray:" + trayHiddenIds[j], label: "Tray · " + trayHiddenIds[j] + " (not running)" })
+    return out
+  }
+  readonly property var trayHiddenValues: trayHiddenIds.map(function (id) { return "tray:" + id })
+  // Hide an icon, or show it again. A hidden icon is also unpinned, as the manage popup does.
+  function toggleTrayItem(id) {
+    if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
+    // No tray entry in the layout: nothing to write to, and no write to make for it.
+    var present = false
+    for (var p = 0; p < trayRegions.length && !present; p++) {
+      var seen = layoutEntries(trayRegions[p])
+      for (var q = 0; q < seen.length; q++) if (canonicalWidgetId(entryId(seen[q])) === "omarchy.tray") present = true
+    }
+    if (!present) return false
+    var wanted = String(id)
+    return root.shell.mutateShellConfig(function (config) {
+      if (!Util.isPlainObject(config.bar) || !Util.isPlainObject(config.bar.layout)) return
+      for (var r = 0; r < trayRegions.length; r++) {
+        var entries = config.bar.layout[trayRegions[r]]
+        if (!Array.isArray(entries)) continue
+        for (var i = 0; i < entries.length; i++) {
+          if (Util.canonicalWidgetId(BarModel.entryId(entries[i])) !== "omarchy.tray") continue
+          var entry = Util.isPlainObject(entries[i]) ? entries[i] : { id: "omarchy.tray" }
+          var hidden = Array.isArray(entry.hidden) ? entry.hidden.slice() : []
+          var at = hidden.indexOf(wanted)
+          if (at !== -1) hidden.splice(at, 1)
+          else {
+            hidden.push(wanted)
+            if (Array.isArray(entry.pinned)) entry.pinned = entry.pinned.filter(function (p) { return p !== wanted })
+          }
+          entry.hidden = hidden
+          entries[i] = entry
+          return
+        }
+      }
+    }) !== false
+  }
+
   // By default the open notch's top row shows time, date and media -- minus
   // time and date when the layout already has a clock widget in the row below.
   readonly property bool layoutHasClock: {
@@ -3191,6 +3282,13 @@ Item {
       }
       return JSON.stringify({ hostable: root.overlayHostable, wanted: root.notchHostedOverlays,
                               companions: companions, hosting: overlayHosting.report() })
+    }
+
+    // The tray's icons as Settings → Hidden widgets lists them: each choice, which are hidden, and
+    // whether the tray widget itself is.
+    function trayIcons(): string {
+      return JSON.stringify({ choices: root.trayChoices, hidden: root.trayHiddenValues,
+                              tray: root.notchHiddenPlugins.indexOf("omarchy.tray") !== -1 })
     }
 
     function overlayHostingSetting(id: string, state: string): string {

@@ -74,7 +74,7 @@ echo "${BOLD}The quiet settings panel${RESET}  ${DIM}plugin: $REPO${RESET}"
 # 3  Tips
 # ---------------------------------------------------------------------------
 echo; echo "${BOLD}3  Tips${RESET}"
-ROWS="atRest autoHide glow openWith opensTo notifications notifyLight menu volume width onHover hidden openRow panels corners notifyTime lightColours peeks glowSize greenAbove lowBelow keybinds stayOpen windowsToTop updateCheck share importer reset"
+ROWS="atRest autoHide glow openWith opensTo notifications notifyLight menu volume width onHover hidden openRow panels corners notifyTime lightColours peeks glowSize greenAbove lowBelow keybinds stayOpen windowsToTop updateCheck problems share importer reset"
 tips=$(python3 - "$REPO/settings-tips.js" "$ROWS" <<'PY'
 import json, re, sys
 src = open(sys.argv[1]).read()
@@ -86,7 +86,7 @@ labels = {
   "corners": "Corners", "notifyTime": "Notification time", "lightColours": "Light colours", "peeks": "Track and charger pop-ups",
   "glowSize": "Glow size", "greenAbove": "Green from", "lowBelow": "Low battery at", "keybinds": "Keybinds",
   "stayOpen": "Keep open", "windowsToTop": "Windows to the top", "updateCheck": "Check for updates",
-  "share": "Share settings", "importer": "Use someone's settings", "reset": "Reset to defaults"}
+  "problems": "Check for problems", "share": "Share settings", "importer": "Use someone's settings", "reset": "Reset to defaults"}
 block = re.search(r"var t = \{(.*?)\n\}", src, re.S).group(1)
 tips = dict(re.findall(r'^\s+(\w+):\s+"(.*)",?\s*$', block, re.M))
 noRow = re.findall(r'"(\w+)"', re.search(r"var noRow = \[(.*?)\]", src, re.S).group(1))
@@ -105,10 +105,10 @@ print(json.dumps({"ids": sorted(tips), "want": sorted(rows), "bad": bad, "unique
                   "noRow": len(noRow), "noRowUnique": len(set(noRow)) == len(noRow)}))
 PY
 )
-check "one tip per row id: 28, none missing, none extra" "28 true" "$(jq -r '"\(.ids | length) \(.ids == .want)"' <<<"$tips")"
+check "one tip per row id: 29, none missing, none extra" "29 true" "$(jq -r '"\(.ids | length) \(.ids == .want)"' <<<"$tips")"
 check "every tip is at most 60 characters, one sentence, no full stop, never its label, no this/these/those/each" "" "$(jq -r '.bad | join("; ")' <<<"$tips")"
 check "every tip is different" "true" "$(jq -r .unique <<<"$tips")"
-check "the label table here covers exactly the 28 row ids" "true" "$(jq -r .labelled <<<"$tips")"
+check "the label table here covers exactly the 29 row ids" "true" "$(jq -r .labelled <<<"$tips")"
 check "the 17 rowless keys are listed once each" "17 true" "$(jq -r '"\(.noRow) \(.noRowUnique)"' <<<"$tips")"
 
 start '{"batteryPeek":false}'
@@ -511,6 +511,44 @@ other=$(grep -vc '/settingsPanel/height$' <<<"$paths" || true)
 check "the contract differs from its baseline in no path but */settingsPanel/height" "0" "$other"
 if [[ -z $paths ]]; then check "…and with the baseline as recorded, contract.sh passes" "0" "$crc"; fi
 check "the recorded baseline changes in no line but a height" "0" "$(git -C "$REPO" diff -U0 -- dev/baselines/synthetic.json | grep '^[+-] ' | grep -vc '"height"' || true)"
+
+# ---------------------------------------------------------------------------
+# 12  The tray's icons
+# ---------------------------------------------------------------------------
+echo; echo "${BOLD}12  Tray icons${RESET}  ${DIM}Hidden widgets lists each icon the tray holds, and writes the tray's own list${RESET}"
+TRAYITEMS='[{"id":"steam","title":"Steam"},{"id":"nm-applet","title":"Network"},{"id":"Claude_status_icon_1","title":"Claude"}]'
+XENV=(NOTCH_TRAY_FIXTURE="$TRAYITEMS" NOTCH_HARNESS_RIGHT='[{"id":"omarchy.tray","pinned":["steam","Claude_status_icon_1"],"hidden":["gone-app"]}]')
+start '{"batteryPeek":false}'
+open_panel || true
+ipc settingsPress advanced >/dev/null; settle '.panel.advanced.open == true' || true
+tray_labels=$(ipc trayIcons | jq -r '.choices | map(.label) | join("|")')
+check "Hidden widgets lists each icon the tray holds, by the name the app gives it" "Tray · Steam|Tray · Network|Tray · Claude|Tray · gone-app (not running)" "$tray_labels"
+check "…and an icon hidden earlier whose app is not running, so it can be shown again" "1" "$(grep -c 'not running' <<<"$tray_labels")"
+check "the row says how many are hidden, counting the tray's own list" "1 hidden" "$(report | jq -r '[.panel.rows[] | select(.id == "hidden")][0].state')"
+ipc settingsPress set:hidden:tray:steam >/dev/null
+check "hiding Steam writes the tray's own entry: hidden gains it, pinned loses it, the others stay" \
+  '{"id":"omarchy.tray","pinned":["Claude_status_icon_1"],"hidden":["gone-app","steam"]}' \
+  "$(TARGET=settingstest ipc layout | jq -c '.right[0]')"
+check "…and the row counts it" "2 hidden" "$(report | jq -r '[.panel.rows[] | select(.id == "hidden")][0].state')"
+ipc settingsPress set:hidden:tray:steam >/dev/null
+check "pressing it again shows it again (it is not pinned again: that was the user's)" \
+  '{"id":"omarchy.tray","pinned":["Claude_status_icon_1"],"hidden":["gone-app"]}' "$(TARGET=settingstest ipc layout | jq -c '.right[0]')"
+ipc settingsPress set:hidden:tray:gone-app >/dev/null
+check "an icon that is not running is shown again the same way" '{"id":"omarchy.tray","pinned":["Claude_status_icon_1"],"hidden":[]}' \
+  "$(TARGET=settingstest ipc layout | jq -c '.right[0]')"
+check "no notch key was written for any of it: the notch's settings are as they were" "{}" "$(TARGET=settingstest ipc config | jq -c 'del(.batteryPeek)')"
+ipc settingsPress set:hidden:omarchy.tray >/dev/null
+check "the whole tray is hidden like any widget: its own line in the same list" '["omarchy.tray"]' "$(TARGET=settingstest ipc config | jq -c '.hiddenPlugins')"
+check "…and the row counts it" "1 hidden" "$(report | jq -r '[.panel.rows[] | select(.id == "hidden")][0].state')"
+stop
+XENV=()
+start '{"batteryPeek":false}'
+open_panel || true
+w0=$(TARGET=settingstest ipc writes)
+ipc settingsPress set:hidden:tray:steam >/dev/null
+check "with no tray entry in the layout there is nothing to write: nothing is hidden and nothing was written" "0 0" \
+  "$(ipc trayIcons | jq -r '.hidden | length') $(( $(TARGET=settingstest ipc writes) - w0 ))"
+stop
 
 # ---------------------------------------------------------------------------
 # The ratchet's baseline (check 2 reads it)

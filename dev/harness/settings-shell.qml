@@ -17,7 +17,7 @@ ShellRoot {
     bar: {
       position: "top",
       transparent: false,
-      layout: { left: [], center: [], right: [] },
+      layout: { left: [], center: [], right: JSON.parse(Quickshell.env("NOTCH_HARNESS_RIGHT") || "[]") },
       notch: JSON.parse(Quickshell.env("NOTCH_HARNESS_CONFIG") || "{}")
     }
   })
@@ -41,6 +41,8 @@ ShellRoot {
     target: "settingstest"
     function config(): string { return JSON.stringify(shellRoot.config.bar.notch) }
     function writes(): string { return String(shellRoot.writes) }
+    // The layout the bar reads, as the settings panel's writes left it (the tray's entry is in it).
+    function layout(): string { return JSON.stringify(shellRoot.config.bar.layout) }
     function many(json: string): string {
       var values
       try { values = JSON.parse(json) } catch (e) { return "bad-json" }

@@ -347,11 +347,11 @@ Item {
         // A plugin declaring hideable: false can't be hidden.
         PickRow {
           rid: "hidden"; label: "Hidden widgets"; many: true; keys: ["hiddenPlugins"]
-          options: root.widgetOptions.map(function(w) { return { value: w.value.slice(7), label: w.label } })
+          options: root.widgetOptions.map(function(w) { return { value: w.value.slice(7), label: w.label } }).concat(root.bar ? root.bar.trayChoices : [])
           taken: root.bar ? root.bar.notchPlugins.list.filter(function(p) { return p.hideable === false }).map(function(p) { return p.id }) : []
-          selected: root.bar ? root.bar.notchHiddenPlugins : []
+          selected: root.bar ? root.bar.notchHiddenPlugins.concat(root.bar.trayHiddenValues) : []
           summary: selected.length > 0 ? selected.length + " hidden" : "None"
-          onChosen: function(v) { root.set("hiddenPlugins", root.toggled(root.bar.notchHiddenPlugins, v)) }
+          onChosen: function(v) { if (v.indexOf("tray:") === 0) root.bar.toggleTrayItem(v.slice(5)); else root.set("hiddenPlugins", root.toggled(root.bar.notchHiddenPlugins, v)) }
         }
 
         PickRow {

@@ -12,7 +12,7 @@
 // removed member, a changed result word or a changed queue rule bumps CONTRACT.
 var CONTRACT = 1
 var OLDEST = 1
-var FEATURES = ["panel", "activityViews", "heartbeat", "panelBack", "quiet"]
+var FEATURES = ["panel", "activityViews", "heartbeat", "panelBack", "quiet", "backZone"]
 
 // Why an integration isn't shown, in the order the checks run.
 var REASON_TEXT = {

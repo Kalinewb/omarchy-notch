@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "acme.zone",
+  "name": "Acme Zone",
+  "version": "1.0.0",
+  "description": "A panel that puts controls in different places, for dev/backzone.sh.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "surface": "SurfaceIntegration.qml"
+  },
+  "surface": {
+    "contract": 1
+  }
+}

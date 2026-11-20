@@ -4,11 +4,12 @@ import qs.Ui
 import "keys.js" as KeyCombo
 import "spring.js" as Spring
 import "settings-tips.js" as Tips
+import "hosting-quirks.js" as Quirks
 
 // The notch's settings, drawn inside the notch itself: opening them grows the
 // notch -- the same surface, top edge on the screen edge -- into this panel.
 // Opened by a long right-click, by the hover action "Settings", or over IPC;
-// closed by clicking outside, Escape, or the ✕.
+// closed by clicking outside, or Escape.
 //
 // Quiet by default (plan-settings.md): nine rows under three headings, and
 // one fold, Advanced, with the rest. A row is a label and its control, and the
@@ -145,7 +146,7 @@ Item {
 
   // The header's buttons, as the report and `press` see them.
   readonly property var headerButtons: [{ name: "plugins", item: pluginsButton }, { name: "setup", item: setupButton },
-                                        { name: "guide", item: guideButton }, { name: "close", item: closeButton }]
+                                        { name: "guide", item: guideButton }]
 
   // dev/settings.sh reads this through Bar's settingsReport.panel.
   function report() {
@@ -215,7 +216,6 @@ Item {
       HeaderButton { id: pluginsButton; text: root.updates > 0 ? "Plugins · " + root.updates : "Plugins"; onClicked: root.pluginsRequested() }
       HeaderButton { id: setupButton; visible: root.issues > 0; text: root.issues === 1 ? "1 needs attention" : root.issues + " need attention"; onClicked: root.setupRequested() }
       HeaderButton { id: guideButton; visible: !!root.bar && typeof root.bar.openWizard === "function"; text: "Guide"; tooltipText: "Guided setup"; onClicked: root.bar.openWizard() }
-      HeaderButton { id: closeButton; text: "✕"; horizontalPadding: Style.space(8); onClicked: root.closeRequested() }
     }
   }
 
@@ -369,7 +369,7 @@ Item {
           rid: "panels"; label: "Panels"; many: true; keys: ["hostedPanels", "disabledIntegrations"]
           visible: root.integrations.length > 0 || root.hostable.length > 0
           options: root.integrations.map(function(i) { return { value: "i:" + i.id, label: (i.name || i.id) + (i.accepted ? "" : " · " + i.reasonText) } })
-            .concat(root.hostable.map(function(h) { return { value: "h:" + h.id, label: h.name } }))
+            .concat(root.hostable.map(function(h) { return { value: "h:" + h.id, label: Quirks.label(h.id, h.name) } }))
           selected: root.integrations.filter(function(i) { return !i.userOff }).map(function(i) { return "i:" + i.id })
             .concat(root.hostable.filter(function(h) { return h.hosted }).map(function(h) { return "h:" + h.id }))
           summary: selected.length + " of " + options.length

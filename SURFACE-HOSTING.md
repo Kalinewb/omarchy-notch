@@ -168,7 +168,7 @@ do through it is attributed to your id, and it reaches nothing else.
 | member | type | what |
 |---|---|---|
 | `contract` | int | the notch's contract version |
-| `features` | list | `["panel", "activityViews", "heartbeat", "panelBack", "quiet"]`; feature-detect against it |
+| `features` | list | `["panel", "activityViews", "heartbeat", "panelBack", "quiet", "backZone"]`; feature-detect against it |
 | `pluginId` | string | your id |
 | `present` | bool | this notch is alive and is the bar |
 | `accepted` | bool | it accepted *your* integration |
@@ -187,6 +187,7 @@ do through it is attributed to your id, and it reaches nothing else.
 | `claim(activity)` | string | `shown`, `queued` or `declined:<reason>` |
 | `release(key)` | string | `released` or `unknown` |
 | `quiet(on)`, `quieted` | string, bool | step the notch out of the way and back; §14. Feature `quiet` |
+| `backZoneWidth`, `backZoneHeight` | real | the way-back zone at the top centre of every panel; §15. Feature `backZone` |
 
 Your **bar widget** is handed the same host, plus `surfaceScreen` — the name of
 the screen that copy of the widget is on. Declare both and the notch fills them
@@ -365,7 +366,7 @@ A service, a CLI or a panel that never gets a `surfaceHost` reads a small file t
 notch keeps fresh at `$XDG_RUNTIME_DIR/kalinewb.notch/platform.json`:
 
 ```json
-{ "contract": 1, "features": ["panel", "activityViews", "heartbeat", "panelBack", "quiet"],
+{ "contract": 1, "features": ["panel", "activityViews", "heartbeat", "panelBack", "quiet", "backZone"],
   "generation": "1789650000123-4821", "beatAt": 1789650004123, "staleAfterMs": 6000,
   "present": true, "hidden": false, "quiet": false, "screens": ["eDP-1"],
   "accepted": { "acme.demo": { "contract": 1 } },
@@ -487,16 +488,22 @@ it`, `no panel controller`. The user sees the reason in Settings → Integration
 
 ### What the host does, in order
 
-1. Takes **every** item in your panel's `contentItem` — not just the first; a
-   panel with dialogs anchored over its column travels whole — recording each
-   one's parent and size first.
-2. Parents them into its own slot. An item that filled its parent is re-filled
-   to the slot; one that did not is given the size it had, because it was being
-   sized by the card it just left.
+1. Builds the panel's content if it is lazy (a `content:` Component, as every Omarchy panel
+   since 4.5 has: it is built when the window opens, and the window stays down), then takes
+   **every** item in your panel's `contentItem` — not just the first; a panel with dialogs
+   anchored over its column travels whole — recording each one's parent and size first.
+2. Parents them into its own slot, **below the back strip**: the slot starts at the resting
+   notch's height, because the strip at the top centre is the one way back and its whole width
+   takes the press. A panel that draws a title or a row of chips at the very top needs no
+   change; it is moved down by that much. An item that filled its parent is re-filled to the
+   slot; one that did not is given the size it had, because it was being sized by the card it
+   just left.
 3. Breaks the binding that maps your window (`open: root.opened` on every panel
    built on Omarchy's `Ui/Panel`) and sets it false, **then** opens your
    controller. In that order, or your window maps for the frame between the two.
-4. On close: tells your controller it closed — while the binding is still broken,
+4. Your own Escape, or your `close()`, is the strip's invisible alias: the host takes it as one
+   step back, to the page the panel was opened from, and closes only with nothing behind it.
+5. On close: tells your controller it closed — while the binding is still broken,
    so you pack up with nothing on screen — then puts the items back where they
    were, at the size they were, and restores the binding.
 
@@ -669,6 +676,72 @@ drawing whatever the notch is doing (§6).
 A test notch (`NOTCH_HARNESS=1`) reads `NOTCH_QUIET_LEASE_MS`, `NOTCH_QUIET_CAP_MS` and
 `NOTCH_QUIET_COOLDOWN_MS` so a suite does not have to wait 35 s; the live notch never does.
 `dev/quiet.sh` proves every word above.
+
+## 15. One way back, and the zone nothing collides with
+
+The notch has **one** back control: the strip at the top centre of every panel. A press anywhere in
+it goes back one step, and **Esc is its invisible alias** -- a key, not a second control. A panel
+does not draw another way back (a "←" or "‹ Back" in its header, a "Back" row at the foot, a hint line
+saying "esc goes back"); it answers the strip through `goBackInside()` (§4) and keeps hints for what Esc
+does that is not obvious ("esc stops the check").
+
+**The zone.** The strip is `backZoneWidth` wide and `backZoneHeight` tall (the resting notch's own
+width and height: 180 by 32 by default, and it follows the `compactWidth` setting), centred on the
+panel at its top edge. Every pixel of it is the press target, whatever is drawn there, and it sits above
+the panel: a press in it never reaches a control of the panel underneath. The zone is invisible: it draws no chevron, pill, border, wash or focus box, so it blends into the notch
+and the panel (the pointer becomes a hand over it, and for a screen reader it is a button named "Back").
+It is an area, not a button.
+
+**The rule for panels.** Nothing that takes a press may sit inside the zone: no button, no `MouseArea`,
+no item with a `TapHandler`, no text input, nothing that takes the tab key. Text and pictures may. Two ways to keep it:
+
+- **Inset the header** below the zone: the panel's first row starts at `surfaceHost.backZoneHeight` or
+  lower (Face does: its top inset is `max(14 px, backZoneHeight)`). This is the simple answer for a
+  panel narrower than about three times the zone.
+- **Or keep the row beside it**: controls in the row of the zone are fine if they are in the gutters
+  on either side of it, `(panel width - backZoneWidth) / 2` wide at most. The notch's own pages do this
+  (title left, buttons right), which is why they carry no "‹ Settings" button any more: the strip goes back.
+
+Read the size from the host (`surfaceHost.backZoneWidth`, `backZoneHeight`; `0` when the host has no
+zone, which is also when `features` lacks `backZone`) rather than assuming 180 by 32.
+
+**Without a notch, or with an older one.** The rule is the host's; a view that runs without a notch back
+strip keeps its own way back, and decides by the feature words: show your own "←" only when the host is
+not a notch with `panelBack` (a host that calls `goBackInside()` has a strip to call it from). Face ID does exactly
+that, and draws the footer hints only then too.
+
+**The check.** `omarchy-shell notch backZone` answers `{ open, zone: {width, height}, hits: [...] }`: every
+visible control of the open panel that takes a press and overlaps the zone, by type, `objectName` and
+rectangle in the zone's own coordinates. A panel-sized backdrop is the panel's surface and is not counted.
+Your suite can open each route of your panel and assert `hits` is empty (`dev/backone.sh` does it for the
+notch's own pages and for `dev/fixtures/zone`, which puts a control in each place a panel might).
+
+**Back goes where the panel came from.** Back from a plugin's home returns to the page or panel it was opened
+from, and from the widgets row (grown by a key, a click or the pointer, where a bar button opened it) to that row;
+with nowhere to go back to it closes. The order of one press is: an open menu level, then your panel's own pages
+(`goBackInside()`), then the notch's history, then close.
+
+### Hosted panels you cannot edit
+
+The notch also draws the pop-out panel of a plain bar widget with no change to the plugin (section 1). It moves
+that panel's content below the zone, hands its own Esc and `close()` to the strip's step back
+(`stepBackFromHosted`), and builds a lazy `content:` Component before taking it (Omarchy 4.5 panels). It cannot
+edit the panel, so what a plugin draws itself stays, and the author has to change it:
+
+| Plugin | What stays | Who fixes it |
+|---|---|---|
+| omaplug | a `Back` button on its Layout and Updates sub-pages, and no `goBackInside()` (a hosted panel cannot be asked to step back inside itself, only an integration) | the plugin: declare a `surface` integration, or drop the button under a host with `panelBack` |
+| joramser.camera-test | `‹ 0 / 2 ›`, previous and next camera, top right: they read like a back arrow and are not | the plugin (a label, or an icon that is not a chevron) |
+| touchpad-comfortable | two elided device labels overprint each other in the chip row | the plugin |
+| omapods, Elsewhen, system-monitor, eGPU, OLED corners | titles and rows used to sit under the strip | fixed by the host's inset; eGPU and OLED corners also by their own integration |
+
+Settings → Integrations puts a short note beside the first two (`hosting-quirks.js`), so opting them in is an informed choice.
+
+**Not hostable today**, because they open a window of their own and have no `KeyboardPanel` and `PanelController` for
+the host to take: omaland, arcdock settings, voxtype settings, ming.keybindings, the Spotify full panel and mini popup
+(a `popupOpen`, not a controller), lock-explorer, Omarchy's modal overlays (clipboard, emojis, image picker,
+reminders, speedtest, wifiqr, dev-gallery). The polkit dialog and the lock screen stay their own windows on purpose
+(section 6). Making the modal overlays hostable is a design job, not a fix.
 
 ## Suite pins
 

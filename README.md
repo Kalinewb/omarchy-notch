@@ -334,12 +334,12 @@ and left. It doesn't rely on Hyprland's click-outside grab, which unrelated focu
 
 ### The way back
 
-Escape and ✕ close the lot, which is what you want when you are done and not
+Escape closes the lot, which is what you want when you are done and not
 when you went one page too far. So the notch keeps one step of history per page
 you opened, and **the strip at the top centre — where the resting notch sits —
 goes back one step**. The notch's own pages leave that strip clear (their title
-is on the left of that row and their buttons on the right), a chevron appears
-under the pointer, and it is there on every page of the notch's own: with a step
+is on the left of that row and their buttons on the right), it is an invisible area -- nothing is drawn
+in it, the pointer becomes a hand -- and it is there on every page of the notch's own: with a step
 behind it a press goes back to that page, and at the first page it closes the panel.
 In the menu the first press goes up one menu level. It is also there on a hosted panel and an
 integration, where a press goes back to wherever it was opened from -- the
@@ -348,6 +348,14 @@ was opened from the resting notch or a bar button. A panel with pages of its
 own that says so (Face ID does) takes the first presses to go back a page inside
 it. Over IPC: `notch back`, which answers `back`, `inside` (a panel
 went back a page of its own) or `closed`.
+
+**One way back.** The strip at the top centre is the notch's only back control, and it is the whole
+resting-notch footprint (180 by 32 by default) and draws nothing: an area, not a button; Esc is its
+invisible alias. From a plugin's home, back returns to where the panel was opened from: the widgets row
+(grown by a key, a click or the pointer), the settings, the Plugins page or another panel; only when there
+is nowhere to go back to does it close. The Plugins and Needs-attention pages lost their "‹ Settings"
+buttons for it, and the ✕ that closed them: the strip is the way out. Panels keep every control out of the zone
+(`SURFACE-HOSTING.md` section 15; `omarchy-shell notch backZone` lists any that are in it).
 
 **Close it here, open it here** (`stateKey`, Settings → How it opens) shuts the
 notch where it stands and opens it where it stood — the same page, the same
@@ -377,7 +385,7 @@ carries a bind of your own is never touched.
 ## Settings panel
 
 Open the settings with a long right-click (by default) or its keybind. The notch grows into the
-panel; click outside, press Escape or ✕ to close it. Every change is saved to `shell.json` straight
+panel; click outside, or press Escape to close it. Every change is saved to `shell.json` straight
 away. **Preview** (under Battery) shows the charging, full and low glow without touching the battery,
 until you pick Off or close the settings. It shows the glow at your current glow size. At a tiny size
 (under 4 px) or with the glow off there is nothing to see, and a note under Preview says so.

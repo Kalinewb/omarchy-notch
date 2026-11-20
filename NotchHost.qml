@@ -57,6 +57,14 @@ QtObject {
   readonly property int fadeOutMs: 90
   readonly property real springDamping: 0.72
 
+  // --- the way-back zone ----------------------------------------------------
+
+  // The strip at the top centre of every panel (SURFACE-HOSTING.md section 15): a press anywhere in
+  // it goes back one step. It is this wide and this tall, centred on the panel, and a panel keeps
+  // every control of its own out of it -- inset its header below `backZoneHeight`.
+  readonly property real backZoneWidth: bar ? bar.backZoneWidth : 0
+  readonly property real backZoneHeight: bar ? bar.backZoneHeight : 0
+
   // --- panels ---------------------------------------------------------------
 
   readonly property bool panelOpen: platform ? platform.panelOpenFor(pluginId) : false

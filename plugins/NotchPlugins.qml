@@ -36,7 +36,6 @@ Item {
   // The entry to open on ("" for the top).
   property string focusId: ""
   signal closeRequested()
-  signal backRequested()
 
   readonly property real padding: Style.space(16)
   // The line under the list for the tip of the entry under the pointer.
@@ -316,17 +315,6 @@ Item {
         enabled: !!root.bar && root.bar.pluginsCanAct && !root.carding && !root.bar.pluginsStateProcessRunning && !root.bar.pluginJobRunning
         opacity: enabled ? 1 : 0.35
         onClicked: root.bar.refreshPlugins()
-      }
-
-      HeaderButton {
-        text: "‹ Settings"
-        onClicked: root.backRequested()
-      }
-
-      HeaderButton {
-        text: "✕"
-        horizontalPadding: Style.space(8)
-        onClicked: root.closeRequested()
       }
     }
   }

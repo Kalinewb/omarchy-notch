@@ -2,14 +2,15 @@
 # The notch's settings, as a file or a short code -- and what a code would change.
 #
 #   notch-config export [--file <path>]
-#   notch-config import <code|file|-> [--stage]
+#   notch-config import <code|file|-> [--yes | --stage] [--label <title>]
 #
 # `export` prints a code (notch1.<check>.<payload>), or writes a JSON file.
 # `import` reads a code, a saved file or standard input ("-"), and shows what it
 # would change on this machine: the panel's own rows and words, what it left out,
 # and which widgets it would reorder. `--stage` prints that as JSON and keeps the
-# document for Setup to apply. Nothing here changes shell.json: applying is
-# Setup's `config-import` fix, which snapshots first and can be undone.
+# document for Setup to apply. Nothing here writes shell.json: applying (`--yes`,
+# or "y" at the prompt) is Setup's `config-import` fix, which snapshots first,
+# makes one checked write and can be undone.
 #
 # What it holds: the 50 keys of `bar.notch` the panel and the notch read (the
 # table below) and the order of the bar's widgets. Never plugin settings, paths,
@@ -37,7 +38,6 @@ NOTCH_DIR="${NOTCH_SETUP_NOTCH_DIR:-$(realpath -m "$(dirname -- "${BASH_SOURCE[0
 FORMAT="kalinewb.notch-config"
 CODE_MAX=12000      # characters in a code, and in what the clipboard may give
 FILE_MAX=65536      # bytes in a file, and in what a code may inflate to
-STAGE_DIR="$STATE/staged"
 
 # --- the key table ------------------------------------------------------------------
 #
@@ -68,7 +68,7 @@ read -r -d '' KEY_TABLE <<'JSON'
     { "id": "corners", "label": "Corners" },
     { "id": "notifyTime", "label": "Notification time" },
     { "id": "lightColours", "label": "Light colours" },
-    { "id": "peeks", "label": "Peeks" },
+    { "id": "peeks", "label": "Track and charger pop-ups" },
     { "id": "glowSize", "label": "Glow size" },
     { "id": "greenAbove", "label": "Green from" },
     { "id": "lowBelow", "label": "Low battery at" },
@@ -356,7 +356,7 @@ def normalise($S; $recv):
   reduce ($S | keys_unsorted[]) as $k ({norm: {}, had: [], skipped: [], unknown: 0};
     if $T.keys | has($k) then
       if $S[$k] == null or $S[$k] == "" then .
-      else chk($k; $S[$k]) as $r
+      else (if $T.keys[$k].kind == "num" and $S[$k] == $recv[$k] and ($S[$k] | fin) then good($S[$k]; []) else chk($k; $S[$k]) end) as $r
         | .had += [$k]
         | (if $r.ok then .norm[$k] = $r.v else . end)
         | .skipped += [$r.notes[] | {key: $k, label: lbl($k)} + .]
@@ -478,9 +478,7 @@ def state($id; $e; $sup):
      else "\($e.bottomRadius | rnd) / \($e.filletRadius | rnd) px" end)
   elif $id == "notifyTime" then (if $e.notificationStay then "Until I act" else "\($e.notificationSeconds) s" end)
   elif $id == "lightColours" then ({aurora: "Aurora", blue: "Blue", white: "White"}[$e.notificationLightColours] // $e.notificationLightColours)
-  elif $id == "peeks" then
-    (if $e.peekOnTrackChange and $e.batteryPeek then "Both"
-     else picked([ (if $e.peekOnTrackChange then "New track" else empty end), (if $e.batteryPeek then "Plug-in and low battery" else empty end) ]; "Off") end)
+  elif $id == "peeks" then (if $e.peekOnTrackChange or $e.batteryPeek then "On" else "Off" end)
   elif $id == "glowSize" then ($e.glowScale * 100 | pct)
   elif $id == "greenAbove" then $e.greenAbove | pct
   elif $id == "lowBelow" then $e.lowBattery | pct
@@ -514,7 +512,7 @@ def changes($from; $to; $lay; $sup):
       | (if $r.id then $r.id else $r.keys[0] end) as $sid
       | state($sid; $ef; $sup) as $a | state($sid; $et; $sup) as $b
       | { row: $r.id, label: $r.label, keys: $moved, from: $a,
-          to: (if $a == $b then ($b | if test("^[0-9]+ ") then sub("^(?<n>[0-9]+) .*"; "\(.n) other") else "other" end) else $b end),
+          to: (if $a == $b then ($b | if test("^[0-9]+ ") then sub("^(?<n>[0-9]+) .*"; "\(.n) other") else "changed" end) else $b end),
           danger: ($moved | any(dangerous(.))) } ]
   | (map(select(.danger))) + (map(select(.danger | not)));
 
@@ -627,12 +625,39 @@ cmd_plan() { # plan <staged file>
     || { echo "$PROG: can't plan" >&2; exit 1; }
 }
 
+# stage_plan <plan json> -> prints the path of the staged document. Directory 700,
+# file 600, named by the plan's hash: Setup's apply takes this path and nothing else.
+stage_plan() {
+  local plan=$1 hash path tmp
+  hash=$(jq -r .hash <<<"$plan")
+  ( umask 077; mkdir -p "$STAGE_DIR" ) && chmod 700 "$STAGE_DIR" || return 1
+  path="$STAGE_DIR/$hash.json"
+  tmp=$(umask 077; mktemp "$STAGE_DIR/.partial.XXXXXX") || return 1
+  printf '%s\n' "$DOC" >"$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$path" || { rm -f "$tmp"; return 1; }
+  printf '%s' "$path"
+}
+
+# Applying is Setup's `config-import` fix: a snapshot first, one write, checked,
+# and one Undo. What it says last is in the status file.
+apply_staged() { # apply_staged <staged path> <label>
+  local run=("$NOTCH_DIR/bin/notch-setup" fix config-import --arg "$1")
+  [[ -n $2 ]] && run+=(--label "$2")
+  "${run[@]}" >/dev/null; local code=$?
+  case $code in
+    0) echo "Imported. \`notch-setup snapshots\` lists the way back." ;;
+    5) echo "$PROG: another setup job is running" >&2 ;;
+    *) echo "$PROG: $(jq -r '.message // empty' "$STATUS_DEFAULT" 2>/dev/null)" >&2 ;;
+  esac
+  return $code
+}
+
 cmd_import() {
-  local source="" given=0 yes=0 stage=0
+  local source="" given=0 yes=0 stage=0 label=""
   while (( $# )); do
     case $1 in
       --yes) yes=1 ;;
       --stage) stage=1; STAGE=1 ;;
+      --label) [[ $# -ge 2 ]] || { echo "$PROG: --label needs a title" >&2; exit 2; }; label=$2; shift ;;
       -) source="-"; given=1 ;;
       -*) echo "$PROG: import: unknown option $1" >&2; exit 2 ;;
       *) (( given )) && { echo "$PROG: import takes one code or file" >&2; exit 2; }; source=$1; given=1 ;;
@@ -640,27 +665,33 @@ cmd_import() {
     shift
   done
   (( given )) || { echo "$PROG: import needs a code, a file or -" >&2; exit 2; }
-  if (( yes )); then
-    echo "$PROG: applying is Setup's config-import fix, which is not built yet" >&2
-    exit 2
-  fi
-  if (( stage )); then check_guard write || exit 2; prune_staged; fi
+  (( stage && yes )) && { echo "$PROG: import takes --yes or --stage, not both" >&2; exit 2; }
+  if (( stage || yes )); then check_guard write || exit 2; prune_staged; fi
   DOC=""
   read_document "$source"
   local plan; plan=$(plan_json "$DOC") || { echo "$PROG: can't read shell.json" >&2; exit 1; }
+  local nothing=0
+  [[ $(jq -r '(.changes | length) + (.moves | length)' <<<"$plan") == 0 ]] && nothing=1
   if (( stage )); then
-    if [[ $(jq -r '(.changes | length) + (.moves | length)' <<<"$plan") == 0 ]]; then
-      jq -c . <<<"$plan"; return 0
-    fi
-    local hash path tmp; hash=$(jq -r .hash <<<"$plan")
-    ( umask 077; mkdir -p "$STAGE_DIR" ) && chmod 700 "$STAGE_DIR" || { echo "$PROG: can't stage" >&2; exit 1; }
-    path="$STAGE_DIR/$hash.json"
-    tmp=$(umask 077; mktemp "$STAGE_DIR/.partial.XXXXXX") || { echo "$PROG: can't stage" >&2; exit 1; }
-    printf '%s\n' "$DOC" >"$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$path" || { rm -f "$tmp"; echo "$PROG: can't stage" >&2; exit 1; }
+    (( nothing )) && { jq -c . <<<"$plan"; return 0; }
+    local path; path=$(stage_plan "$plan") || { echo "$PROG: can't stage" >&2; exit 1; }
     jq -c --arg staged "$path" '. + {staged: $staged}' <<<"$plan"
     return 0
   fi
   render_plan "$plan"
+  (( nothing )) && return 0
+  if (( ! yes )); then
+    # Asking needs a person: off a terminal the preview is all there is.
+    if [[ $source != - && -t 0 && -t 1 ]]; then
+      local answer; read -r -p "Apply? [y/N] " answer
+      [[ $answer == [yY]* ]] || return 0
+    else
+      echo "Run again with --yes to apply."; return 0
+    fi
+    check_guard write || exit 2
+  fi
+  local path; path=$(stage_plan "$plan") || { echo "$PROG: can't stage" >&2; exit 1; }
+  apply_staged "$path" "$label"
 }
 
 usage() { sed -n '2,5p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }

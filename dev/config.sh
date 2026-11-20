@@ -1,15 +1,16 @@
 #!/bin/bash
 
-# Exporting and importing the notch's settings, as numbers (plan-export.md, phase 0).
+# Exporting and importing the notch's settings, as numbers (plan-export.md).
 #
 #   ./dev/config.sh
 #
 # Drives bin/notch-config against a sandbox: a fake home with its own shell.json
-# and state folder, a plugin list stub, a copy of the notch's manifest and
-# catalogue. Nothing here touches the live session, and nothing here applies
-# anything: the verbs under test read, decode and plan. The test closes by
-# checking that no shell command ran at all and that the real shell.json is as
-# it was.
+# and state folder, a stub for every command, a copy of the notch's manifest and
+# catalogue. Nothing here touches the live session. Sections 1 to 7 only read,
+# decode and plan (and say so: the calls they made are counted); 8 to 13 apply
+# through bin/notch-setup's `config-import` fix on the sandbox's shell.json, with
+# the real write path and a stub that only answers `reloadConfig`. The test closes
+# by checking that the real shell.json is as it was.
 #
 #   1   export: the code's shape; the same twice and with shell.json reordered;
 #       no sentinel, withheld key, widget option or path; verbatim, never clamped
@@ -20,7 +21,11 @@
 #       and a flood on standard input are read to a cap; wrapped codes pass
 #   5   clamps to the ceilings, drops with reasons, same colour, plugin ids
 #   6   the layout: reordering only, paired by occurrence, options kept
-#   7   replace semantics and the preview's words (the read-only half)
+#   7   replace semantics and the preview's words
+#   8   apply: a snapshot first, one write, checked; Undo, and the conflict after an edit
+#   9   failure: each way it can go wrong ends with the file as it was, and the reloads are counted
+#  10   the guard and the staged document: a test notch never writes, nothing outside the staged folder
+#  13   lists with several ids, and nothing outside the notch's block or the layout order moves
 #  12   static: no privilege, no network, no installer, nothing left in notch-setup
 #  14   the words: row ids and labels are the panel's, the tips fit
 
@@ -37,6 +42,7 @@ check() { # check <description> <expected> <actual>
 }
 
 SCRIPT="$REPO/bin/notch-config"
+SETUP="$REPO/bin/notch-setup"
 sb=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-notch-config.XXXXXX")
 trap 'rm -rf "$sb"' EXIT
 
@@ -56,6 +62,8 @@ NOTCH_SB="$sb/notch"
 BIN="$sb/bin"
 CALLS="$sb/calls"
 mkdir -p "$CONFIG_SB/omarchy" "$STATE_SB" "$sb/omarchy" "$NOTCH_SB/plugins" "$BIN"
+mkdir -p "$NOTCH_SB/bin"
+cp "$REPO/bin/notch-config" "$REPO/bin/notch-lib.sh" "$REPO/bin/notch-setup" "$REPO/bin/notch-setup-binds.lua" "$NOTCH_SB/bin/"
 jq '.version = "9.9.9-fixture"' "$REPO/manifest.json" >"$NOTCH_SB/manifest.json"
 cp "$REPO/plugins/catalogue.json" "$NOTCH_SB/plugins/catalogue.json"
 
@@ -66,12 +74,34 @@ printf '%s\n' "omarchy \$*" >>"$CALLS"
 [[ "\$*" == "plugin list --json" ]] && cat "$sb/plugins.json"
 exit 0
 EOF
+# The shell answers only `reloadConfig` (the write itself is the script's, through the
+# real commit_shell). SB_STALE=1 makes it write the old file back after a reload, as a
+# shell that held stale memory would; SB_EDIT=<file> makes the plugin list change
+# shell.json while a plan is being made.
 cat >"$BIN/omarchy-shell" <<EOF
 #!/bin/bash
 printf '%s\n' "omarchy-shell \$*" >>"$CALLS"
+if [[ "\$*" == *reloadConfig* ]]; then
+  [[ \${SB_STALE:-} == 1 ]] && cp "$sb/stale.json" "$SHELL_SB"
+  echo ok
+fi
 exit 0
 EOF
-chmod +x "$BIN/omarchy" "$BIN/omarchy-shell"
+cat >"$BIN/omarchy" <<EOF
+#!/bin/bash
+printf '%s\n' "omarchy \$*" >>"$CALLS"
+if [[ "\$*" == "plugin list --json" ]]; then
+  [[ -n \${SB_EDIT:-} ]] && cp "\$SB_EDIT" "$SHELL_SB"
+  cat "$sb/plugins.json"
+fi
+exit 0
+EOF
+for stub in hyprctl omarchy-toggle-bar qs fakekill restart-shell busctl; do
+  printf '#!/bin/bash\nprintf "%%s\\n" "%s \$*" >>"%s"\nexit 0\n' "$stub" "$CALLS" >"$BIN/$stub"
+done
+printf '#!/bin/bash\nexit ${SB_LOCKED:-1}\n' >"$BIN/session-locked"
+printf '#!/bin/bash\necho 4.0.3-fixture\n' >"$BIN/omarchy-version"
+chmod +x "$BIN"/*
 cat >"$sb/plugins.json" <<'JSON'
 [{"id": "kalinewb.notch"}, {"id": "omarchy.menu"}, {"id": "omarchy.clock"}, {"id": "omarchy.spacer"},
  {"id": "omarchy.audio"}, {"id": "omarchy.tray"}]
@@ -81,7 +111,10 @@ env_common=(
   NOTCH_SETUP_HOME="$HOME_SB" NOTCH_SETUP_CONFIG_DIR="$CONFIG_SB" NOTCH_SETUP_TOGGLES_DIR="$HOME_SB/.local/state/omarchy/toggles"
   NOTCH_SETUP_STATE_DIR="$STATE_SB" NOTCH_SETUP_STATUS="$sb/run/setup.json" NOTCH_SETUP_OMARCHY_PATH="$sb/omarchy"
   NOTCH_SETUP_PLUGINS_DIR="$CONFIG_SB/omarchy/plugins" NOTCH_SETUP_NOTCH_DIR="$NOTCH_SB"
-  NOTCH_SETUP_OMARCHY="$BIN/omarchy" NOTCH_SETUP_OMARCHY_SHELL="$BIN/omarchy-shell"
+  NOTCH_SETUP_OMARCHY="$BIN/omarchy" NOTCH_SETUP_OMARCHY_SHELL="$BIN/omarchy-shell" NOTCH_SETUP_OMARCHY_VERSION="$BIN/omarchy-version"
+  NOTCH_SETUP_HYPRCTL="$BIN/hyprctl" NOTCH_SETUP_TOGGLE_BAR="$BIN/omarchy-toggle-bar" NOTCH_SETUP_QS="$BIN/qs"
+  NOTCH_SETUP_KILL="$BIN/fakekill" NOTCH_SETUP_SESSION_LOCKED="$BIN/session-locked" NOTCH_SETUP_RESTART_SHELL="$BIN/restart-shell"
+  NOTCH_SETUP_BUSCTL="$BIN/busctl"
 )
 nc() { env "${env_common[@]}" "$SCRIPT" "$@"; }
 calls() { cat "$CALLS" 2>/dev/null; }
@@ -314,7 +347,7 @@ done
 check "4t. wrapped, quoted, backticked, full-stopped and bracketed-after codes all pass (9 forms)" "9" "$wrapped_ok"
 check "4u. so does the same text on standard input" "Auto-hide" "$(fold -w 30 <<<"\"$c4\".  " | nc import - --stage 2>/dev/null | jq -r '.changes[0].label')"
 check "4v. a code saved in a text file passes" "Auto-hide" "$(printf '%s\n' "$c4" >"$sb/code.txt"; nc import "$sb/code.txt" --stage 2>/dev/null | jq -r '.changes[0].label')"
-check "4w. --yes says applying is not built yet and does nothing" "2 same" "$(nc import "$c4" --yes >/dev/null 2>&1; echo -n "$? "; [[ $(shell_hash) == "$h" ]] && echo same || echo CHANGED)"
+check "4w. --yes on a code that is no code: exit 2 and nothing changed" "2 same" "$(nc import hello --yes >/dev/null 2>&1; echo -n "$? "; [[ $(shell_hash) == "$h" ]] && echo same || echo CHANGED)"
 
 # ---------------------------------------------------------------------------------
 # 5  Clamps and drops
@@ -412,8 +445,142 @@ p=$(planf "$many_doc")
 check "7d. a dozen changes: the three that change keys or plugins come first, marked danger" "true" \
   "$(jq '(.changes | length) as $n | ([.changes[:3][] | .danger] | all) and ([.changes[3:][] | .danger] | any | not) and $n > 10' <<<"$p")"
 check "7e. the lines use the panel's words and no key names" "" "$(nc import "$sb/in.json" | grep -E 'bottomRadius|filletRadius|compactWidth|hiddenPlugins|autoHide|openKey|glowStyle|batteryGlow' | paste -sd'|')"
-check "7f. Width  180 px → 220 px and Peeks  Both → Off read in the panel's words" "Width  180 px → 220 px|Peeks  Both → Off" \
-  "$(nc import "$sb/in.json" | grep -E '^  (Width|Peeks)' | sed 's/^ *//' | paste -sd'|')"
+check "7f. Width  180 px → 220 px and Track and charger pop-ups  On → Off read in the panel's words" "Width  180 px → 220 px|Track and charger pop-ups  On → Off" \
+  "$(nc import "$sb/in.json" | grep -E '^  (Width|Track)' | sed 's/^ *//' | paste -sd'|')"
+
+# ---------------------------------------------------------------------------------
+# 5h  The ceiling clamps what changes, not what is already there
+# ---------------------------------------------------------------------------------
+put "$(jq '.bar.notch.compactWidth = 2600' <<<"$RECEIVER")"
+p=$(planf "$(doc '{"compactWidth": 2600}')")
+check "5h. a width the receiver already has, over the ceiling, is left alone: your own export is nothing to change" "2600 0 0" \
+  "$(jq -r '"\(.notch.compactWidth) \(.skipped | length) \(.changes | length)"' <<<"$p")"
+p=$(planf "$(doc '{"compactWidth": 2700}')")
+check "5i. …and a different one is capped, and said so" "2400 Width:capped" "$(jq -r '"\(.notch.compactWidth) \(.skipped[0].label):\(.skipped[0].reason)"' <<<"$p")"
+
+# ---------------------------------------------------------------------------------
+# What the read-only half did
+# ---------------------------------------------------------------------------------
+check "r. up to here nothing was applied: only the plugin list was asked, no shell call and no reload" "omarchy plugin list --json 0" \
+  "$(calls | sort -u | paste -sd'|') $(calls | grep -c '^omarchy-shell')"
+
+# ---------------------------------------------------------------------------------
+# 8  Apply: a snapshot first, one write, checked; Undo
+# ---------------------------------------------------------------------------------
+echo; echo "${BOLD}8  Apply, and Undo${RESET}"
+canon() { jq -S -c . "$SHELL_SB" | sha256sum | cut -d' ' -f1; }
+reloads() { calls | grep -c 'omarchy-shell shell reloadConfig'; }
+reset_calls() { : >"$CALLS"; }
+setup() { env "${env_common[@]}" "$SETUP" "$@"; }
+snaps() { ls -d "$STATE_SB"/snapshots/[0-9]*-config-import* 2>/dev/null; }
+status() { jq -r ".$1" "$sb/run/setup.json" 2>/dev/null; }
+staged_left() { ls -A "$STATE_SB/staged" 2>/dev/null | grep -c . ; }
+strays() { find "$CONFIG_SB/omarchy" -name 'shell.json.*' | wc -l; }
+
+put "$SENDER"; code=$(nc export)
+put "$RECEIVER"; before=$(canon); rm -rf "$STATE_SB/snapshots" "$STATE_SB/staged"; reset_calls
+off=$(nc import "$code" 2>&1); rc_off=$?
+check "8. without --yes and off a terminal: the preview, a hint, and nothing written" "0 true $before" \
+  "$rc_off $([[ $off == *'Run again with --yes'* && $off == *changes* ]] && echo true || echo false) $(canon)"
+reset_calls
+out=$(nc import "$code" --yes 2>&1); rc=$?
+snap=$(snaps | head -1)
+check "8a. --yes applies: exit 0, phase done, the snapshot verified, one snapshot" "0 done verified 1" \
+  "$rc $(status phase) $(jq -r .state "$snap/meta.json") $(snaps | wc -l)"
+check "8b. the snapshot came first: titled, kind ipc, holding the pre-import canonical hash" "Imported notch settings ipc $before" \
+  "$(jq -r '"\(.title) \(.kind) \(.files[0].canonical)"' "$snap/meta.json")"
+check "8c. exactly one reloadConfig, and no notch set, moveBarWidget, putBarWidget, rescanPlugins or plugin enable/disable" "1 0" \
+  "$(reloads) $(calls | grep -cE 'notch set|moveBarWidget|putBarWidget|rescanPlugins|plugin (enable|disable)')"
+check "8d. the notch block is the file's, the layout is reordered only, the withheld key and the sentinel stay" "700 ALT + X false true" \
+  "$(jq -r '.bar.notch | "\(.compactWidth) \(.openKey) \(.replaceMenu) \(.hostedMono)"' "$SHELL_SB")"
+check "8e. the staged document is gone, and no temp file is left" "0 0" "$(staged_left) $(strays)"
+ids_after=$(jq -c '[.bar.layout[][] | if type == "object" then .id else . end] | sort' "$SHELL_SB")
+check "8f. no widget was added or removed" "$(jq -c '[.bar.layout[][] | if type == "object" then .id else . end] | sort' <<<"$RECEIVER")" "$ids_after"
+check "8g. the same code again: Nothing to change, no second snapshot" "Nothing to change 0 1" "$(nc import "$code" --yes 2>&1) $? $(snaps | wc -l)"
+reset_calls
+setup restore "$(basename "$snap")" >/dev/null 2>&1; rc=$?
+check "8h. Undo: exit 0, the canonical hash is the one from before, removed keys are back to absent" "0 $before restored" "$rc $(canon) $(jq -r .state "$snap/meta.json")"
+check "8i. …through one reloadConfig, again through the same write" "1" "$(reloads)"
+put "$SENDER"; code2=$(nc export); put "$RECEIVER"
+nc import "$code2" --yes >/dev/null 2>&1
+snap2=$(snaps | tail -1); jq '.bar.position = "bottom"' "$SHELL_SB" >"$sb/t" && cp "$sb/t" "$SHELL_SB"; edited=$(canon)
+setup restore "$(basename "$snap2")" >/dev/null 2>&1; rc=$?
+check "8j. after an unrelated edit Undo is a conflict, exit 3, and writes nothing" "3 $edited" "$rc $(canon)"
+ids=$(setup detect --json --all 2>/dev/null | jq -r '"\(.points | length) \([.points[].id] | index("config-import"))"')
+check "8k. detect still lists its 23 points and never config-import" "23 null" "$ids"
+
+# ---------------------------------------------------------------------------------
+# 9  Failure: the file is as it was, and the reloads are counted
+# ---------------------------------------------------------------------------------
+echo; echo "${BOLD}9  Failure${RESET}"
+# fails <label> <expected reloads> <command...>: runs it on a fresh receiver
+fresh() { put "$RECEIVER"; before=$(canon); cp "$SHELL_SB" "$sb/stale.json"; rm -rf "$STATE_SB/snapshots" "$STATE_SB/staged"; reset_calls; }
+fresh; NOTCH_SETUP_FAIL_AT=snapshot nc import "$code" --yes >/dev/null 2>&1; rc=$?
+check "9. no snapshot: exit 1, the file as it was, no reload, nothing staged" "1 $before 0 0 0" "$rc $(canon) $(reloads) $(staged_left) $(strays)"
+fresh; NOTCH_SETUP_FAIL_AT=verify nc import "$code" --yes >/dev/null 2>&1; rc=$?
+check "9a. verification fails: exit 1, rolled back, the file as it was, a second reload for the rollback" "1 $before rolled-back 2 0 0" \
+  "$rc $(canon) $(status phase) $(reloads) $(staged_left) $(strays)"
+fresh; SB_STALE=1 nc import "$code" --yes >/dev/null 2>&1; rc=$?
+check "9b. a shell that writes its stale file back after the reload: verify's five tries fail, rolled back" "1 $before rolled-back 2" \
+  "$rc $(canon) $(status phase) $(reloads)"
+fresh; staged=$(nc import "$code" --stage | jq -r .staged)
+jq '.bar.notch.autoHide = true' "$SHELL_SB" >"$sb/t" && cp "$sb/t" "$SHELL_SB"; edited=$(canon); reset_calls
+setup fix config-import --arg "$staged" >/dev/null 2>&1; rc=$?
+check "9c. a slider moved while the preview was open: the plan has changed, nothing is applied, one reload (the rollback's)" "1 $edited 1 0" \
+  "$rc $(canon) $(reloads) $(staged_left)"
+fresh; staged=$(nc import "$code" --stage | jq -r .staged)
+jq '.bar.notch.compactHeight = 50 | .bar.layout.left += ["omarchy.spacer"]' "$SHELL_SB" >"$sb/edit.json"; reset_calls
+SB_EDIT="$sb/edit.json" setup fix config-import --arg "$staged" >/dev/null 2>&1; rc=$?
+check "9d. the file changes between the plan and the write: the program refuses, exit 1, the file as it was" "1 $before 0" "$rc $(canon) $(staged_left)"
+fresh; sleep 30 & held=$!; mkdir -p "$STATE_SB/lock"; echo "$held" >"$STATE_SB/lock/pid"
+nc import "$code" --yes >/dev/null 2>&1; rc=$?
+kill "$held" 2>/dev/null; rm -rf "$STATE_SB/lock"
+check "9e. another job holds the lock: exit 5, nothing changed" "5 $before 0" "$rc $(canon) $(reloads)"
+fresh; SB_LOCKED=0 nc import "$code" --yes >/dev/null 2>&1; rc=$?
+check "9f. a locked session: exit 2, nothing changed" "2 $before 0" "$rc $(canon) $(reloads)"
+
+# ---------------------------------------------------------------------------------
+# 10  Nothing outside the staged folder, nothing from a hand-edited stage
+# ---------------------------------------------------------------------------------
+echo; echo "${BOLD}10  Staging${RESET}"
+fresh; staged=$(nc import "$code" --stage | jq -r .staged)
+check "10. the staged folder is 700, the document 600, named by the plan's hash" "700 600 true" \
+  "$(stat -c %a "$STATE_SB/staged") $(stat -c %a "$staged") $([[ $(basename "$staged" .json) == $(nc plan "$staged" | jq -r .hash) ]] && echo true || echo false)"
+printf '%s\n' "$(doc '{"autoHide": true}')" >"$sb/outside.json"
+setup fix config-import --arg "$sb/outside.json" >/dev/null 2>&1; rc1=$?
+ln -s "$sb/outside.json" "$STATE_SB/staged/aaaaaaaa.json"
+setup fix config-import --arg "$STATE_SB/staged/aaaaaaaa.json" >/dev/null 2>&1; rc2=$?
+setup fix config-import --arg "$STATE_SB/staged/../snapshots" >/dev/null 2>&1; rc3=$?
+rm -f "$STATE_SB/staged/aaaaaaaa.json"
+check "10a. a path outside the staged folder, a symlink in it and a folder are refused: exit 2, file untouched, the outside file kept" "2 2 2 $before true" \
+  "$rc1 $rc2 $rc3 $(canon) $([[ -f $sb/outside.json ]] && echo true || echo false)"
+# A stage edited by hand, then named by the hash `plan` gives it: it is normalised again at apply.
+jq '.settings.replaceMenu = true | .settings.bogus = 1 | .settings.compactWidth = 99999 | .settings.autoHide = "yes"' "$staged" >"$sb/hand.json"
+hash=$(nc plan "$sb/hand.json" | jq -r .hash); cp "$sb/hand.json" "$STATE_SB/staged/$hash.json"; chmod 600 "$STATE_SB/staged/$hash.json"
+setup fix config-import --arg "$STATE_SB/staged/$hash.json" >/dev/null 2>&1; rc=$?
+check "10b. a hand-edited stage cannot widen the whitelist: no withheld key, no unknown key, the ceiling, no wrong type" "0 false null 2400 false" \
+  "$rc $(jq -r '.bar.notch.replaceMenu' "$SHELL_SB") $(jq -r '.bar.notch.bogus' "$SHELL_SB") $(jq -r '.bar.notch.compactWidth' "$SHELL_SB") $(jq '.bar.notch.autoHide == "yes"' "$SHELL_SB")"
+fresh; nc import "$code" --stage >/dev/null; touch -d '2 hours ago' "$STATE_SB/staged/"*.json
+nc import "$code" --stage >/dev/null
+check "10c. a staged document older than an hour is pruned by the next run" "1" "$(staged_left)"
+
+# ---------------------------------------------------------------------------------
+# 13  Lists with several ids, and nothing outside the notch's block moves
+# ---------------------------------------------------------------------------------
+echo; echo "${BOLD}13  Lists, and the rest of shell.json${RESET}"
+fresh
+lists=$(doc '{"hostedPanels": ["omarchy.audio", "omarchy.clock", "kalinewb.face"], "disabledIntegrations": ["omarchy.tray", "omarchy.audio"],
+  "hiddenPlugins": ["omarchy.spacer", "omarchy.tray"], "hoverPlugins": ["omarchy.audio", "omarchy.tray"], "bottomRadius": 12, "filletRadius": 12}')
+keys=$(nc table | jq -c '.keys | keys')
+rest() { jq -S -c --argjson k "$keys" 'del(.bar.layout) | .bar.notch |= with_entries(select(.key | IN($k[]) | not))' "$SHELL_SB"; }
+rest_before=$(rest)
+printf '%s\n' "$lists" >"$sb/lists.json"; nc import "$sb/lists.json" --yes >/dev/null 2>&1; rc=$?
+check "13. three hosted panels, two off integrations, two hidden and two hover widgets: applied, verified" "0 done" "$rc $(status phase)"
+check "13a. the file holds those exact arrays" '["omarchy.audio","omarchy.clock","kalinewb.face"] ["omarchy.tray","omarchy.audio"] ["omarchy.spacer","omarchy.tray"] ["omarchy.audio","omarchy.tray"]' \
+  "$(jq -c '.bar.notch | "\(.hostedPanels) \(.disabledIntegrations) \(.hiddenPlugins) \(.hoverPlugins)"' -r "$SHELL_SB")"
+check "13b. outside the 50 keys and the layout: shell.json is as it was (sentinels, withheld keys, plugins, bar.id included)" "$rest_before" "$(rest)"
+setup restore "$(basename "$(snaps | tail -1)")" >/dev/null 2>&1; rc=$?
+check "13c. Undo puts back the canonical hash" "0 $before" "$rc $(canon)"
 
 # ---------------------------------------------------------------------------------
 # 12  Static
@@ -501,15 +668,14 @@ printf '%s\n' "$(mkcode "$(doc '{"autoHide": true}')")" >"$fake/code.txt"
 fake_hash=$(find "$fake" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
 guard() { env HOME="$fake" XDG_CONFIG_HOME="$fake/.config" XDG_STATE_HOME="$fake/.local/state" XDG_RUNTIME_DIR="$fake/run" \
   NOTCH_HARNESS=1 NOTCH_SETUP_OMARCHY="$BIN/omarchy" NOTCH_SETUP_OMARCHY_SHELL="$BIN/omarchy-shell" "$SCRIPT" "$@"; }
-rc1=0; rc2=0
+rc1=0; rc2=0; rc3=0
 guard export --file "$fake/exported.json" >/dev/null 2>&1 || rc1=$?
 guard import "$fake/code.txt" --stage >/dev/null 2>&1 || rc2=$?
-check "10a. a test notch (NOTCH_HARNESS) with the real paths: --file and --stage exit 2, and the fake home survives" "2 2 $fake_hash" \
-  "$rc1 $rc2 $(find "$fake" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+guard import "$fake/code.txt" --yes >/dev/null 2>&1 || rc3=$?
+check "10d. a test notch (NOTCH_HARNESS) with the real paths: --file, --stage and --yes exit 2, and the fake home survives" "2 2 2 $fake_hash" \
+  "$rc1 $rc2 $rc3 $(find "$fake" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
 check "10b. reading is not writing: export prints a code even then" "true" \
   "$(guard export 2>/dev/null | grep -qE '^notch1\.' && echo true || echo false)"
-check "r. the phase is read-only: the only command run is the plugin list, and no shell call or reload" "omarchy plugin list --json 0" \
-  "$(calls | sort -u | paste -sd'|') $(calls | grep -c '^omarchy-shell')"
 check "r1. the real shell.json is as it was, and nothing was staged for real" "$real_before $real_staged_before" \
   "$(sha256sum "$REAL_SHELL_JSON" 2>/dev/null | cut -d' ' -f1) $(ls -A "$REAL_STAGED" 2>/dev/null | wc -l)"
 

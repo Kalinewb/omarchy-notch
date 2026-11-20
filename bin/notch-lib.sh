@@ -27,6 +27,8 @@ STATUS_DEFAULT="${NOTCH_SETUP_STATUS:-${XDG_RUNTIME_DIR:-/tmp}/$ID/setup.json}"
 OMARCHY_DIR="${NOTCH_SETUP_OMARCHY_PATH:-${OMARCHY_PATH:-/usr/share/omarchy}}"
 PLUGINS="${NOTCH_SETUP_PLUGINS_DIR:-$CONFIG/omarchy/plugins}"
 SHELL_JSON="$CONFIG/omarchy/shell.json"
+# Where `notch-config import --stage` keeps what a preview showed, for Setup to apply.
+STAGE_DIR="$STATE/staged"
 HYPR="$CONFIG/hypr"
 
 # --- the commands it runs, each replaceable by a stub -------------------------------

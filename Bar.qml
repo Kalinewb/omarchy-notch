@@ -2221,6 +2221,16 @@ Item {
     var windows = notchWindows
     for (var i = 0; i < windows.length; i++) if (windows[i].hostedOpen) windows[i].closePanels()
   }
+
+  // The guest closed its own panel: its Escape, its own close(). Escape is the
+  // strip's invisible alias, so it asks for what the strip asks for -- one step
+  // back, to the page the panel was opened from -- and only with nothing behind
+  // it does the notch close. (Anything else that closes a guest from outside,
+  // an idle timeout or `omarchy-shell <plugin> close`, lands the same way.)
+  function stepBackFromHosted() {
+    var windows = notchWindows
+    for (var i = 0; i < windows.length; i++) if (windows[i].hostedOpen) windows[i].goBack()
+  }
   readonly property var platform: platformService
   // Activities are claimed and queued, but nothing draws them at rest yet, so a
   // claim that would be shown answers "queued" (plan-activities-notifications).
@@ -2830,6 +2840,12 @@ Item {
   // the resting height and only widens, with the widgets vertically centred
   // where the resting notch's content sits.
   readonly property real notchSidePadding: Style.space(14)
+  // What a hosted guest's content is kept below: the strip at the top centre
+  // (BackStrip.qml) is the one way back and its whole width is its press
+  // target, so a guest that draws a title, a chip row or a hero there would be
+  // pressed through. A guest is not written for the notch, so the notch moves
+  // it down instead -- the resting notch's own height, which is the strip's.
+  readonly property real notchHostedTopInset: Math.max(notchSidePadding, notchCompactHeight)
   readonly property real notchSectionGap: Style.space(18)
   readonly property real notchExpandedHeight: notchCompactHeight
 
@@ -4238,7 +4254,7 @@ Item {
     readonly property real hostedWidth: Math.max(compactWidth,
       Math.min(maxBarWidth, root.hosting.wantedWidth + 2 * root.notchSidePadding))
     readonly property real hostedHeight: Math.max(root.notchCompactHeight,
-      Math.min(panelMaxHeight, root.hosting.wantedHeight + 2 * root.notchSidePadding))
+      Math.min(panelMaxHeight, root.hosting.wantedHeight + root.notchHostedTopInset + root.notchSidePadding))
     readonly property real integrationWidth: Math.max(compactWidth, integrationHost.item ? integrationHost.item.implicitWidth : 0)
     readonly property real integrationHeight: Math.max(root.notchCompactHeight,
       Math.min(integrationHost.item ? integrationHost.item.implicitHeight : 0, panelMaxHeight))
@@ -4546,6 +4562,8 @@ Item {
                   opacity: Number(hostedHost.opacity.toFixed(3)),
                   // Whether the layer that takes the guest's hue out is on the slot.
                   monoLayer: hostedSlot.layer.enabled,
+                  // Where the guest's content starts, from the top of the notch: below the strip.
+                  contentTop: Number((hostedHost.y + hostedSlot.y).toFixed(3)),
                   report: root.hosting.report() },
         integration: { open: barWindow.integrationOpen, id: barWindow.integrationId, route: barWindow.integrationRoute,
                        loaded: integrationHost.item !== null,
@@ -5259,6 +5277,7 @@ Item {
               id: hostedSlot
               anchors.fill: parent
               anchors.margins: root.notchSidePadding
+              anchors.topMargin: root.notchHostedTopInset
               layer.enabled: barWindow.hostedOpen
               layer.effect: ShaderEffect { fragmentShader: "shaders/mono.frag.qsb" }
             }
@@ -5920,7 +5939,7 @@ Item {
         if (!target) return
         var ours = root.hosting.active && root.hosting.widget === slot.activeItem
         if (target.open !== true) {
-          if (ours) root.releaseHostedPanel()
+          if (ours) root.stepBackFromHosted()
           return
         }
         // Already ours: this is hosting's own open, not a summons.

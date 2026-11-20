@@ -101,6 +101,13 @@ QtObject {
     if (why !== "") return why
 
     var found = panelOf(item)
+    // A panel that gives `content` as a Component (every Omarchy panel since
+    // 4.5) has it built when its window opens, and the window is the one thing
+    // held down here -- so without this the Loader in its contentItem stays
+    // empty and the notch grows to a 64 px black box with nothing in it. Asked
+    // for before anything is measured; a panel with eager children has no such
+    // function and is untouched.
+    if (typeof found.ensureContent === "function") found.ensureContent()
     var bodies = found.contentItem
     var records = []
 

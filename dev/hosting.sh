@@ -289,10 +289,11 @@ check "38. every item of the panel came, not just the first" "true" \
 check "38b. …and its content is built: a panel with something in it, not an empty box" "true" \
   "$(field "$g" '.hosted.report.wanted.height > 100 and .hosted.report.contentSize.height > 100')"
 
-# The strip at the top centre is the one way back and all of its width takes the
-# press, so a guest that was never written for the notch is kept below it.
-check "38c. …and starts below the strip at the top centre, not under it" "true" \
-  "$(field "$g" '.hosted.contentTop >= 32')"
+# The strip at the top centre is a zone, not a shelf: the host does not push a guest
+# down for it, so a hosted panel sits where it always did, at the notch's side
+# padding (14 px), and keeps the centre clear by its own layout.
+check "38c. …and starts at the notch's side padding (about 14 px), where it always did, not pushed down for the strip" "true" \
+  "$(field "$g" '.hosted.contentTop >= 12 and .hosted.contentTop < 20')"
 
 # The size, not the curve that reaches it: the notch grows to what the PLUGIN
 # asked its own card for, and rests exactly there. (How it travels is

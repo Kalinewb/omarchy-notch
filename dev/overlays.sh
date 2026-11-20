@@ -268,12 +268,12 @@ check "…grown to the card the picker chose, not past the screen" "true" \
   "$(field "$g" '.hosted.report.wanted.width > 0 and (.hosted.width >= .hosted.report.wanted.width) and (.hosted.height >= .hosted.report.wanted.height)')"
 check "…with the card's own colours, not the notch's monochrome" "false" "$(field "$g" '.hosted.monoLayer')"
 check "…and the card paints no surface of its own over the notch's black" "true" "$(notch overlays | jq -r '.hosting.flat')"
-# back-one's rule: nothing of a guest sits in the strip's zone, which is the top of
-# the notch, and the notch grows by the inset so the card keeps its own size.
-check "…the card starts below the back strip's zone" "true" "$(field "$g" '.hosted.contentTop >= 32')"
-check "…and the notch grew by that inset, so the card is not squeezed" "true" \
-  "$(field "$g" '.hosted.height >= .hosted.report.wanted.height + .hosted.contentTop')"
-check "…and nothing of the card sits in the strip's zone (notch backZone: a zone, no hit)" "32 0" \
+# The strip is a zone at the top centre, not a shelf: the card sits where a hosted panel
+# always did (the side padding), and the notch grows by that and no more.
+check "…the card sits at the notch's side padding, not pushed down for the strip" "true" "$(field "$g" '.hosted.contentTop >= 12 and .hosted.contentTop < 20')"
+check "…and the notch is the card plus its padding all round" "true" \
+  "$(field "$g" '(.hosted.height - 28) >= .hosted.report.wanted.height')"
+check "…the zone is the strip's, reported, and the hosted card is never a control in it" "32 0" \
   "$(notch backZone | jq -r '"\(.zone.height) \(.hits | length)"')"
 check "…it is told it is open, and the keyboard is where it asked" "true true" \
   "$(notch overlays | jq -r '"\(.hosting.told) \(.hosting.focused)"')"

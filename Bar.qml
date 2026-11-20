@@ -2938,14 +2938,13 @@ Item {
   // the resting height and only widens, with the widgets vertically centred
   // where the resting notch's content sits.
   readonly property real notchSidePadding: Style.space(14)
-  // What a hosted guest's content is kept below: the strip at the top centre
-  // (BackStrip.qml) is the one way back and its whole width is its press
-  // target, so a guest that draws a title, a chip row or a hero there would be
-  // pressed through. A guest is not written for the notch, so the notch moves
-  // it down instead -- the resting notch's own height, which is the strip's.
-  // One value for both: it is the zone the strip publishes (`backZoneHeight`), so what an integration
-  // reads from the host and where a guest's slot starts cannot drift apart.
-  readonly property real notchHostedTopInset: Math.max(notchSidePadding, backZoneHeight)
+  // Where a hosted guest's content starts: the notch's own side padding, so a
+  // panel sits in the surface where it always did. The way-back strip (BackStrip.qml)
+  // is a 180 x 32 zone at the top CENTRE, drawn over the guest; the guest is not
+  // pushed down for it. What the zone asks of a panel is its own layout: no control
+  // and no text in the centred zone (`backZoneWidth` x `backZoneHeight`, from the top
+  // of the notch) -- title left, buttons right -- which `notch backZone` reports.
+  readonly property real notchHostedTopInset: notchSidePadding
   readonly property real notchSectionGap: Style.space(18)
   readonly property real notchExpandedHeight: notchCompactHeight
 
@@ -3639,11 +3638,15 @@ Item {
                menu: menuOpen && menu ? String(menu.activeMenu) : "",
                inner: inner !== null ? integrationId : "" }
     }
-    // The way-back zone and what is in it (SURFACE-HOSTING.md section 15): every control of the open
-    // panel that takes a press and overlaps the zone, by type, name and rectangle in the zone's own
-    // coordinates. A panel keeps its controls out of it, so `hits` is empty; a test reads this over IPC.
-    // "Takes a press" is a MouseArea, a TapHandler, a text input or anything that takes the tab key; a
-    // backdrop as big as the panel is the panel's own surface, not a control, and is not counted.
+    // The way-back zone and what is in it (SURFACE-HOSTING.md section 15): the zone is a 180 x 32 area at
+    // the top CENTRE of the notch, and a panel keeps it clear by its own layout, not by being pushed down.
+    // `hits` is every control of the open panel that takes a press and overlaps it, `texts` every piece of
+    // text whose painted glyphs do, each by type, name and rectangle in the zone's own coordinates. A panel
+    // that honours the contract reports both empty; a test reads this over IPC. "Takes a press" is a
+    // MouseArea, a TapHandler, a text input or anything that takes the tab key; a backdrop as big as the
+    // panel is the panel's own surface, not a control, and is not counted. A text is measured by what it
+    // paints (`contentWidth`, by its alignment), not by the box it sits in: a title at the left of a full-
+    // width row is not in the middle.
     function backZoneReport() {
       var page = integrationOpen ? integrationHost.item : hostedOpen ? hostedSlot
                : settingsOpen ? expandedHost.item : setupOpen ? setupHost.item
@@ -3652,8 +3655,8 @@ Item {
                : setupOpen ? "setup" : pluginsOpen ? "plugins" : menuOpen ? "menu" : ""
       var zone = { width: backZone.width, height: backZone.height }
       var hits = []
-      if (!page) return { open: kind, zone: zone, hits: hits }
-      var pagePoint = page.mapToItem(backZone, 0, 0)
+      var texts = []
+      if (!page) return { open: kind, zone: zone, hits: hits, texts: texts }
       function typeOf(item) { return String(item).replace(/[_(].*$/, "") }
       function presses(item) {
         if (item.acceptedButtons !== undefined && item.acceptedButtons !== 0 && item.enabled) return true
@@ -3664,6 +3667,14 @@ Item {
           if (bag[i] && bag[i].gesturePolicy !== undefined && bag[i].enabled !== false) return true
         return false
       }
+      // The painted extent of a text along x, inside its own box.
+      function paintedX(item) {
+        var cw = Number(item.contentWidth)
+        if (!(cw >= 0) || cw > item.width) return { x: 0, w: item.width }
+        var align = item.effectiveHorizontalAlignment
+        var off = align === Qt.AlignRight ? item.width - cw : align === Qt.AlignHCenter ? (item.width - cw) / 2 : 0
+        return { x: off, w: cw }
+      }
       function walk(item, depth) {
         if (!item || depth > 40 || !item.visible || item.opacity === 0) return
         var at = item.mapToItem(backZone, 0, 0)
@@ -3673,11 +3684,18 @@ Item {
         if (overlaps && !backdrop && presses(item))
           hits.push({ type: typeOf(item), name: String(item.objectName || ""),
                       x: Math.round(at.x), y: Math.round(at.y), w: Math.round(item.width), h: Math.round(item.height) })
+        if (overlaps && typeof item.text === "string" && item.text.length > 0 && item.contentWidth !== undefined
+            && item.objectName !== "backChevron") {
+          var paint = paintedX(item)
+          if (at.x + paint.x < zone.width && at.x + paint.x + paint.w > 0)
+            texts.push({ type: typeOf(item), text: item.text.slice(0, 32), x: Math.round(at.x + paint.x), y: Math.round(at.y),
+                         w: Math.round(paint.w), h: Math.round(item.height) })
+        }
         var kids = item.children || []
         for (var k = 0; k < kids.length; k++) walk(kids[k], depth + 1)
       }
       walk(page, 0)
-      return { open: kind, zone: zone, hits: hits }
+      return { open: kind, zone: zone, hits: hits, texts: texts }
     }
 
     // What a panel opened FROM the notch itself goes back to. A panel opened from another panel has its
@@ -5449,6 +5467,10 @@ Item {
           x: (panelIsland.barWidth - width) / 2
           y: 0
           offered: barWindow.backOffered
+          foreground: root.notchForeground
+          fontFamily: root.fontFamily
+          glyphSize: Style.font.title
+          reducedMotion: root.reducedMotion
           onActivated: barWindow.goBack()
         }
       }

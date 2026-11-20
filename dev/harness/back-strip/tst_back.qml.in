@@ -101,15 +101,56 @@ TestCase {
     compare(steps, 0)
   }
 
-  // An area, not a button: nothing is drawn, and a screen reader still finds a button named Back.
-  function paints(item) {
-    if (item.visible && (item.text !== undefined || item.color !== undefined || item.source !== undefined)) return true
-    for (var i = 0; i < item.children.length; i++) if (paints(item.children[i])) return true
-    return false
+  // An area with one mark: nothing is drawn at rest, a chevron fades in at the centre under the pointer,
+  // and a screen reader finds a button named Back.
+  function paintedThings(item, out) {
+    if (item.visible && (item.text !== undefined || item.color !== undefined || item.source !== undefined) && item.opacity > 0.01) out.push(item)
+    for (var i = 0; i < item.children.length; i++) paintedThings(item.children[i], out)
+    return out
   }
-  function test_08_it_draws_nothing() {
-    compare(paints(strip), false)
+  function test_08_at_rest_nothing_is_drawn() {
+    mouseMove(island, 20, 100)
+    wait(300)
+    compare(paintedThings(strip, []).length, 0)
+    compare(strip.hovered, false)
     compare(strip.Accessible.name, "Back")
     compare(strip.Accessible.role, Accessible.Button)
+  }
+  function test_09_under_the_pointer_a_chevron_fades_in_at_the_centre() {
+    mouseMove(island, 105, 5)
+    tryCompare(strip, "hovered", true)
+    tryVerify(function () { return strip.chevronOpacity > 0.7 })
+    var shown = paintedThings(strip, [])
+    compare(shown.length, 1)
+    compare(shown[0].objectName, "backChevron")
+    compare(shown[0].text, "‹")
+    // At the centre of the zone, however far the pointer is from it, and nothing else is drawn.
+    var c = shown[0].mapToItem(strip, shown[0].width / 2, shown[0].height / 2)
+    verify(Math.abs(c.x - strip.width / 2) < 2)
+    verify(Math.abs(c.y - strip.height / 2) < 2)
+  }
+  function test_10_it_fades_again_when_the_pointer_leaves() {
+    mouseMove(island, 150, 16)
+    tryVerify(function () { return strip.chevronOpacity > 0.7 })
+    mouseMove(island, 20, 100)
+    tryCompare(strip, "hovered", false)
+    tryVerify(function () { return strip.chevronOpacity < 0.01 })
+  }
+  function test_11_not_offered_there_is_no_chevron_to_show() {
+    offered = false
+    mouseMove(island, 150, 16)
+    wait(300)
+    compare(strip.visible, false)
+    compare(paintedThings(strip, []).length, 0)
+  }
+  function test_12_reduced_motion_shows_it_without_the_fade() {
+    strip.reducedMotion = true
+    mouseMove(island, 20, 100)
+    wait(300)
+    mouseMove(island, 150, 16)
+    tryCompare(strip, "hovered", true)
+    // No animation to wait for: the first frame after the pointer arrives has it at full strength.
+    compare(strip.chevronOpacity, 0.75)
+    strip.reducedMotion = false
   }
 }

@@ -2,11 +2,12 @@ import QtQuick
 
 // The way back at the top centre of an open panel: press anywhere in the zone to go back one step.
 //
-// It is an AREA, not a button. Nothing is drawn: no chevron, no pill, no border, no wash, no focus
-// box -- it blends into the notch and the panel under it, and the notch looks the same with it as
-// without. The only sign of it is the pointer, which becomes a hand over the zone. It is the notch's
-// one back control; Esc is its invisible alias (SURFACE-HOSTING.md section 15). For a screen reader
-// it is a button named "Back".
+// The whole zone is the target and it is a pointer-sensitive AREA, not a button. At rest nothing is
+// drawn: the notch looks the same with it as without. Under the pointer a small back chevron fades in
+// at the centre of the zone -- a mark, with no pill, border, box or wash -- and the pointer becomes a
+// hand over the whole zone. It is there only while there is a step to take (`offered`), and with
+// reduced motion it appears without the fade. It is the notch's one back control; Esc is its
+// invisible alias (SURFACE-HOSTING.md section 15). For a screen reader it is a button named "Back".
 //
 // A press target over a gap in the page, not over anyone's control (see the
 // comment where Bar.qml places it). Its own file so the press can be tested on
@@ -18,6 +19,14 @@ Item {
   // Whether there is a step to take. Off, the strip is not there at all and a
   // press goes to whatever is under it.
   property bool offered: false
+  // What the chevron is drawn with; the host sets them (Bar.qml).
+  property color foreground: "#ffffff"
+  property string fontFamily: ""
+  property real glyphSize: 14
+  property bool reducedMotion: false
+  // Whether the pointer is over the zone, and how visible the chevron is as a result: what a test reads.
+  readonly property bool hovered: hover.hovered
+  readonly property real chevronOpacity: chevron.opacity
 
   signal activated()
 
@@ -38,6 +47,18 @@ Item {
     onSingleTapped: strip.activated()
   }
 
-  // The one thing that says "press here", and it is not drawn.
-  HoverHandler { cursorShape: Qt.PointingHandCursor }
+  // The pointer over the zone: the hand says "press here", and the chevron says what the press does.
+  HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
+
+  Text {
+    id: chevron
+    objectName: "backChevron"
+    anchors.centerIn: parent
+    text: "‹"
+    color: strip.foreground
+    font.family: strip.fontFamily
+    font.pixelSize: strip.glyphSize
+    opacity: hover.hovered ? 0.75 : 0
+    Behavior on opacity { enabled: !strip.reducedMotion; NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+  }
 }

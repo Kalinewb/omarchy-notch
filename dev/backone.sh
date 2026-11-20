@@ -160,6 +160,14 @@ check "…and the panel is told the same (surfaceHost.backZoneWidth and backZone
 check "a header that starts below the zone: nothing collides" "integration ${rest_w}x${rest_h} " "$rz"
 check "a control beside the zone, in the same row: nothing collides" "integration ${rest_w}x${rest_h} " "$(zone gutter)"
 check "text in the zone is not a control" "integration ${rest_w}x${rest_h} " "$(zone label)"
+# The contract is the zone kept clear of controls AND of text, by the panel's own layout: nothing is pushed down.
+ztexts() { ipc backZone | jq -r '.texts | length'; }
+zone label >/dev/null
+check "…but it is reported: a title centred in the zone is a collision of its own kind" "1" "$(ztexts)"
+zone leftTitle >/dev/null
+check "a short title at the left of a box as wide as the panel paints beside the zone, not in it" "0" "$(ztexts)"
+zone clear >/dev/null
+check "a header that keeps the centre clear reports no text and no control" "0 0" "$(ztexts) $(ipc backZone | jq -r '.hits | length')"
 check "an invisible control in the zone is not a collision" "integration ${rest_w}x${rest_h} " "$(zone hidden)"
 check "a panel-sized backdrop under everything is the panel's surface, not a collision" "integration ${rest_w}x${rest_h} " "$(zone backdrop)"
 check "a button in the zone is found (its MouseArea too)" "integration ${rest_w}x${rest_h} MouseArea" "$(zone button)"
@@ -179,14 +187,14 @@ rest
 echo; echo "${BOLD}Every page the notch draws itself keeps the zone clear${RESET}"
 sc_page() { # sc_page <settings|plugins>
   if [[ $1 == plugins ]]; then ipc plugins open >/dev/null; else ipc view settings >/dev/null; fi
-  settle; ipc backZone | jq -r '"\(.open) \([.hits[].type] | join(","))"'
+  settle; ipc backZone | jq -r '"\(.open) \([.hits[].type] | join(","))\(if (.texts | length) > 0 then " TEXT" else "" end)"'
 }
 sc_settings_page() { sc_page settings; }
 sc_plugins_page() { sc_page plugins; }
-scenario "the settings page: no control takes a press in the zone" "settings " sc_settings_page
-scenario "the Plugins page: no control takes a press in the zone" "plugins " sc_plugins_page
-sc_menu() { ipc menu root >/dev/null; sleep 1.5; ipc backZone | jq -r '"\(.open) \([.hits[].type] | join(","))"'; }
-scenario "the menu: no control takes a press in the zone" "menu " sc_menu
+scenario "the settings page: no control and no text in the zone" "settings " sc_settings_page
+scenario "the Plugins page: no control and no text in the zone" "plugins " sc_plugins_page
+sc_menu() { ipc menu root >/dev/null; sleep 1.5; ipc backZone | jq -r '"\(.open) \([.hits[].type] | join(","))\(if (.texts | length) > 0 then " TEXT" else "" end)"'; }
+scenario "the menu: no control and no text in the zone" "menu " sc_menu
 
 echo; echo "${BOLD}One control: the notch's pages have no back button of their own${RESET}"
 check "the Plugins and Setup pages no longer carry a '‹ Settings' button" "0" \
@@ -203,13 +211,13 @@ console.log(ctx.label("omaplug", "Omaplug") + "|" + ctx.label("joramser.camera-t
 JS
 check "Settings names the quirks beside a widget it cannot fix, and only those" \
   "Omaplug · has its own Back buttons on two pages|Camera Test · its ‹ › switch camera, not page|Audio" "$(node "$work/q.js" 2>&1)"
-check "the hosted slot's top inset is the strip's zone: one value (Bar.qml)" "1" \
-  "$(grep -c 'notchHostedTopInset: Math.max(notchSidePadding, backZoneHeight)' "$REPO/Bar.qml")"
+check "the host does not push a hosted panel down for the strip: its top inset is the side padding (Bar.qml)" "1" \
+  "$(grep -c 'notchHostedTopInset: notchSidePadding$' "$REPO/Bar.qml")"
 
-check "the strip is an area, not a button: BackStrip.qml declares nothing that paints (no Rectangle, Text, Image, border or wash)" "0" \
-  "$(sed -E 's#//.*$##' "$REPO/BackStrip.qml" | grep -cE '\b(Rectangle|Text|Image|ShaderEffect|Canvas|border|opacity)\b')"
-check "…and the notch hands it no look to draw (no foreground, glyph or radius)" "0" \
-  "$(sed -n '/BackStrip {/,/^        }/p' "$REPO/Bar.qml" | grep -cE 'foreground|glyphSize|radius|fontFamily')"
+check "the strip is an area with one mark: BackStrip.qml paints a chevron only (no Rectangle, Image, border, wash, radius or shader)" "0" \
+  "$(sed -E 's#//.*$##' "$REPO/BackStrip.qml" | grep -cE '\b(Rectangle|Image|ShaderEffect|Canvas|border|radius)\b')"
+check "…the chevron is shown under the pointer only, and without a fade when motion is reduced" "1 1" \
+  "$(sed -E 's#//.*$##' "$REPO/BackStrip.qml" | grep -c 'opacity: hover.hovered ? 0.75 : 0') $(sed -E 's#//.*$##' "$REPO/BackStrip.qml" | grep -c 'enabled: !strip.reducedMotion')"
 
 check "no QML errors in the run" "none" \
   "$(grep -aE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs.log" | head -1 | cut -c1-120)$(grep -qaE '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$work/qs.log" || echo none)"

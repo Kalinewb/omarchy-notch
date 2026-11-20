@@ -3,7 +3,8 @@ import QtQuick
 // The route says where the controls are:
 //   clear     a button in a header that starts below the zone, as the contract asks
 //   gutter    a button in the row of the zone, but beside it (left of it), not in it
-//   label     text in the zone: not a control, so not a collision
+//   label     text in the middle of the zone: not a control, but a collision of the other kind
+//   leftTitle a short title at the left of a full-width box that spans the zone: it paints beside it, no collision
 //   button    a button in the middle of the zone
 //   mouse     a bare MouseArea over part of the zone
 //   tap       an item with a TapHandler over part of the zone
@@ -48,6 +49,15 @@ Item {
     text: "a title in the zone"
     color: "#ffffff"
     anchors.horizontalCenter: parent.horizontalCenter
+    y: 4
+  }
+
+  Text {
+    visible: panel.kind === "leftTitle"
+    width: panel.width
+    horizontalAlignment: Text.AlignLeft
+    text: "A title"
+    color: "#ffffff"
     y: 4
   }
 

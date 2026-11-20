@@ -436,8 +436,8 @@ TestCase {
     compare(page.rows().length, 0, "no rows")
     compare(said(page, "Everything is working."), 1)
     compare(said(page, "Checked just now."), 1)
-    compare(names(buttons(page)), "‹ Settings|✕", "two buttons in the header and nothing else")
-    compare(allText(page), "Needs attention|‹ Settings|✕|Everything is working.|Checked just now.", "the whole page")
+    compare(names(buttons(page)), "✕", "one button in the header and nothing else: going back is the strip at the top centre")
+    compare(allText(page), "Needs attention|✕|Everything is working.|Checked just now.", "the whole page")
   }
   function test_setup_two_problems_are_two_rows_with_one_button_each() {
     var page = setupPage()
@@ -579,8 +579,8 @@ TestCase {
     var page = setupPage()
     wait(100)
     page.forceActiveFocus()
-    var seen = tabWalk(page, 2)
-    compare(seen.join("|"), "‹ Settings|✕", "Tab walks the header")
+    var seen = tabWalk(page, 1)
+    compare(seen.join("|"), "✕", "Tab walks the header")
   }
   function test_setup_a_handoff_row_opens_the_plugins_own_step() {
     bar.setup.points = [face]

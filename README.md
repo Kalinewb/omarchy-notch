@@ -349,6 +349,14 @@ own that says so (Face ID does) takes the first presses to go back a page inside
 it. Over IPC: `notch back`, which answers `back`, `inside` (a panel
 went back a page of its own) or `closed`.
 
+**One way back.** The strip at the top centre is the notch's only back control, and it is the whole
+resting-notch footprint (180 by 32 by default), not the chevron that shows under the pointer; Esc is its
+invisible alias. From a plugin's home, back returns to where the panel was opened from: the widgets row
+(grown by a key, a click or the pointer), the settings, the Plugins page or another panel; only when there
+is nowhere to go back to does it close. The Plugins and Needs-attention pages lost their "‹ Settings"
+buttons for it (✕ closes, which is not going back). Panels keep every control out of the zone
+(`SURFACE-HOSTING.md` section 15; `omarchy-shell notch backZone` lists any that are in it).
+
 **Close it here, open it here** (`stateKey`, Settings → How it opens) shuts the
 notch where it stands and opens it where it stood — the same page, the same
 view. It is for working on a panel: testing a change means shutting the notch

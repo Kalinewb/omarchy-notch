@@ -46,7 +46,7 @@ if [[ -x $RUNNER ]]; then
       FAIL*) check "${name#test_}" pass "FAIL: $(grep -A3 -F "$line" <<<"$out" | grep -E 'Actual|Expected' | tr -s ' ' | tr '\n' ' ')" ;;
     esac
   done < <(grep -E '^(PASS|FAIL).*::test_' <<<"$out")
-  check "the test ran all four cases" "4" "$(grep -cE '^(PASS|FAIL).*::test_' <<<"$out")"
+  check "the test ran all seven cases" "7" "$(grep -cE '^(PASS|FAIL).*::test_' <<<"$out")"
 else
   check "qmltestrunner is installed" "yes" "no"
 fi

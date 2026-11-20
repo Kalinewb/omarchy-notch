@@ -18,6 +18,8 @@ TestCase {
 
   property int islandTaps: 0
   property int steps: 0
+  property int underClicks: 0
+  property bool underOn: false
   property bool offered: true
 
   Item {
@@ -29,6 +31,13 @@ TestCase {
       onSingleTapped: tc.islandTaps++
       onDoubleTapped: tc.islandTaps++
     }
+    // A control of the panel under the strip's zone: a press in the zone must never reach it.
+    MouseArea {
+      id: under
+      enabled: tc.underOn
+      x: 100; y: 0; width: 100; height: 32
+      onClicked: tc.underClicks++
+    }
     Notch.BackStrip {
       id: strip
       x: 100; y: 0; width: 100; height: 32
@@ -37,7 +46,7 @@ TestCase {
     }
   }
 
-  function init() { steps = 0; islandTaps = 0; offered = true }
+  function init() { steps = 0; islandTaps = 0; underClicks = 0; underOn = false; offered = true }
 
   function test_01_a_press_on_the_strip_goes_back_once() {
     mouseClick(island, 150, 10)
@@ -61,5 +70,34 @@ TestCase {
     wait(700)
     compare(steps, 0)
     compare(islandTaps, 1)
+  }
+
+  // The whole zone is the target, not the chevron in the middle of it.
+  function test_05_every_corner_of_the_zone_goes_back() {
+    mouseClick(island, 101, 1)
+    wait(700)
+    mouseClick(island, 198, 1)
+    wait(700)
+    mouseClick(island, 101, 30)
+    wait(700)
+    mouseClick(island, 198, 30)
+    wait(700)
+    compare(steps, 4)
+    compare(islandTaps, 0)
+  }
+  function test_06_a_press_in_the_zone_never_reaches_a_control_under_it() {
+    underOn = true
+    mouseClick(island, 120, 16)
+    wait(700)
+    compare(steps, 1)
+    compare(underClicks, 0)
+  }
+  function test_07_one_pixel_outside_the_zone_is_not_the_strip() {
+    mouseClick(island, 99, 16)
+    wait(700)
+    compare(steps, 0)
+    mouseClick(island, 150, 33)
+    wait(700)
+    compare(steps, 0)
   }
 }

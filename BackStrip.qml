@@ -1,6 +1,7 @@
 import QtQuick
 
-// The strip at the top centre of an open panel: press it to go back one step.
+// The strip at the top centre of an open panel: press anywhere in it to go back one step. It is the
+// notch's one back control; Esc is its invisible alias (SURFACE-HOSTING.md section 15).
 //
 // A press target over a gap in the page, not over anyone's control (see the
 // comment where Bar.qml places it). Its own file so the press can be tested on
@@ -30,6 +31,17 @@ Item {
     acceptedButtons: Qt.LeftButton
     gesturePolicy: TapHandler.WithinBounds
     onSingleTapped: strip.activated()
+  }
+
+  // The whole zone is the target, and under the pointer the whole zone says so: a faint wash over every
+  // pixel that will go back, not only the mark in the middle of it (the press used to read as aimed at
+  // the chevron). It is a wash, not a button: the strip is still a gap in the page the rest of the time.
+  Rectangle {
+    anchors.fill: parent
+    radius: Math.min(height / 2, 8)
+    color: strip.foreground
+    opacity: hover.hovered ? 0.08 : 0
+    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
   }
 
   // A chevron, and only under the pointer: the strip is a gap in the page the

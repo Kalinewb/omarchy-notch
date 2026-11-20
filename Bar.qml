@@ -72,6 +72,12 @@ Item {
   // its first `on` and refused for `quietCooldownMs`. It also lapses when the
   // plugin that owns it is switched off or removed. Several owners can hold at
   // once; the notch returns when the last lets go.
+  // The way-back strip's zone (BackStrip.qml, SURFACE-HOSTING.md section 15): at the top centre of every
+  // panel, as tall as the resting notch and wide enough to hit without aiming. The whole of it is the press
+  // target, and panels keep their own controls out of it (`surfaceHost.backZoneWidth/Height`).
+  readonly property real backZoneHeight: notchCompactHeight
+  readonly property real backZoneWidth: notchCompactWidth
+
   property var quietHolds: ({})
   property var quietRefused: ({})
   property real quietSince: 0
@@ -3203,6 +3209,8 @@ Item {
     // The way back, as numbers: whether the strip is offered, how many steps
     // are behind it, and the menu level it would go up first.
     function backReport(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.backReport()) : "{}" }
+    // The way-back zone's size and every control of the open panel that takes a press inside it.
+    function backZone(): string { var w = root.focusedNotchWindow(); return w ? JSON.stringify(w.backZoneReport()) : "{}" }
     // A test notch has no pointer to move: these stand in for one, refused
     // anywhere else. `pointer` is the pointer arriving on or leaving the notch,
     // `press` a gesture on it (click, rightClick, ...), both going the same way
@@ -3436,7 +3444,16 @@ Item {
     function restore(shot) {
       if (!shot) { closePanels(); return false }
       restoring = true
-      if (shot.settings) openSettings()
+      if (shot.widgets) {
+        // The notch as it was grown: closing the panel resets the flags that grew it, so they are set after.
+        closePanels()
+        view = shot.view
+        viewPlugin = shot.viewPlugin
+        hoverExpanded = shot.hover === true
+        clickExpanded = shot.click === true
+        keyExpanded = shot.key === true
+        keyVisited = islandOver
+      } else if (shot.settings) openSettings()
       else if (shot.menu) openMenu(shot.menuRoute)
       else if (shot.plugins) openPlugins("")
       else if (shot.setup) openSetup()
@@ -3482,9 +3499,62 @@ Item {
                menu: menuOpen && menu ? String(menu.activeMenu) : "",
                inner: inner !== null ? integrationId : "" }
     }
-    function pushState() {
-      if (restoring) return
+    // The way-back zone and what is in it (SURFACE-HOSTING.md section 15): every control of the open
+    // panel that takes a press and overlaps the zone, by type, name and rectangle in the zone's own
+    // coordinates. A panel keeps its controls out of it, so `hits` is empty; a test reads this over IPC.
+    // "Takes a press" is a MouseArea, a TapHandler, a text input or anything that takes the tab key; a
+    // backdrop as big as the panel is the panel's own surface, not a control, and is not counted.
+    function backZoneReport() {
+      var page = integrationOpen ? integrationHost.item : hostedOpen ? hostedSlot
+               : settingsOpen ? expandedHost.item : setupOpen ? setupHost.item
+               : pluginsOpen ? pluginsHost.item : menuOpen ? menuHost.item : null
+      var kind = integrationOpen ? "integration" : hostedOpen ? "hosted" : settingsOpen ? "settings"
+               : setupOpen ? "setup" : pluginsOpen ? "plugins" : menuOpen ? "menu" : ""
+      var zone = { width: backZone.width, height: backZone.height }
+      var hits = []
+      if (!page) return { open: kind, zone: zone, hits: hits }
+      var pagePoint = page.mapToItem(backZone, 0, 0)
+      function typeOf(item) { return String(item).replace(/[_(].*$/, "") }
+      function presses(item) {
+        if (item.acceptedButtons !== undefined && item.acceptedButtons !== 0 && item.enabled) return true
+        if (item.cursorPosition !== undefined && item.enabled) return true
+        if (item.activeFocusOnTab === true && item.enabled) return true
+        var bag = item.data || []
+        for (var i = 0; i < bag.length; i++)
+          if (bag[i] && bag[i].gesturePolicy !== undefined && bag[i].enabled !== false) return true
+        return false
+      }
+      function walk(item, depth) {
+        if (!item || depth > 40 || !item.visible || item.opacity === 0) return
+        var at = item.mapToItem(backZone, 0, 0)
+        var overlaps = item.width > 0 && item.height > 0
+          && at.x < zone.width && at.x + item.width > 0 && at.y < zone.height && at.y + item.height > 0
+        var backdrop = item.width >= page.width * 0.9 && item.height >= page.height * 0.9
+        if (overlaps && !backdrop && presses(item))
+          hits.push({ type: typeOf(item), name: String(item.objectName || ""),
+                      x: Math.round(at.x), y: Math.round(at.y), w: Math.round(item.width), h: Math.round(item.height) })
+        var kids = item.children || []
+        for (var k = 0; k < kids.length; k++) walk(kids[k], depth + 1)
+      }
+      walk(page, 0)
+      return { open: kind, zone: zone, hits: hits }
+    }
+
+    // What a panel opened FROM the notch itself goes back to. A panel opened from another panel has its
+    // snapshot; one opened from the widgets row (a bar button pressed while the notch was grown for the
+    // pointer, a click or a key) had none, because no panel is open there -- so Back from a plugin's home
+    // closed the notch instead of returning to it. Only plugin panels ask for this: the settings, the
+    // menu, Setup and Plugins keep going back to a panel and otherwise closing.
+    function originSnapshot() {
       var shot = snapshot()
+      if (shot) return shot
+      if (!expanded || !(hoverExpanded || clickExpanded || keyExpanded)) return null
+      return { widgets: true, view: view, viewPlugin: viewPlugin,
+               hover: hoverExpanded, click: clickExpanded, key: keyExpanded }
+    }
+    function pushState(fromNotch) {
+      if (restoring) return
+      var shot = fromNotch === true ? originSnapshot() : snapshot()
       if (shot) viewStack = viewStack.concat([shot])
     }
     // The menu navigates inside itself, so the first step back is up one of
@@ -3697,7 +3767,7 @@ Item {
       // Before the flags below are cleared: panelOpen goes false with the last
       // of them, and a snapshot taken after that is null, so a panel opened
       // from the settings, the menu, Plugins or Setup had nothing to go back to.
-      pushState()
+      pushState(true)
       expandTimer.stop()
       peeking = false
       settingsOpen = false
@@ -3722,7 +3792,7 @@ Item {
       var why = root.hosting.reasonNotHostable(item)
       if (why !== "") return "declined:" + why
       if (hostedOpen && root.hosting.widget === item) { closePanels(); return "closed" }
-      pushState()
+      pushState(true)
       if (root.hosting.active) root.hosting.giveBack()
       var taken = root.hosting.take(item, hostedSlot)
       if (taken !== "") return "declined:" + taken
@@ -5231,8 +5301,8 @@ Item {
         // the strip is only the resting notch's own footprint.
         BackStrip {
           id: backZone
-          width: root.notchCompactWidth
-          height: root.notchCompactHeight
+          width: Math.min(root.backZoneWidth, Math.max(0, panelIsland.barWidth - 2 * root.notchSidePadding))
+          height: root.backZoneHeight
           x: (panelIsland.barWidth - width) / 2
           y: 0
           offered: barWindow.backOffered
@@ -5274,7 +5344,6 @@ Item {
         maxHeight: barWindow.panelMaxHeight
         focusId: barWindow.pluginsFocusId
         onCloseRequested: barWindow.closePanels()
-        onBackRequested: barWindow.openSettings()
       }
     }
     Component {
@@ -5284,7 +5353,6 @@ Item {
         headerHeight: root.notchCompactHeight
         maxHeight: barWindow.panelMaxHeight
         onCloseRequested: barWindow.closePanels()
-        onBackRequested: barWindow.openSettings()
       }
     }
     Component {

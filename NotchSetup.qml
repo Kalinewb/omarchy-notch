@@ -23,7 +23,6 @@ Item {
   property real maxHeight: 600
   property real headerHeight: 32
   signal closeRequested()
-  signal backRequested()
 
   readonly property real padding: Style.space(16)
   implicitWidth: Style.space(400)
@@ -161,11 +160,6 @@ Item {
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(6)
-
-      HeaderButton {
-        text: "‹ Settings"
-        onClicked: root.backRequested()
-      }
 
       HeaderButton {
         text: "✕"

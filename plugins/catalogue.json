@@ -11,7 +11,7 @@
       "remove": ["kalinewb.face", "open", "remove", ""],
       "removeHint": "Settings → Remove Face ID from this machine",
       "busyWhen": "face-install-running", "panelOpenCall": ["kalinewb.face", "state"],
-      "pin": "09246077150b5ca2ee16d16feba2148612f4ba24", "version": "3.3.1" },
+      "pin": "46d3a6dd62911284917ba9873b3ff6bb997c0c47", "version": "3.3.3" },
     { "id": "kalinewb.profiles", "name": "Profiles", "summary": "Saves and switches whole Omarchy setups as profiles",
       "url": "https://github.com/Kalinewb/omarchy-profiles.git",
       "kinds": ["bar-widget"],

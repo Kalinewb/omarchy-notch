@@ -104,9 +104,10 @@ have Esc only, no hint); the strip is the one back control; Esc is the picker's 
 handler and goes through `goBack()` (so a picker opened from the menu returns to the
 menu: tested). A picker is not pushed down for the strip: its card sits at the
 notch's side padding like any hosted panel (the strip is a keep-clear zone at the top
-centre, not a shelf; SURFACE-HOSTING.md section 15), and the picker draws its own
-search field and heading at the left, which `dev/overlays.sh` checks against
-`notch backZone`. **Not done here, deliberately:** a Settings → Integrations row (the
+centre, not a shelf; SURFACE-HOSTING.md section 15). `dev/overlays.sh` checks that no
+control of the card is in the zone; the pickers' text is Omarchy's own layout and is
+not checked or changed (a search placeholder that runs under the zone is the same
+accepted collision as a third-party panel's centred title). **Not done here, deliberately:** a Settings → Integrations row (the
 setting is written by `notch overlayHostingSetting <id> on|off` and the same key).
 
 ### (a') Other first-party own-window plugins: wifiqr, speedtest, disk-speedtest, dev-gallery — **not built**

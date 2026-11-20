@@ -5330,6 +5330,7 @@ Item {
           foreground: root.notchForeground
           fontFamily: root.fontFamily
           glyphSize: Style.font.title
+          radius: root.radiusFor(height)
           onActivated: barWindow.goBack()
         }
       }

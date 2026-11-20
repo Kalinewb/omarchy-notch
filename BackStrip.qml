@@ -16,6 +16,8 @@ Item {
   property color foreground: "#ffffff"
   property string fontFamily: ""
   property real glyphSize: 14
+  // The notch's one radius, never more than half the strip (the host sets it: Bar.qml `radiusFor`).
+  property real radius: 8
 
   signal activated()
 
@@ -38,7 +40,7 @@ Item {
   // the chevron). It is a wash, not a button: the strip is still a gap in the page the rest of the time.
   Rectangle {
     anchors.fill: parent
-    radius: Math.min(height / 2, 8)
+    radius: strip.radius
     color: strip.foreground
     opacity: hover.hovered ? 0.08 : 0
     Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }

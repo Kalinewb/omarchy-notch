@@ -97,7 +97,15 @@ hypr_binds() {
 hypr_config_errors() {
   local out=""
   runnable HYPRCTL && out=$(timeout 10 "${HYPRCTL[@]}" configerrors -j 2>/dev/null)
-  json_or "$out" "[]"
+  # A list, or nothing: every caller iterates it.
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$out" && printf '%s' "$out" || printf '[]'
+}
+
+# How many errors Hyprland reports, always a number (it is handed to jq --argjson).
+hypr_error_count() {
+  local n; n=$(jq -e '[.[] | select(. != null and . != "")] | length' <<<"$(hypr_config_errors)" 2>/dev/null) || n=0
+  [[ $n =~ ^[0-9]+$ ]] || n=0
+  echo "$n"
 }
 
 omarchy_version() {
@@ -415,7 +423,9 @@ detect_notch_key_collision() {
   local scan items
   if scan=$(scan_binds); then
     local binds; binds=$(jq -sc '[.[] | select(.bind) | .bind]' <<<"$scan")
-    local family; family=$(menu_family 2>/dev/null | jq -R . | jq -sc . || echo '[]')
+    # pipefail makes the pipeline fail when menu_family finds nothing, after jq
+    # has already printed "[]": the fallback replaces it rather than following it.
+    local family; family=$(menu_family 2>/dev/null | jq -R . | jq -sc .) || family='[]'
     local replace; replace=$(setting .bar.notch.replaceMenu)
     items=$(jq -c --argjson binds "$binds" --argjson family "$family" --arg replace "${replace:-false}" '
       def norm: split(" + ") | map(ascii_upcase) | sort | join("+");
@@ -838,6 +848,10 @@ detect() {
   local id
   for id in "${points[@]}"; do
     local out; out=$(detect_point "$id") || { echo "notch-setup: no such point: $id" >&2; return 2; }
+    # A point that says nothing, or something that isn't a JSON object, must not
+    # take the whole report down with it: it reads as not checked.
+    jq -e 'type == "object"' >/dev/null 2>&1 <<<"$out" \
+      || out=$(point "$id" unknown "Couldn't check this" "The check didn't give an answer.")
     lines+="$out"$'\n'
   done
   # One point asked for by name is the developer's view of that point.
@@ -847,7 +861,7 @@ detect() {
     --arg omarchyVersion "$(omarchy_version)" --arg notchVersion "$(notch_version)" \
     --arg barId "$(setting .bar.id)" --arg replaceMenu "$(setting .bar.notch.replaceMenu)" \
     --argjson barHidden "$([[ -f $TOGGLES/bar-off ]] && echo true || echo false)" \
-    --argjson hyprErrors "$(jq '[.[] | select(. != null and . != "")] | length' <<<"$(hypr_config_errors)")" '
+    --argjson hyprErrors "$(hypr_error_count)" '
     def needs: .severity == "fix" or .severity == "action" or .severity == "warn";
     . as $found
     | ( if $all == 1 then $found else [ $found[] | select(.admit == "page" and needs) ] end ) as $shown
@@ -857,7 +871,12 @@ detect() {
         counts: ( reduce $shown[] as $p ({fix: 0, action: 0, warn: 0, info: 0, ok: 0, unknown: 0};
                    .[$p.severity] = (.[$p.severity] // 0) + 1) ),
         auto: [ $found[] | select(.admit == "auto" and .severity == "fix" and ((.fix.disabledReason // "") == "")) | .id ],
-        points: $shown }' <<<"$lines")
+        points: $shown }' <<<"$lines") || {
+    # Never print a half report, and never say "working" for one that wasn't built.
+    echo "notch-setup: couldn't build the report" >&2
+    (( json )) && printf '{"schema":%s,"error":"report-failed","all":false,"counts":{"fix":0,"action":0,"warn":0,"info":0,"ok":0,"unknown":0},"auto":[],"points":[]}\n' "$SCHEMA"
+    return 1
+  }
   if (( json )); then printf '%s\n' "$report"; else print_table "$report"; fi
 }
 

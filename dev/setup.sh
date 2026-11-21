@@ -211,6 +211,23 @@ check "5c. no menu key in a known form: not checked, and it says Omarchy's keys,
 check "5d. with Lua missing it is still not checked, and says the config couldn't be read" "unknown Couldn't read your keybinds" \
   "$(setup NOTCH_SETUP_LUA=/nonexistent/lua "$SCRIPT" detect --json --only menu-keys-bypass | jq -r '.points[0] | "\(.severity) \(.title)"')"
 
+# detect --json is JSON and only JSON, whatever the Omarchy tree holds (the "none" fixture
+# used to make notch-key-collision print jq's argjson error before the report).
+none=$(omarchy_variant none)
+out=$(setup NOTCH_SETUP_OMARCHY_PATH="$none" "$SCRIPT" detect --json --all 2>&1); rc=$?
+check "5e. detect --json on a tree without a known menu key: valid JSON on its own (no stderr in it), 23 points" "0 0 23" \
+  "$rc $(jq -e . <<<"$out" >/dev/null 2>&1; echo $?) $(jq '.points | length' <<<"$out" 2>/dev/null)"
+out=$(setup NOTCH_SETUP_OMARCHY_PATH="$none" "$SCRIPT" detect --json 2>&1)
+check "5f. …and the default view too" "0" "$(jq -e . <<<"$out" >/dev/null 2>&1; echo $?)"
+check "5g. the key-collision point is a real answer there, not a blank" "ok" \
+  "$(setup NOTCH_SETUP_OMARCHY_PATH="$none" "$SCRIPT" detect --json --only notch-key-collision | jq -r '.points[0].severity')"
+# Nor does an odd answer from hyprctl (here a bare string, not a list) break the report.
+echo '"boom"' >"$sb/fixtures/configerrors.json"
+out=$(run_setup detect --json 2>&1)
+check "5h. hyprctl configerrors answering with a bare string: still valid JSON, no errors counted" "0 0" \
+  "$(jq -e . <<<"$out" >/dev/null 2>&1; echo $?) $(jq -r '.context.hyprErrors' <<<"$out" 2>/dev/null)"
+echo '[]' >"$sb/fixtures/configerrors.json"
+
 # --- the fix pipeline ------------------------------------------------------------------
 
 pre_hash=$(sha256sum "$HYPR_SB/bindings.lua" | cut -d' ' -f1)

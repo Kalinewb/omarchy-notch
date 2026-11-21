@@ -4,9 +4,10 @@
 #
 #   ./dev/leftovers.sh
 #
-# dev/check.sh runs every suite with a private TMPDIR and, after each, fails it if
-# a process that carries that TMPDIR is still alive (then ends it, so one leak does
-# not pile onto the next). That is how a test notch's `inotifywait` children, once
+# dev/check.sh runs every suite with a private TMPDIR and, ten seconds after each,
+# fails it if a process that carries that TMPDIR is still alive (then ends it, so one
+# leak does not pile onto the next). The ten seconds are for the children of a killed
+# test notch, such as a `notch-setup detect` mid-run, which finish on their own. That is how a test notch's `inotifywait` children, once
 # about 60 of them, would show up. This suite tests the test: the finder sees a
 # marked process, ignores an unmarked one, and the notch's own code starts no
 # inotifywait of its own (Omarchy's shell does: PluginRegistry.qml and

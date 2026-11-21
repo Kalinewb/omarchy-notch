@@ -11,8 +11,8 @@
 #
 # Every suite runs with a private TMPDIR, and one that leaves a process behind
 # (a test notch, its inotifywait children) fails: whatever still carries that
-# TMPDIR after the suite is its own. It is ended, so one leak cannot pile onto
-# the next. dev/leftovers.sh tests this.
+# TMPDIR ten seconds after the suite is its own. It is ended, so one leak cannot
+# pile onto the next. dev/leftovers.sh tests this.
 
 set -uo pipefail
 DEV=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -30,7 +30,10 @@ for suite in "${SUITES[@]}"; do
   [[ -z $suite ]] && continue
   echo
   "$DEV/$suite.sh" || failed+=("$suite")
+  # A child of a killed test notch (a `notch-setup detect` mid-run) is gone within
+  # seconds; an inotifywait -m never is. Give the first a moment before judging.
   left=$(leftovers "$RUN_TMP")
+  for _ in $(seq 20); do [[ -z $left ]] && break; sleep 0.5; left=$(leftovers "$RUN_TMP"); done
   if [[ -n $left ]]; then
     echo "  FAIL  $suite left running:"; sed 's/^/        /' <<<"$left"
     kill $(cut -d' ' -f1 <<<"$left") 2>/dev/null

@@ -222,7 +222,7 @@ HOOKS=(NOTCH_PLUGINS_DIR="$PD" NOTCH_PLUGINS_OMARCHY="$sb/bin/omarchy" NOTCH_PLU
 SETUP_HOOKS=(NOTCH_SETUP_SANDBOX="$sb" NOTCH_SETUP_HYPRCTL="$sb/stubs/hyprctl" NOTCH_SETUP_OMARCHY_SHELL="$sb/stubs/omarchy-shell"
              NOTCH_SETUP_OMARCHY="$sb/bin/omarchy" NOTCH_SETUP_TOGGLE_BAR=true NOTCH_SETUP_KILL=true
              NOTCH_SETUP_SESSION_LOCKED="$sb/stubs/omarchy-hyprland-session-locked" NOTCH_SETUP_RESTART_SHELL=true
-             NOTCH_SETUP_LUA=false FIXTURE_RENAME_LOG="$sb/rename.log")
+             NOTCH_SETUP_LUA=false NOTCH_SETUP_BUSCTL=true FIXTURE_RENAME_LOG="$sb/rename.log")
 np() { env "${HOOKS[@]}" "$SCRIPT" "$@"; }
 npc() { local c=$1; shift; env "${HOOKS[@]}" "${SETUP_HOOKS[@]}" NOTCH_PLUGINS_CATALOGUE="$c" "$SCRIPT" "$@"; }
 st="$sb/state/plugins-job.json"

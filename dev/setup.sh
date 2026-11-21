@@ -170,6 +170,10 @@ check "1. detect --all reports the 23 points in order, schema 1" "1 23 $expected
 check "1b. a healthy fixture needs no attention: the default view lists no point, and the terminal says so" "0 0 Everything is working." \
   "$(run_setup detect --json | jq '.points | length') $(jq '.counts.fix + .counts.action + .counts.warn' <<<"$report") $(run_setup detect)"
 check "1c. every point says who sees it: page, auto or dev" "true" "$(jq -r 'all(.points[]; .admit == "page" or .admit == "auto" or .admit == "dev")' <<<"$report")"
+# What only the running notch can see (an empty bar widget) is "not checked" from a terminal,
+# counted as such, and never as something that needs attention.
+check "1d. from the CLI the empty-widget point is not checked: unknown, not in the attention counts, and the table says so" "unknown 0 true" \
+  "$(jq -r '.points[] | select(.id == "layout-empty-widget") | .severity' <<<"$report") $(jq '.counts.fix + .counts.action + .counts.warn' <<<"$report") $(run_setup detect --all | head -1 | grep -q 'not checked' && echo true || echo false)"
 
 before=$(tree_hash "$HOME_SB"); before_count=$(find "$HOME_SB" -type f | wc -l)
 run_setup detect --json >/dev/null

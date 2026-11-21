@@ -192,8 +192,24 @@ p=$(run_setup detect --json --only menu-keys-bypass | jq -c '.points[0]')
 check "3. a bypass bind is a fix, named by key and source" "fix SUPER + SPACE bindings.lua" \
   "$(jq -r '.severity' <<<"$p") $(jq -r '.items[0].arg' <<<"$p") $(jq -r '.items[0].source' <<<"$p" | xargs basename)"
 check "4. the keycode bind is found too" "2" "$(jq '.items | length' <<<"$p")"
-check "5. the menu family is read out of Omarchy's own utilities.lua" "12" \
-  "$(grep -cP '^o\.bind\("\K[^"]+(?=".*"omarchy-menu toggle)' "$OMARCHY_SB/default/hypr/bindings/utilities.lua")"
+check "5. the menu family is read out of Omarchy's own utilities.lua, whichever way this Omarchy writes it" "true" \
+  "$([[ $(grep -cP '^o\.bind\("\K[^"]+(?=".*(?:"omarchy-menu toggle|\{ menu = ))' "$OMARCHY_SB/default/hypr/bindings/utilities.lua") -gt 0 ]] && echo true || echo false)"
+
+# The menu keys as Omarchy wrote them before 4.5 (a command) and since (a table), and in a
+# form the notch doesn't know. Each runs against a copy of the sandbox's Omarchy with only
+# utilities.lua swapped, so the answer doesn't depend on which Omarchy this machine has.
+omarchy_variant() { # omarchy_variant <fixture name> -> the path of an Omarchy tree using it
+  local dir="$sb/omarchy-$1"
+  if [[ ! -d $dir ]]; then cp -a "$OMARCHY_SB" "$dir"; cp "$REPO/dev/fixtures/setup/utilities-$1.lua" "$dir/default/hypr/bindings/utilities.lua"; fi
+  echo "$dir"
+}
+bypass_with() { setup NOTCH_SETUP_OMARCHY_PATH="$(omarchy_variant "$1")" "$SCRIPT" detect --json --only menu-keys-bypass | jq -r '.points[0] | "\(.severity) \(.items // [] | length)"'; }
+check "5a. Omarchy's menu keys as a command (before 4.5): both bypass binds found" "fix 2" "$(bypass_with command)"
+check "5b. …as a table, { menu = \"root\" } (Omarchy 4.5): both found" "fix 2" "$(bypass_with table)"
+check "5c. no menu key in a known form: not checked, and it says Omarchy's keys, not Lua" "unknown Couldn't read Omarchy's menu keys" \
+  "$(setup NOTCH_SETUP_OMARCHY_PATH="$(omarchy_variant none)" "$SCRIPT" detect --json --only menu-keys-bypass | jq -r '.points[0] | "\(.severity) \(.title)"')"
+check "5d. with Lua missing it is still not checked, and says the config couldn't be read" "unknown Couldn't read your keybinds" \
+  "$(setup NOTCH_SETUP_LUA=/nonexistent/lua "$SCRIPT" detect --json --only menu-keys-bypass | jq -r '.points[0] | "\(.severity) \(.title)"')"
 
 # --- the fix pipeline ------------------------------------------------------------------
 
@@ -210,7 +226,7 @@ check "6. fix succeeds, and the snapshot holds the file as it was" \
 check "7. the block is written once, the file still parses, and the point is clear" "1 1 0 ok" \
   "$(grep -c -- '-- >>> kalinewb.notch setup: menu-keys-bypass' "$HYPR_SB/bindings.lua") $(grep -c -- '-- <<< kalinewb.notch setup' "$HYPR_SB/bindings.lua") $(F="$HYPR_SB/bindings.lua" lua -e 'assert(loadfile(os.getenv("F")))' >/dev/null 2>&1; echo $?) $(run_setup detect --json --only menu-keys-bypass | jq -r '.points[0].severity')"
 check "8. the restored binds are Omarchy's own, with its description" "1 1" \
-  "$(grep -c 'o.bind("SUPER + SPACE", "Omarchy menu", "omarchy-menu toggle")' "$HYPR_SB/bindings.lua") $(grep -c 'o.bind("SUPER + SHIFT + code:201", "Omarchy menu", "omarchy-menu toggle root")' "$HYPR_SB/bindings.lua")"
+  "$(grep -cxF "$(grep -F 'o.bind("SUPER + SPACE"' "$OMARCHY_SB/default/hypr/bindings/utilities.lua" | head -1)" "$HYPR_SB/bindings.lua") $(grep -cxF "$(grep -F 'o.bind("SUPER + SHIFT + code:201"' "$OMARCHY_SB/default/hypr/bindings/utilities.lua" | head -1)" "$HYPR_SB/bindings.lua")"
 check "9. errors are checked before the write, then Hyprland is reloaded and checked again" "configerrors reload configerrors" \
   "$(calls | grep '^hyprctl' | awk '{print $2}' | uniq | paste -sd' ')"
 check "10. the recorded after-hash matches the live file, and no temp file is left behind" "$(sha256sum "$HYPR_SB/bindings.lua" | cut -d' ' -f1) 0" \

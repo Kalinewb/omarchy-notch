@@ -153,11 +153,14 @@ fixspec() { # fixspec <kind> <label> <files json> <reload json> <risk> <destroys
 strings() { printf '%s\n' "$@" | jq -R . | jq -sc .; }
 
 # The family of default binds that open Omarchy's menu, computed from Omarchy's
-# own utilities.lua rather than written down here.
+# own utilities.lua rather than written down here. Omarchy wrote them as a
+# command ("omarchy-menu toggle root") and, since 4.5, as a table
+# ({ menu = "root" }); both count. 1 when the file is missing or names none,
+# so a caller can say the keys weren't found rather than blame Lua.
 menu_family() {
   local file="$OMARCHY_DIR/default/hypr/bindings/utilities.lua"
   [[ -f $file ]] || return 1
-  grep -oP '^o\.bind\("\K[^"]+(?=".*"omarchy-menu toggle)' "$file"
+  grep -oP '^o\.bind\("\K[^"]+(?=".*(?:"omarchy-menu toggle|\{ menu = ))' "$file"
 }
 
 companion_state() { # [id] -> absent | disabled | inactive | active
@@ -338,8 +341,9 @@ detect_menu_replace_companion() {
 }
 
 # Binds whose command reaches the notch's menu directly, so they skip the toggle.
+# 1 when the Hyprland config can't be scanned, 3 when Omarchy's menu keys can't be read.
 bypass_binds() {
-  local family; family=$(menu_family) || return 1
+  local family; family=$(menu_family) || return 3
   local family_json; family_json=$(printf '%s\n' "$family" | jq -R . | jq -sc .)
   local scan; scan=$(scan_binds) || return 1
   local marker; marker=$(jq -s 'map(select(.marker == "hypr.bindings-end")) | .[0].seq // 0' <<<"$scan")
@@ -361,8 +365,13 @@ hypr_pause_reason() {
 }
 
 detect_menu_keys_bypass() {
-  local items
-  if ! items=$(bypass_binds); then
+  local items rc=0
+  items=$(bypass_binds) || rc=$?
+  if (( rc == 3 )); then
+    point menu-keys-bypass unknown "Couldn't read Omarchy's menu keys" \
+      "Couldn't check: no menu keys were found in Omarchy's default/hypr/bindings/utilities.lua."
+    return
+  elif (( rc )); then
     point menu-keys-bypass unknown "Couldn't read your keybinds" \
       "Couldn't check: the Hyprland config couldn't be read (is \`lua\` installed?)."
     return

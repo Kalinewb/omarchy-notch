@@ -48,6 +48,19 @@ ln -s "$SHELL_PATH/shell/services" "$root/services"
 ln -s "$REPO" "$root/notch"
 cp "$REPO/dev/harness/shell.qml" "$root/shell.qml"
 
+# Omarchy 4.5 gave the default Apps row an action (`omarchy-shell omarchy.dock
+# apps`), so it opens the dock's app grid and is no longer a submenu. The menu's
+# own Apps provider is still there for any menu that points at it, and that is
+# what the Apps check exercises: an OMARCHY_PATH of links to the real one, but
+# with the default menu's Apps row reduced to its provider (a no-op on an
+# Omarchy that never had the action).
+mirror="$root/omarchy"
+mkdir -p "$mirror/default/omarchy"
+for e in "$SHELL_PATH"/*; do [[ ${e##*/} == default ]] || ln -s "$e" "$mirror/${e##*/}"; done
+for e in "$SHELL_PATH"/default/*; do [[ ${e##*/} == omarchy ]] || ln -s "$e" "$mirror/default/${e##*/}"; done
+for e in "$SHELL_PATH"/default/omarchy/*; do [[ ${e##*/} == omarchy-menu.jsonc ]] || ln -s "$e" "$mirror/default/omarchy/${e##*/}"; done
+sed '/^ *"apps":/ s/,"action":"[^"]*"//' "$SHELL_PATH/default/omarchy/omarchy-menu.jsonc" >"$mirror/default/omarchy/omarchy-menu.jsonc"
+
 ipc() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
 start() { # start <notch config json> [extra env...]
   local config=$1; shift
@@ -79,7 +92,7 @@ echo "${BOLD}Menu inside the notch${RESET}  ${DIM}plugin: $REPO${RESET}"
 
 # ---------------------------------------------------------------------------
 echo; echo "${BOLD}Registered and at rest${RESET}"
-start '{"batteryPeek":false}'
+start '{"batteryPeek":false}' OMARCHY_PATH="$mirror"
 ct=$(ipc contract)
 check "notch.menu is a built-in plugin: expandedView \"menu\", persistent, not groupable, not hideable" "builtin menu persistent false false" \
   "$(jq -r '.plugins[] | select(.id == "notch.menu") | "\(.kind) \(.expandedView) \(.priority) \(.groupable) \(.hideable)"' <<<"$ct")"

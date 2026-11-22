@@ -978,6 +978,20 @@ stop
 
 check "no QML errors" "none" "$(grep -E '\.qml:[0-9]+.*(TypeError|ReferenceError)' "$sb/qs.log" | head -1 | grep . || echo none)"
 
+# The row's actions, straight from the model: "Open settings" only for a plugin
+# Omarchy removes whose panel the notch hosts.
+model_actions() { # model_actions <entry json> <options json>
+  sed '/^\.pragma library/d' "$REPO/plugins/PluginsModel.js" >"$sb/model.js"
+  node -e 'const fs=require("fs");eval(fs.readFileSync(process.argv[1],"utf8")+";globalThis.M={entryView}");
+    const v=M.entryView(JSON.parse(process.argv[2]),{},Date.now(),JSON.parse(process.argv[3]));
+    console.log(v.actions.map(a=>a.label+(a.primary?"*":"")).join(","))' "$sb/model.js" "$1" "$2"
+}
+corners='{"id":"kalinewb.oled-corners","checked":true,"state":"current","enabled":true,"removeVia":"omarchy"}'
+check "Corners row, panel hosted: Remove and Open settings (primary)" "Remove…,Open settings*" "$(model_actions "$corners" '{"canAct":true,"panel":true}')"
+check "Corners row, no hosted panel: Remove only" "Remove…" "$(model_actions "$corners" '{"canAct":true,"panel":false}')"
+check "a plugin with its own panel (Face) gets no Open settings" "Remove…" \
+  "$(model_actions '{"id":"kalinewb.face","checked":true,"state":"current","enabled":true}' '{"canAct":true,"panel":true}')"
+
 # ---------------------------------------------------------------------------
 echo; echo "${BOLD}E. The live plugins folder${RESET}"
 check "the live plugins folder's entries and mtimes are unchanged" "$marker" "$(live_marker)"

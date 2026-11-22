@@ -247,6 +247,7 @@ Item {
       case "install": case "update": bar.askPluginAction(kind, id); break
       case "enable": bar.enablePlugin(id); break
       case "setup": bar.openPluginSetup(id); break
+      case "settings": bar.openPluginPanel(id); break
       case "remove": bar.openPluginRemoval(id); break
       case "review": bar.reviewPluginInTerminal(id); break
       case "dismiss":

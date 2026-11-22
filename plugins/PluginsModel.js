@@ -140,6 +140,13 @@ function entryView(entry, job, now, options) {
     act("setup", "Open setup", true)
   }
 
+  // A plugin Omarchy removes on its own has no setup of its own to hand off
+  // to, but if the notch hosts its panel, its settings are one press away.
+  if (e.enabled && e.removeVia === "omarchy" && options.panel === true && view.state !== "disabled") {
+    for (var k = 0; k < actions.length; k++) actions[k].primary = false
+    act("settings", "Open settings", true)
+  }
+
   // An unseen failed job for this entry says why, until dismissed.
   if (job && job.id === id && job.seen !== true && (job.phase === "failed" || (job.phase === "running" && !jobRunning(job, now)))) {
     words = reasonWords(job.phase === "running" ? "stopped" : job.reason, name)

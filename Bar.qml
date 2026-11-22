@@ -2556,7 +2556,8 @@ Item {
     return listed.map(function(p) {
       var e = byId[p.id] ? Object.assign({ checked: true }, byId[p.id]) : { id: p.id, name: p.name, checked: false }
       return PluginsModel.entryView(e, root.pluginsJob, now, { canAct: root.pluginsCanAct, handoff: root.pluginsHandoff,
-                                                             checking: pluginsStateProcess.running })
+                                                             checking: pluginsStateProcess.running,
+                                                             panel: root.platform.accepted(p.id) && !!root.platform.panelFor(p.id) })
     })
   }
   // Where the notch's own updates stand, in words. The settings panel used to
@@ -2709,6 +2710,8 @@ Item {
   }
 
   function openPluginSetup(id) { return pluginsHandOff("setup", id) }
+  // A plugin the notch hosts: its panel, in the notch, back returns to this page.
+  function openPluginPanel(id) { return root.platform.openPanelFor(String(id), "", "") === "opened" }
   // A plugin with a panel removes itself there; one without, from a card here.
   function openPluginRemoval(id) {
     var listed = (pluginsCatalogue || {}).plugins || []

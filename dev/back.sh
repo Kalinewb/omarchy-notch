@@ -62,7 +62,12 @@ ipc() { quickshell ipc -p "$root" call notch "$@" 2>/dev/null; }
 rep() { ipc backReport | jq -r '"\(.offered) \(.depth) \(.panel) \(.menu)"'; }
 settle() { sleep 0.9; }
 
+# Setup is a page only a notch that runs Setup has (NOTCH_FORCE_SETUP; the others
+# ignore `view setup`), so this one does, on an empty sandbox home it cannot reach out of.
 NOTCH_HARNESS=1 NOTCH_NO_KEYBINDS=1 NOTCH_MENU_DRY_RUN=1 NOTCH_HARNESS_CONFIG='{"batteryPeek":false}' \
+  NOTCH_FORCE_SETUP=1 NOTCH_SETUP_HOME="$work/setup-home" NOTCH_SETUP_CONFIG_DIR="$work/setup-home/.config" \
+  NOTCH_SETUP_TOGGLES_DIR="$work/setup-home/toggles" NOTCH_SETUP_STATE_DIR="$work/setup-state" \
+  NOTCH_SETUP_STATUS="$work/setup-run/setup.json" \
   quickshell -p "$root" -n >"$work/qs.log" 2>&1 &
 qs_pid=$!
 for _ in $(seq 1 50); do sleep 0.1; [[ $(ipc geometry) == \{* ]] && break; done

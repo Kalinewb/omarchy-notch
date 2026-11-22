@@ -103,7 +103,7 @@ QtObject {
   // Plugins.
   property bool harnessed: true
   property var pluginsCatalogue: ({ plugins: [] })
-  property var pluginsSelfView: ({ id: "kalinewb.notch", name: "Notch", version: "0.2.0", state: "ok", words: "Up to date", actions: [] })
+  property var pluginsSelfView: ({ id: "kalinewb.notch", name: "Notch", version: "0.3.0", state: "ok", words: "Up to date", actions: [] })
   property var pluginsConfirm: ({})
   property var pluginsPreview: ({})
   property bool pluginsConfirmReady: false

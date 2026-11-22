@@ -240,16 +240,16 @@ head_in() { git -C "$PD/$1" rev-parse HEAD 2>/dev/null; }
 # ---------------------------------------------------------------------------
 echo "${BOLD}A. The catalogue${RESET}  ${DIM}sandbox $sb${RESET}"
 shipped="$REPO/plugins/catalogue.json"
-check "the shipped catalogue parses and validates, version 2" "0 3 2" \
+check "the shipped catalogue parses and validates, version 2" "0 4 2" \
   "$(jq -e . "$shipped" >/dev/null; echo $?) $("$SCRIPT" catalogue | jq '.plugins | length') $(jq .version "$shipped")"
-check "it has exactly the three entries" "kalinewb.face kalinewb.profiles kalinewb.oled-corners" "$(jq -r '[.plugins[].id] | join(" ")' "$shipped")"
+check "it has exactly the four entries" "kalinewb.face kalinewb.profiles kalinewb.oled-corners kalinewb.egpu" "$(jq -r '[.plugins[].id] | join(" ")' "$shipped")"
 check "every URL is the plugin's GitHub repo" \
-  "https://github.com/Kalinewb/omarchy-face.git https://github.com/Kalinewb/omarchy-profiles.git https://github.com/Kalinewb/omarchy-oled-corners.git" \
+  "https://github.com/Kalinewb/omarchy-face.git https://github.com/Kalinewb/omarchy-profiles.git https://github.com/Kalinewb/omarchy-oled-corners.git https://github.com/Kalinewb/omarchy-egpu.git" \
   "$(jq -r '[.plugins[].url] | join(" ")' "$shipped")"
 check "every entry pins a full 40-hex commit and names its version" "true" \
   "$(jq -r 'all(.plugins[]; (.pin | test("^[0-9a-f]{40}$")) and (.version | length > 0))' "$shipped")"
-check "Face is kalinewb.face, and was graveklar.face; only Corners is removed by Omarchy, with no panel" "graveklar.face kalinewb.oled-corners true" \
-  "$(jq -r '"\(.plugins[0].was) \([.plugins[] | select(.removeVia == "omarchy") | .id] | join(" ")) \(.plugins[2] | has("status") or has("setup") or has("remove") | not)"' "$shipped")"
+check "Face is kalinewb.face, and was graveklar.face; only Corners and eGPU are removed by Omarchy, with no panel" "graveklar.face kalinewb.oled-corners kalinewb.egpu true true" \
+  "$(jq -r '"\(.plugins[0].was) \([.plugins[] | select(.removeVia == "omarchy") | .id] | join(" ")) \(.plugins[2] | has("status") or has("setup") or has("remove") | not) \(.plugins[3] | has("status") or has("setup") or has("remove") | not)"' "$shipped")"
 check "deny names liquid-notifications and both face-locks; no entry is denied or the notch itself" "true true" \
   "$(jq -r '.deny as $d | "\(["graveklar.liquid-notifications", "graveklar.face-lock", "kalinewb.face-lock"] | all(. as $i | $d | index($i) != null)) \(all(.plugins[]; .id as $i | $i != "kalinewb.notch" and ($d | index($i)) == null))"' "$shipped")"
 check "no entry's kinds include bar" "true" "$(jq -r 'all(.plugins[]; .kinds | index("bar") == null)' "$shipped")"
@@ -719,7 +719,7 @@ print(len(items)>0, len(bad))' "$(ipc design)"; }
 check "every drawn rounded item on the page has the notch's radius" "True 0" "$(audit)"
 check "the page's text is Apple white on the notch's black" "#FFFFFF #000000" "$(field '"\(.plugins.foreground) \(.plugins.surface)"' "$g")"
 runner=$(np state | jq -r '[.entries[].state] | join(" ")')
-check "plugins status: three entries plus the notch, in the runner's states" "3 self $runner" \
+check "plugins status: four entries plus the notch, in the runner's states" "4 self $runner" \
   "$(field '"\(.entries | length) \(.self.state) \([.entries[].state] | join(" "))"' "$s")"
 
 # The foot line: an entry's tip is the plugin's own summary, from the catalogue.

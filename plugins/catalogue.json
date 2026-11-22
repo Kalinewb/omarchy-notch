@@ -24,6 +24,10 @@
     { "id": "kalinewb.oled-corners", "name": "OLED Corners", "summary": "Draws black rounded corners on every monitor",
       "url": "https://github.com/Kalinewb/omarchy-oled-corners.git",
       "kinds": ["service"], "removeVia": "omarchy",
-      "pin": "cbdc13f963a3027e05289ee359d8c01d9750dbe1", "version": "1.2.0" }
+      "pin": "cbdc13f963a3027e05289ee359d8c01d9750dbe1", "version": "1.2.0" },
+    { "id": "kalinewb.egpu", "name": "eGPU", "summary": "Connect, use and safely eject an external GPU",
+      "url": "https://github.com/Kalinewb/omarchy-egpu.git",
+      "kinds": ["bar-widget", "service"], "removeVia": "omarchy",
+      "pin": "05b97b3dd06632bb2f63bd02c09e950bb8f7e9e5", "version": "0.1.2" }
   ]
 }

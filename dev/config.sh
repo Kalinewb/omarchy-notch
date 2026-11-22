@@ -802,9 +802,14 @@ stop_notch
 
 # A job that fails: verification rolls it back, and the word is Failed.
 printf '%s\n' "$code" >"$sb/clip.txt"; rm -rf "$STATE_SB/staged" "$STATE_SB/snapshots"; before=$(canon)
-start_notch NOTCH_FORCE_SETUP=1 NOTCH_SETUP_FAIL_AT=verify
+start_notch NOTCH_FORCE_SETUP=1 NOTCH_SETUP_FAIL_AT=verify NOTCH_SETUP_AUTO_WAIT=0
 open_settings; press advanced; sleep 0.6
 press set:importer:import; settle_re importer state '^[0-9]+ changes?$'
+# The notch's own automatic fix (the sandbox layout names a widget its plugin list lacks)
+# runs at the start, and under FAIL_AT it fails verification and rolls back too. An apply
+# pressed while it holds the lock is refused and never reports, so let it finish first.
+for _ in $(seq 1 40); do [[ -e $STATE_SB/lock ]] && break; sleep 0.1; done
+for _ in $(seq 1 200); do [[ -e $STATE_SB/lock ]] || break; sleep 0.1; done
 press set:importer:apply; settle importer state Failed
 check "B14. an apply that fails verification: the word is Failed, shell.json as it was, nothing staged" "Failed $before 0" "$(row importer state) $(canon) $(staged_left)"
 stop_notch

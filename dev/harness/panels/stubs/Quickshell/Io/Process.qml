@@ -5,7 +5,9 @@ import QtQuick
 // the Share and Import rows, loads.)
 QtObject {
   property var command: []
+  property var environment: ({})
   property bool running: false
+  property bool stdinEnabled: false
   property var stdout: null
   property int exitCode: 0
   signal exited(int exitCode, int exitStatus)

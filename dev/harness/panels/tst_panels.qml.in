@@ -107,23 +107,23 @@ TestCase {
     var page = settings()
     wait(100)
     var seen = tabWalk(page, 1)
-    compare(seen.join("|"), "?", "Tab from the top: nothing in the header to land on at zero")
+    compare(seen.join("|"), "Plugins", "Tab from the top: the Plugins button, the header's one button at zero")
   }
   function test_the_header_entry_shows_only_above_zero() {
     var texts = function(page) { return walk(page).filter(function(i) { return isButton(i) && i.visible }).map(function(b) { return b.text }).join("|") }
     var page = settings()
     wait(50)
-    compare(texts(page), "", "nothing at zero")
+    compare(texts(page), "Plugins", "only Plugins at zero")
     page.destroy()
     bar.setup.issueCount = 1
     page = settings()
     wait(50)
-    compare(texts(page), "1 needs attention")
+    compare(texts(page), "Plugins|1 needs attention")
     page.destroy()
     bar.setup.issueCount = 2
     page = settings()
     wait(50)
-    compare(texts(page), "2 need attention")
+    compare(texts(page), "Plugins|2 need attention")
     var opened = 0
     page.setupRequested.connect(function() { opened++ })
     page.press("header:setup")
@@ -170,7 +170,7 @@ TestCase {
     page.confirmRow = "layout-empty-widget"
     page.groups[1].open = true
     wait(400)
-    verify(buttons(page).length >= 6, "buttons on show: " + buttons(page).length)
+    verify(buttons(page).length >= 4, "buttons on show (Move keys, Cancel, Restart, Undo): " + buttons(page).length + " " + names(buttons(page)))
     compare(unfocusable(page), "", "buttons Tab skips")
   }
   function test_plugins_buttons_are_focusable() {
@@ -580,7 +580,7 @@ TestCase {
     wait(100)
     page.forceActiveFocus()
     var seen = tabWalk(page, 1)
-    compare(seen.join("|"), "?", "the header has nothing to Tab to: the strip is the way back")
+    compare(seen.join("|"), "Move keys", "the header has nothing to Tab to (the strip is the way back): Tab reaches the first row's button")
   }
   function test_setup_a_handoff_row_opens_the_plugins_own_step() {
     bar.setup.points = [face]

@@ -265,6 +265,10 @@ printf 'import QtQuick\nimport qs.Commons\nimport qs.Ui\nItem { }\n' >"$root_dir
 mkdir -p "$sb/bin"
 printf '#!/bin/bash\necho "$*" >> "%s/omarchy-shell.log"\necho "Target not found." >&2\nexit 1\n' "$sb" >"$sb/bin/omarchy-shell"
 chmod +x "$sb/bin/omarchy-shell"
+# What the notch asked omarchy-shell. Omarchy 4.5's shipped menu has `when:` guards
+# that read the silencing state (`omarchy-shell notifications isDnd`); the menu
+# evaluates them as it loads, and that read-only question is not the platform's.
+shell_calls() { { grep -v '^notifications isDnd$' "$sb/omarchy-shell.log" 2>/dev/null || true; } | grep -c . || true; }
 
 ipc() { quickshell ipc -p "$root_dir" call notch "$@" 2>/dev/null; }
 harness() { quickshell ipc -p "$root_dir" call harness "$@" 2>/dev/null; }
@@ -303,7 +307,7 @@ check "24. its named activity views are known" "progress" \
   "$(jq -r '.list[] | select(.id == "acme.demo") | .activityViews | join(",")' <<<"$report")"
 check "25. a plugin with no bar widget is enabled from the list it was given, not by asking the shell" \
   "true harness-env 0" \
-  "$(jq -r '.list[] | select(.id == "acme.pulse") | "\(.enabled) \(.enabledBy)"' <<<"$report") $(grep -c . "$sb/omarchy-shell.log" 2>/dev/null || echo 0)"
+  "$(jq -r '.list[] | select(.id == "acme.pulse") | "\(.enabled) \(.enabledBy)"' <<<"$report") $(shell_calls)"
 check "26. a widget of an enabled plugin counts through the host's catalogue" "catalogue" \
   "$(jq -r '.list[] | select(.id == "acme.demo") | .enabledBy' <<<"$report")"
 
@@ -419,7 +423,7 @@ sleep 1.2
 check "49a. switched off and straight back on: still loaded once, accepted, nothing left pending" "true 2 false" \
   "$(ipc integrations | jq -r '.list[] | select(.id == "acme.demo") | "\(.accepted) \(.loads) \(.pendingUnload)"')"
 
-check "50. no omarchy-shell was ever run from the harness" "0" "$(grep -c . "$sb/omarchy-shell.log" 2>/dev/null || echo 0)"
+check "50. no omarchy-shell was ever run from the harness" "0" "$(shell_calls)"
 stop
 
 # The last word: a plugin's service must not wait out the staleness.

@@ -7,6 +7,8 @@ what is playing.
 
 It replaces `omarchy.bar` as a full `bar` plugin, and hosts the same widgets and panels.
 
+Which Omarchy versions it has been checked against, and what each feature falls back to: [COMPATIBILITY.md](COMPATIBILITY.md).
+
 ## Install
 
 From the Omarchy plugin marketplace, or in a terminal:

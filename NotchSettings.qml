@@ -498,7 +498,7 @@ Item {
     y: parent.height - root.padding - height
     width: parent.width - 2 * root.padding
     height: root.footHeight
-    color: root.dim
+    color: root.dim; divider: true
     fontFamily: root.fontFamily
   }
 

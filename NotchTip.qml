@@ -14,6 +14,9 @@ Item {
 
   property color color: "#ffffff"
   property string fontFamily: Style.font.family
+  // A hairline over the foot and a smaller size, so a description reads as a note under the
+  // rows and not as one more setting name (it is in the same grey as the values).
+  property bool divider: false
   readonly property int hoverMs: 400
   readonly property int focusMs: 250
   readonly property int hideMs: 120
@@ -63,15 +66,23 @@ Item {
   }
   Timer { id: hideTimer; interval: tip.hideMs; onTriggered: tip.hide() }
 
+  Rectangle {
+    visible: tip.divider
+    width: parent.width
+    height: 1
+    color: Qt.rgba(tip.color.r, tip.color.g, tip.color.b, 0.25)
+  }
+
   Text {
     id: label
     width: parent.width
     anchors.verticalCenter: parent.verticalCenter
+    anchors.verticalCenterOffset: tip.divider ? 2 : 0
     text: tip.text
     elide: Text.ElideRight
     color: tip.color
     font.family: tip.fontFamily
-    font.pixelSize: Style.font.bodySmall
+    font.pixelSize: tip.divider ? Style.font.caption : Style.font.bodySmall
     opacity: tip.shown ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: tip.fadeMs; easing.type: Easing.OutCubic } }
   }

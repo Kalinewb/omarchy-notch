@@ -194,7 +194,7 @@ sync_files() { # sync_files <force 0|1> <status file>
   fi
   if [[ -d $DEST ]]; then
     mkdir -p "$BACKUPS"
-    mv "$DEST" "$BACKUPS/$(date -u +%Y%m%dT%H%M%SZ)-notch-menu" || { rm -rf "$stage"; fail "$status" "could not back up the installed companion"; return 1; }
+    mv "$DEST" "$BACKUPS/$(date -u +%Y%m%dT%H%M%SZ)-$ID" || { rm -rf "$stage"; fail "$status" "could not back up the installed companion"; return 1; }
   fi
   mv -T "$stage" "$DEST" || { rm -rf "$stage"; fail "$status" "could not move the companion into place"; return 1; }
   return 0

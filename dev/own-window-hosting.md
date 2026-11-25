@@ -1,7 +1,7 @@
 # Plugins that open in a window of their own: getting them into the notch
 
-Branch `own-window-hosting` (from `notch-all` 8d22bf3). Companion to
-`~/Work/plans/omarchy-suite/audit-plugins-in-notch.md`, which lists which plugins
+Branch `own-window-hosting` (from `notch-all` 8d22bf3). Companion to the
+plugins-in-notch audit (kept outside this repository), which lists which plugins
 open as a window and why the notch's panel hosting (`PanelHosting.qml`) cannot take
 them: it needs a `KeyboardPanel` and a `PanelController`, and these have a raw
 `PanelWindow`, `FloatingWindow` or `OverlayWindow` and neither.

@@ -19,10 +19,11 @@ omarchy plugin enable kalinewb.notch
 ```
 
 That installs a git checkout, so the notch can update itself (below), and
-`omarchy plugin update kalinewb.notch` works too. The notch is one plugin; its three companions
-(the menu, the OSD and the notification toast) come from its own folder, and it installs each one
-only when you switch on the setting that needs it. Face ID, Profiles and OLED Corners install from
-its Plugins page (below), at the commits the marketplace verified.
+`omarchy plugin update kalinewb.notch` works too. The notch is one plugin; its seven companions
+(the menu, the OSD, the notification toast, and the clipboard, emoji, image and reminders pickers)
+come from its own `companion/` folder, and it installs each one only when you switch on the setting
+that needs it. Face ID, Profiles, OLED Corners and eGPU install from its Plugins page (below), at the
+commits the marketplace verified.
 
 ### Updates
 

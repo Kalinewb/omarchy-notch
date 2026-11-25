@@ -148,6 +148,8 @@ for pair in kalinewb.notch-menu:omarchy.menu kalinewb.notch-osd:omarchy.osd \
             kalinewb.notch-image-picker:omarchy.image-picker kalinewb.notch-reminders:omarchy.reminders; do
   companion=${pair%%:*}
   [[ -d "$PLUGINS/$companion" && -d "$DEST/companion/$companion" ]] || continue
+  # Already the same: nothing to copy, and nothing to say ("synced" would be untrue).
+  diff -rq "$DEST/companion/$companion" "$PLUGINS/$companion" >/dev/null 2>&1 && continue
   NOTCH_COMPANION_ID=$companion NOTCH_COMPANION_SOURCE_ID=${pair#*:} \
     "$SRC/bin/notch-companion" sync --from "$DEST/companion/$companion" >/dev/null 2>&1 \
     && say "synced $companion"

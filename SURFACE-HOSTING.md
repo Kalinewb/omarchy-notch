@@ -767,7 +767,7 @@ notch:
 
 ```json
 { "version": 1, "bar": "kalinewb.notch",
-  "pinned": ["graveklar.face", "graveklar.face-lock", "kalinewb.face", "kalinewb.face-lock",
+  "pinned": ["graveklar.face", "graveklar.face-lock", "kalinewb.egpu", "kalinewb.face", "kalinewb.face-lock",
              "kalinewb.notch", "kalinewb.notch-menu", "kalinewb.notch-notifications",
              "kalinewb.notch-osd", "kalinewb.oled-corners", "kalinewb.profiles"] }
 ```

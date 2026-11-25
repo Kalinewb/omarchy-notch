@@ -1,4 +1,6 @@
 #!/bin/bash
+# The outline glow is parked behind this flag (Bar.qml glowOutlineAllowed); this suite draws it.
+export NOTCH_GLOW_OUTLINE=1
 
 # The outline glow's soft strength and its fade along the screen's top edge.
 #

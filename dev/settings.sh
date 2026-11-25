@@ -193,7 +193,7 @@ check "notifications off, the bottom glow, corners 8 / 8, an odd 45 seconds" \
 stop
 start '{"batteryPeek":false}'
 open_panel || true
-check "the defaults: nothing at rest, Notch + toast, the outline" "atRest=Nothing; glow=Outline; notifications=Notch + toast" "$(states atRest glow notifications)"
+check "the defaults: nothing at rest, Notch + toast, the bottom glow (outline is parked)" "atRest=Nothing; glow=Bottom; notifications=Notch + toast" "$(states atRest glow notifications)"
 write() { # write <press> <lastWrite> <file>: one write holding its keys, the rest untouched
   local before; before=$(TARGET=settingstest ipc writes)
   ipc settingsPress "$1" >/dev/null

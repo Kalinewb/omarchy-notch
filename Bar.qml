@@ -1478,7 +1478,8 @@ Item {
   //                  size: scale × √(width × height) × 32/√(180×32), so 32 px
   //                  for the default notch at 1.0 (0–2.5, never past 80 px;
   //                  0 draws no glow at all)
-  //   glowStyle      "outline" (default) or "bottom": a subtler glow only
+  //   glowStyle      "bottom" (the only one offered); "outline" is parked and drawn only with
+  //                  NOTCH_GLOW_OUTLINE=1. "bottom": a subtler glow only
   //                  under the bottom edge, strongest in the middle
   //   hoverItems     what hovering shows when "hover" is not in openWith: any of
   //                  "clock", "date", "media", "battery" (default none) ...
@@ -1763,7 +1764,7 @@ Item {
   readonly property bool reducedMotion: Quickshell.env("OMARCHY_REDUCED_MOTION") === "1" || Quickshell.env("NOTCH_REDUCED_MOTION") === "1"
   readonly property string keybindTag: Quickshell.env("NOTCH_KEYBIND_TAG") || ""
   readonly property var keybindActions: ({
-    open: { method: "toggle", description: "Open the notch" + keybindTag },
+    open: { method: "toggle", description: "Open or close the notch" + keybindTag },
     settings: { method: "settings", description: "Notch settings" + keybindTag },
     autoHide: { method: "autoHide toggle", description: "Toggle notch auto-hide" + keybindTag },
     menu: { method: "menu root", description: "Notch menu" + keybindTag },
@@ -1902,7 +1903,10 @@ Item {
   readonly property real notchGlowScale: Math.max(0, Math.min(2.5, notchNumber("glowScale", 1)))
   // "outline" (default): the glow around the whole resting notch.
   // "bottom": a subtler glow only under its bottom edge, strongest in the middle.
-  readonly property string notchGlowStyle: notchSetting("glowStyle", "outline") === "bottom" ? "bottom" : "outline"
+  // The outline glow is parked (2026-11-25): it is not good enough yet, so every setting draws the
+  // bottom glow, a saved "outline" included. NOTCH_GLOW_OUTLINE=1 brings it back for work on it.
+  readonly property bool glowOutlineAllowed: Quickshell.env("NOTCH_GLOW_OUTLINE") === "1"
+  readonly property string notchGlowStyle: glowOutlineAllowed && notchSetting("glowStyle", "outline") === "outline" ? "outline" : "bottom"
   readonly property color notchChargingColor: notchSetting("chargingColor", "#FFB340")
   readonly property color notchFullColor: notchSetting("fullColor", "#30D158")
   readonly property color notchLowColor: notchSetting("lowColor", "#FF453A")

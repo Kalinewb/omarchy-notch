@@ -1,4 +1,6 @@
 #!/bin/bash
+# The outline glow is parked behind this flag (Bar.qml glowOutlineAllowed); this suite draws it.
+export NOTCH_GLOW_OUTLINE=1
 
 # The charging glow, as numbers.
 #

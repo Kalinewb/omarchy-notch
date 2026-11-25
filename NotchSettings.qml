@@ -255,8 +255,8 @@ Item {
 
         PickRow {
           rid: "glow"; label: "Charging glow"; keys: ["batteryGlow", "glowStyle"]
-          options: root.opts("off=Off;outline=Outline;bottom=Bottom")
-          selected: [!root.bar ? "outline" : !root.bar.notchBatteryGlow ? "off" : root.bar.notchGlowStyle]
+          options: root.opts(root.bar && root.bar.glowOutlineAllowed ? "off=Off;outline=Outline;bottom=Bottom" : "off=Off;bottom=Bottom")
+          selected: [!root.bar ? "bottom" : !root.bar.notchBatteryGlow ? "off" : root.bar.notchGlowStyle]
           onChosen: function(v) { root.setMany(v === "off" ? { batteryGlow: false } : { batteryGlow: true, glowStyle: v }) }
         }
       }
@@ -442,7 +442,7 @@ Item {
           readonly property int count: combos.filter(function(c) { return c !== "" }).length
           stateText: count > 0 ? count + " set" : "None"
           lines: [
-            KeyLine { label: "Open the notch"; key: "openKey"; current: keybindsRow.combos[0] || "" },
+            KeyLine { label: "Open or close the notch"; key: "openKey"; current: keybindsRow.combos[0] || "" },
             KeyLine { label: "Open settings"; key: "settingsKey"; current: keybindsRow.combos[1] || "" },
             KeyLine { label: "Auto-hide"; key: "autoHideKey"; current: keybindsRow.combos[2] || "" },
             KeyLine { label: "Keep it open"; key: "stayOpenKey"; current: keybindsRow.combos[3] || "" }

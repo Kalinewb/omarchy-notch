@@ -56,7 +56,7 @@ check "a key with no bindable name is refused" "|that key can't be bound" "$(get
 check "Escape (which cancels recording) is Qt's Escape" "true" "$(get "escape code" .escape)"
 
 echo; echo "${BOLD}bin/notch-keybinds reconciles with Hyprland's own bind list${RESET}"
-live_binds() { hyprctl binds -j | jq -c '[.[] | select(.description == "Open the notch" or .description == "Notch settings" or .description == "Toggle notch auto-hide") | "\(.key)/\(.modmask)"] | sort'; }
+live_binds() { hyprctl binds -j | jq -c '[.[] | select(.description == "Open or close the notch" or .description == "Notch settings" or .description == "Toggle notch auto-hide") | "\(.key)/\(.modmask)"] | sort'; }
 live_before=$(live_binds)
 R="$REPO/bin/notch-keybinds"
 # A description of its own, so these checks can never match (and remove) the

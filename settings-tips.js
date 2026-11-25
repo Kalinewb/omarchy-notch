@@ -15,7 +15,7 @@ var t = {
   notifyLight:   "Lights the screen edge while a notification shows",
   menu:          "Installs a helper so Omarchy's launcher opens in the notch",
   volume:        "Installs a helper so level changes show in the notch",
-  glow:          "Lights the notch's edge while charging, around or under it",
+  glow:          "Lights the line under the notch while charging",
   width:         "Widens the resting notch to fit what it shows",
   onHover:       "Previews the chosen items without opening the notch",
   hidden:        "Leaves widgets out of the open notch's row",

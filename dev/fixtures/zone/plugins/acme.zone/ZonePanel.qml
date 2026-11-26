@@ -11,6 +11,8 @@ import QtQuick
 //   input     a text input in the zone
 //   hidden    a button in the zone that is not visible: not a collision
 //   backdrop  a panel-sized MouseArea under everything: the panel's own surface, not a control
+//   scrolled  a list that starts below the zone, scrolled up: a row and its text sit under the zone but
+//             the list clips them away, so nothing is drawn there (scrolledNoClip: the same, not clipped)
 Item {
   id: panel
 
@@ -79,5 +81,18 @@ Item {
     visible: panel.kind === "input"
     x: panel.width / 2 - 20; y: 4; width: 40
     text: "x"
+  }
+
+  Item {
+    visible: panel.kind === "scrolled" || panel.kind === "scrolledNoClip"
+    clip: panel.kind === "scrolled"
+    x: 0; y: panel.zoneHeight; width: panel.width; height: 120
+    Rectangle {
+      objectName: "scrolledRow"
+      x: (panel.width - width) / 2; y: -20; width: 120; height: 28
+      color: "#444444"
+      MouseArea { anchors.fill: parent }
+      Text { anchors.centerIn: parent; text: "a row scrolled up"; color: "#ffffff" }
+    }
   }
 }

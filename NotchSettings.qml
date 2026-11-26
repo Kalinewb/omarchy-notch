@@ -324,12 +324,16 @@ Item {
         title: "Advanced"
         fold: true
 
-        StepRow {
-          rid: "width"; label: "Width"; keys: ["compactWidth"]
-          value: root.bar ? Math.round(root.bar.notchCompactWidth) : 180; from: 100; to: 600; stepSize: 10; unit: "px"
-          onChosen: function(v) { root.set("compactWidth", v) }
+        SubHead { text: "What it shows" }
+        // A plugin declaring hideable: false can't be hidden.
+        PickRow {
+          rid: "hidden"; label: "Hidden widgets"; many: true; keys: ["hiddenPlugins"]
+          options: root.widgetOptions.map(function(w) { return { value: w.value.slice(7), label: w.label } }).concat(root.bar ? root.bar.trayChoices : [])
+          taken: root.bar ? root.bar.notchPlugins.list.filter(function(p) { return p.hideable === false }).map(function(p) { return p.id }) : []
+          selected: root.bar ? root.bar.notchHiddenPlugins.concat(root.bar.trayHiddenValues) : []
+          summary: selected.length > 0 ? selected.length + " hidden" : "None"
+          onChosen: function(v) { if (v.indexOf("tray:") === 0) root.bar.toggleTrayItem(v.slice(5)); else root.set("hiddenPlugins", root.toggled(root.bar.notchHiddenPlugins, v)) }
         }
-
         // Items and widgets in one list; dimmed when hover opens the notch.
         PickRow {
           rid: "onHover"; label: "On hover"; many: true; keys: ["hoverItems", "hoverPlugins"]
@@ -343,17 +347,6 @@ Item {
             else root.set("hoverItems", root.toggled(root.bar.notchHoverItems, v, root.itemOrder))
           }
         }
-
-        // A plugin declaring hideable: false can't be hidden.
-        PickRow {
-          rid: "hidden"; label: "Hidden widgets"; many: true; keys: ["hiddenPlugins"]
-          options: root.widgetOptions.map(function(w) { return { value: w.value.slice(7), label: w.label } }).concat(root.bar ? root.bar.trayChoices : [])
-          taken: root.bar ? root.bar.notchPlugins.list.filter(function(p) { return p.hideable === false }).map(function(p) { return p.id }) : []
-          selected: root.bar ? root.bar.notchHiddenPlugins.concat(root.bar.trayHiddenValues) : []
-          summary: selected.length > 0 ? selected.length + " hidden" : "None"
-          onChosen: function(v) { if (v.indexOf("tray:") === 0) root.bar.toggleTrayItem(v.slice(5)); else root.set("hiddenPlugins", root.toggled(root.bar.notchHiddenPlugins, v)) }
-        }
-
         PickRow {
           rid: "openRow"; label: "Also in the widget row"; many: true; keys: ["expanded"]
           none: "Nothing"
@@ -361,7 +354,6 @@ Item {
           selected: root.bar ? root.bar.notchExpandedItems : []
           onChosen: function(v) { root.set("expanded", root.toggled(root.bar.notchExpandedItems, v, root.itemOrder)) }
         }
-
         // Plugins that draw inside the notch, and widgets whose own panel the
         // notch can draw. Hidden until one says it can; a plugin the notch
         // does not accept says why, on its line.
@@ -378,17 +370,11 @@ Item {
           onOpenChanged: if (open) root.refreshHostable()
           onChosen: function(v) { root.togglePanel(v) }
         }
-
-        // One number rounds both the lower corners and the edge curves.
-        StepRow {
-          rid: "corners"; label: "Corners"; keys: ["bottomRadius", "filletRadius"]
-          value: root.bar ? Math.round(root.bar.notchBottomRadius) : 10; from: 0; to: 24; stepSize: 1
-          shown: !root.bar || Math.round(root.bar.notchBottomRadius) === Math.round(root.bar.notchFilletRadius) ? ""
-            : value + " / " + Math.round(root.bar.notchFilletRadius) + " px"
-          unit: "px"
-          onChosen: function(v) { root.setMany({ bottomRadius: v, filletRadius: v }) }
+        // One switch for both pop-ups: on when either is, and a press sets both.
+        ToggleRow {
+          rid: "peeks"; label: "Track and charger pop-ups"; keys: ["peekOnTrackChange", "batteryPeek"]
+          checked: !!root.bar && (root.bar.notchPeekOnTrackChange || root.bar.notchBatteryPeek)
         }
-
         PickRow {
           rid: "notifyTime"; label: "Notification time"; keys: ["notificationStay", "notificationSeconds"]
           dimmed: !!root.bar && !root.bar.notchNotifications
@@ -398,7 +384,6 @@ Item {
           selected: [current]
           onChosen: function(v) { root.setMany(v === "stay" ? { notificationStay: true } : { notificationStay: false, notificationSeconds: Number(v) }) }
         }
-
         PickRow {
           rid: "lightColours"; label: "Light colours"; keys: ["notificationLightColours"]
           visible: false  // with Notification light: plan-glow.md P4
@@ -407,13 +392,21 @@ Item {
           selected: [root.bar ? String(root.bar.notchSetting("notificationLightColours", "aurora")) : "aurora"]
           onChosen: function(v) { root.set("notificationLightColours", v) }
         }
-
-        // One switch for both pop-ups: on when either is, and a press sets both.
-        ToggleRow {
-          rid: "peeks"; label: "Track and charger pop-ups"; keys: ["peekOnTrackChange", "batteryPeek"]
-          checked: !!root.bar && (root.bar.notchPeekOnTrackChange || root.bar.notchBatteryPeek)
+        SubHead { text: "Look" }
+        StepRow {
+          rid: "width"; label: "Width"; keys: ["compactWidth"]
+          value: root.bar ? Math.round(root.bar.notchCompactWidth) : 180; from: 100; to: 600; stepSize: 10; unit: "px"
+          onChosen: function(v) { root.set("compactWidth", v) }
         }
-
+        // One number rounds both the lower corners and the edge curves.
+        StepRow {
+          rid: "corners"; label: "Corners"; keys: ["bottomRadius", "filletRadius"]
+          value: root.bar ? Math.round(root.bar.notchBottomRadius) : 10; from: 0; to: 24; stepSize: 1
+          shown: !root.bar || Math.round(root.bar.notchBottomRadius) === Math.round(root.bar.notchFilletRadius) ? ""
+            : value + " / " + Math.round(root.bar.notchFilletRadius) + " px"
+          unit: "px"
+          onChosen: function(v) { root.setMany({ bottomRadius: v, filletRadius: v }) }
+        }
         // Relative to the resting notch's size (100 % reaches 32 px on the
         // default 180 × 32 notch, further on a bigger one; at most 80 px).
         StepRow {
@@ -431,7 +424,7 @@ Item {
           value: root.bar ? root.bar.notchLowBattery : 20; from: 5; to: 60; stepSize: 5; unit: "%"
           onChosen: function(v) { root.set("lowBattery", v) }
         }
-
+        SubHead { text: "Keys and behaviour" }
         // The four keys the panel offers. The recorder's clash check reads all
         // six, so a hand-set menuKey or stateKey is protected too.
         SettingRow {
@@ -452,17 +445,16 @@ Item {
           rid: "stayOpen"; label: "Keep open"; keys: ["stayOpen"]
           checked: root.bar ? root.bar.notchStayOpen : false
         }
-
         // Follows Auto-hide until set; a user who set it must be able to undo it.
         ToggleRow {
           rid: "windowsToTop"; label: "Windows to the top"; keys: ["windowsToTop"]
           checked: root.bar ? root.bar.notchWindowsToTop : false
         }
+        SubHead { text: "Maintenance" }
         ToggleRow {
           rid: "updateCheck"; label: "Check for updates"; keys: ["updateCheck"]
           checked: root.bar ? root.bar.notchUpdateCheck : true
         }
-
         // Setup's page has no button of its own while all is well; this is its door.
         ButtonRow {
           rid: "problems"; label: "Check for problems"
@@ -503,6 +495,8 @@ Item {
   }
 
   // A heading and its rows; with `fold`, the heading opens and closes them.
+  // A small heading inside Advanced, so its rows read as four groups. Not a row: the cursor skips it.
+  component SubHead: Text { width: parent ? parent.width : 0; topPadding: Style.space(8); color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.weight: Font.DemiBold }
   component Group: Column {
     id: group
     property string title: ""

@@ -168,6 +168,10 @@ zone leftTitle >/dev/null
 check "a short title at the left of a box as wide as the panel paints beside the zone, not in it" "0" "$(ztexts)"
 zone clear >/dev/null
 check "a header that keeps the centre clear reports no text and no control" "0 0" "$(ztexts) $(ipc backZone | jq -r '.hits | length')"
+zone scrolled >/dev/null
+check "a row scrolled up under the zone but clipped away by its list is not in it: no text, no control" "0 0" "$(ztexts) $(ipc backZone | jq -r '.hits | length')"
+zone scrolledNoClip >/dev/null
+check "…the same row, not clipped, is (its text and its MouseArea)" "1 1" "$(ztexts) $(ipc backZone | jq -r '.hits | length')"
 check "an invisible control in the zone is not a collision" "integration ${rest_w}x${rest_h} " "$(zone hidden)"
 check "a panel-sized backdrop under everything is the panel's surface, not a collision" "integration ${rest_w}x${rest_h} " "$(zone backdrop)"
 check "a button in the zone is found (its MouseArea too)" "integration ${rest_w}x${rest_h} MouseArea" "$(zone button)"

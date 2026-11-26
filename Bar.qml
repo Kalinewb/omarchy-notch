@@ -3780,11 +3780,13 @@ Item {
         var off = align === Qt.AlignRight ? item.width - cw : align === Qt.AlignHCenter ? (item.width - cw) / 2 : 0
         return { x: off, w: cw }
       }
-      function walk(item, depth) {
+      // `c` is what is still drawn of the zone, in its own coordinates: the zone itself, cut down by every
+      // clipping ancestor (a scrolled list), so a row scrolled up under the strip but clipped away is not "in" it.
+      function walk(item, depth, c) {
         if (!item || depth > 40 || !item.visible || item.opacity === 0) return
         var at = item.mapToItem(backZone, 0, 0)
         var overlaps = item.width > 0 && item.height > 0
-          && at.x < zone.width && at.x + item.width > 0 && at.y < zone.height && at.y + item.height > 0
+          && at.x < c.x1 && at.x + item.width > c.x0 && at.y < c.y1 && at.y + item.height > c.y0
         var backdrop = item.width >= page.width * 0.9 && item.height >= page.height * 0.9
         if (overlaps && !backdrop && presses(item))
           hits.push({ type: typeOf(item), name: String(item.objectName || ""),
@@ -3792,14 +3794,18 @@ Item {
         if (overlaps && typeof item.text === "string" && item.text.length > 0 && item.contentWidth !== undefined
             && item.objectName !== "backChevron") {
           var paint = paintedX(item)
-          if (at.x + paint.x < zone.width && at.x + paint.x + paint.w > 0)
+          if (at.x + paint.x < c.x1 && at.x + paint.x + paint.w > c.x0)
             texts.push({ type: typeOf(item), text: item.text.slice(0, 32), x: Math.round(at.x + paint.x), y: Math.round(at.y),
                          w: Math.round(paint.w), h: Math.round(item.height) })
         }
+        if (item.clip)
+          c = { x0: Math.max(c.x0, at.x), y0: Math.max(c.y0, at.y),
+                x1: Math.min(c.x1, at.x + item.width), y1: Math.min(c.y1, at.y + item.height) }
+        if (c.x0 >= c.x1 || c.y0 >= c.y1) return
         var kids = item.children || []
-        for (var k = 0; k < kids.length; k++) walk(kids[k], depth + 1)
+        for (var k = 0; k < kids.length; k++) walk(kids[k], depth + 1, c)
       }
-      walk(page, 0)
+      walk(page, 0, { x0: 0, y0: 0, x1: zone.width, y1: zone.height })
       return { open: kind, zone: zone, hits: hits, texts: texts }
     }
 

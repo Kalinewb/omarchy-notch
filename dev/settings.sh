@@ -74,7 +74,7 @@ echo "${BOLD}The quiet settings panel${RESET}  ${DIM}plugin: $REPO${RESET}"
 # 3  Tips
 # ---------------------------------------------------------------------------
 echo; echo "${BOLD}3  Tips${RESET}"
-ROWS="atRest autoHide glow openWith opensTo notifications notifyLight menu volume width onHover hidden openRow panels corners notifyTime lightColours peeks glowSize greenAbove lowBelow keybinds stayOpen windowsToTop updateCheck problems share importer reset"
+ROWS="atRest autoHide glow openWith opensTo notifications notifyLight menu volume hidden onHover openRow panels peeks notifyTime lightColours width corners glowSize greenAbove lowBelow keybinds stayOpen windowsToTop updateCheck problems share importer reset"
 tips=$(python3 - "$REPO/settings-tips.js" "$ROWS" <<'PY'
 import json, re, sys
 src = open(sys.argv[1]).read()
@@ -184,12 +184,12 @@ states() { # states <row ids>: "id=state; ..." in panel order
 start '{"batteryPeek":false,"compact":["clock","media"],"notifications":true,"suppressNativeToast":true,"batteryGlow":false,"bottomRadius":8,"filletRadius":12,"notificationStay":true}'
 open_panel || true
 check "media and time at rest, Notch only, the glow off, corners 8 / 12, notifications until I act" \
-  "atRest=Time, Media; glow=Off; notifications=Notch only; corners=8 / 12 px; notifyTime=Until I act" "$(states atRest glow notifications corners notifyTime)"
+  "atRest=Time, Media; glow=Off; notifications=Notch only; notifyTime=Until I act; corners=8 / 12 px" "$(states atRest glow notifications corners notifyTime)"
 stop
 start '{"batteryPeek":false,"notifications":false,"glowStyle":"bottom","bottomRadius":8,"filletRadius":8,"notificationSeconds":45}'
 open_panel || true
 check "notifications off, the bottom glow, corners 8 / 8, an odd 45 seconds" \
-  "glow=Bottom; notifications=Off; corners=8 px; notifyTime=45 s" "$(states glow notifications corners notifyTime)"
+  "glow=Bottom; notifications=Off; notifyTime=45 s; corners=8 px" "$(states glow notifications corners notifyTime)"
 stop
 start '{"batteryPeek":false}'
 open_panel || true
@@ -339,12 +339,12 @@ ipc settingsPress key:space >/dev/null
 settle '.panel.advanced.open == true' || true
 check "Space on the Advanced line opens it" "true" "$(tip .panel.advanced.open)"
 miss=""
-ADV="width onHover hidden openRow corners notifyTime peeks glowSize greenAbove lowBelow keybinds stayOpen windowsToTop updateCheck reset"
+ADV="hidden onHover openRow peeks notifyTime width corners glowSize greenAbove lowBelow keybinds stayOpen windowsToTop updateCheck reset"
 for id in $ADV; do move down $id; done
 check "…and Down goes on through its 15 rows to the last, scrolling to keep each in the view" "" "$miss"
 check "…the list did scroll" "true" "$(tip '.panel.contentHeight > .panel.viewHeight')"
 miss=""
-for id in updateCheck windowsToTop stayOpen keybinds lowBelow greenAbove glowSize peeks notifyTime corners openRow hidden onHover width advanced volume; do move up $id; done
+for id in updateCheck windowsToTop stayOpen keybinds lowBelow greenAbove glowSize corners width notifyTime peeks openRow onHover hidden advanced volume; do move up $id; done
 check "Up walks back to the Advanced line and the main rows" "" "$miss"
 act() { # act <key> <lastWrite> <what>
   ipc settingsPress "key:$1" >/dev/null

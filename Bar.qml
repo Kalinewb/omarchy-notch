@@ -1543,7 +1543,7 @@ Item {
   // The hide list as configured (widget ids, unchanged format)...
   readonly property var notchHiddenPlugins: notchItems("hiddenPlugins", []).map(function(id) { return menuAliasId(canonicalWidgetId(id)) })
   // ...and what it actually hides: plugins declaring hideable: false stay.
-  // Integrations the user has switched off in Settings → Integrations.
+  // Integrations the user has switched off in Settings → Advanced → Panels.
   readonly property var notchDisabledIntegrations: notchItems("disabledIntegrations", [])
   // Widgets whose own pop-out panel opens inside the notch instead of in a
   // window of its own. Empty by default: nothing changes until it is asked for.
@@ -2010,8 +2010,8 @@ Item {
   }
   Process { id: healProcess; command: ["omarchy-shell", "-q", "shell", "rescanPlugins"] }
   // Widgets in the bar whose own pop-out panel the notch could draw inside
-  // itself, and whether the user has asked it to. Read by Settings →
-  // Integrations; empty until some widget in the layout has a panel.
+  // itself, and whether the user has asked it to. Read by Settings → Advanced →
+  // Panels; empty until some widget in the layout has a panel.
   function hostableWidgets() {
     var out = []
     for (var i = 0; i < moduleSlots.length; i++) {
@@ -2241,8 +2241,8 @@ Item {
   }
 
   // A finished update's notice has been seen. Dismissing a failed update also
-  // snoozes that version, so the notice doesn't come straight back (Settings →
-  // Updates still offers it).
+  // snoozes that version, so the notice doesn't come straight back (the Plugins
+  // page still offers it).
   function ackUpdate() {
     if (!updateJob || !updateJob.phase) return false
     var job = JSON.parse(JSON.stringify(updateJob))
@@ -3274,7 +3274,7 @@ Item {
 
     // The pickers that can open in the notch: which the user asked for, what each
     // one's companion is doing, and what is held now. `overlayHostingSetting <id> on|off`
-    // writes `hostedPanels`, the list Settings → Integrations writes.
+    // writes `hostedPanels`, the list Settings → Advanced → Panels writes.
     function overlays(): string {
       var companions = {}
       for (var i = 0; i < root.overlayCompanionSpecs.length; i++) {
@@ -3303,7 +3303,7 @@ Item {
       return root.setNotchSetting("hostedPanels", next) ? "ok" : "declined:no settings writer"
     }
 
-    // What Settings → Integrations is showing, so a check can read the same
+    // What Settings → Advanced → Panels is showing, so a check can read the same
     // list the user does. `hostable` is the walk done now; `panelHostable` is
     // what the open panel is actually listing, which is a cached copy -- the
     // walk cannot be a binding. They agree only if the panel refreshes when it
@@ -3586,8 +3586,9 @@ Item {
     // "menu" open action, or IPC). Like the settings, it stays until closed:
     // a picked row, Escape, or a click outside. At most one of the two is open.
     property bool menuOpen: false
-    // The notch grown into the Plugins page (Settings → Updates → Manage…, or
-    // IPC). Like the menu, it stays until closed. At most one panel is open.
+    // The notch grown into the Plugins page (the Settings header's Plugins
+    // button, or IPC). Like the menu, it stays until closed. At most one panel
+    // is open.
     property bool pluginsOpen: false
     property bool setupOpen: false
     // A plugin's own panel, drawn inside the notch.
@@ -4880,8 +4881,8 @@ Item {
           foreground: pluginsHost.item ? String(pluginsHost.item.foreground).toUpperCase() : "",
           surface: pluginsHost.item ? String(pluginsHost.item.surface).toUpperCase() : "",
           // `page` is the Update button on the notch's own row on the Plugins
-          // page. It used to be `settings`, when the same button was also in
-          // Settings -> Updates; there is one of it now.
+          // page. It used to be `settings`, when Settings had the same button
+          // too; there is one of it now.
           updateButtons: {
             // Whether the notch's own update would take a click. A button is
             // only drawn when there is something to install, so this is the

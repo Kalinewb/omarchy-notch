@@ -6,7 +6,7 @@
 // top CENTRE (SURFACE-HOSTING.md section 15) and a panel keeps it clear by its own layout. The host
 // cannot edit someone else's panel, so a panel that centres a title or a row there is pressed through
 // by the strip, and a "Back" button the plugin draws, or chevrons that read like one, stay.
-// Settings → Integrations says so beside the name, so opting in is an informed choice.
+// Settings → Advanced → Panels says so beside the name, so opting in is an informed choice.
 var NOTES = {
   "omaplug": "has its own Back buttons on two pages",
   "joramser.camera-test": "its ‹ › switch camera, not page",

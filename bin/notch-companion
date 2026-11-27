@@ -1,9 +1,9 @@
 #!/bin/bash
 # A companion: the small plugin that lets the notch be one of Omarchy's own
-# surfaces -- the menu (kalinewb.notch-menu), the on-screen display
-# (kalinewb.notch-osd) or the notification toast (kalinewb.notch-notifications).
-# Which one is NOTCH_COMPANION_ID's business; everything
-# here is the same work either way.
+# surfaces. There are seven, one folder each in companion/: the menu, the
+# on-screen display, the notification toast, and the clipboard, emoji, image and
+# reminders pickers. Which one is NOTCH_COMPANION_ID's business; everything here
+# is the same work for any of them.
 #
 #   notch-companion status                    one line of JSON about the installed copy
 #   notch-companion install <status file>     copy it in and enable it
@@ -12,7 +12,7 @@
 #   notch-companion remove <status file>      hand it to `omarchy plugin remove --yes`
 #   notch-companion park                      switch it off when the notch is no longer the bar
 #
-# The companion is kalinewb.notch-menu: a manifest that says
+# The default is kalinewb.notch-menu: a manifest that says
 # `clonedFrom: omarchy.menu`, a go-between (Facade.qml) and Omarchy's own menu
 # button under this plugin's id. Omarchy then routes every menu call to the
 # go-between, which asks the notch first and falls back to Omarchy's own menu.
@@ -44,9 +44,9 @@
 
 set -uo pipefail
 
-# Which companion this is. The notch has two -- the menu's and the OSD's -- and
-# everything below is the same work for either: copy the folder, validate it,
-# enable it, keep it in step, take it away. Only these two names differ.
+# Which companion this is. Everything below is the same work for each of the
+# seven: copy the folder, validate it, enable it, keep it in step, take it away.
+# Only the id, the source id and the label differ.
 ID="${NOTCH_COMPANION_ID:-kalinewb.notch-menu}"
 SOURCE_ID="${NOTCH_COMPANION_SOURCE_ID:-omarchy.menu}"
 # The word for it in a sentence the user reads: "The menu companion is set up."

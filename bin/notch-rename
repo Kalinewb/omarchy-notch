@@ -142,7 +142,7 @@ fi
 
 if ((APPLY)); then
   say "done. Restart the shell (omarchy-shell restart, or install.sh) and check"
-  say "Settings -> Setup: anything left under the old id is reported there."
+  say "Settings -> Advanced -> Check for problems: anything left under the old id is reported there."
 else
   say "nothing was changed."
 fi

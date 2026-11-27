@@ -5,7 +5,6 @@
 // checked without a notch.
 //
 //   entryView(entry, job, now, options) -> { id, name, version, state, words, actions: [{ name, label, primary, enabled }] }
-//   deriveState(entry)                   -> the runner's state for a probed entry
 //
 // `entry` is a catalogue entry merged with its probe (`checked: true` once
 // probed). options: { canAct, handoff, checking }. Actions are in display
@@ -15,17 +14,6 @@ var STALE_MS = 5 * 60000
 
 function jobRunning(job, now) {
   return !!job && job.phase === "running" && now - Number(job.startedAt || 0) < STALE_MS
-}
-
-// The same order as bin/notch-plugins `probe`.
-function deriveState(e) {
-  if (!e.installed) return "not-installed"
-  if (!e.git || !e.originMatches) return "other-source"
-  if (e.dirty || e.relation === "diverged") return "local-changes"
-  if (!e.enabled) return "disabled"
-  if (e.relation === "behind") return "update-available"
-  if (e.relation === "newer") return "newer"
-  return "current"
 }
 
 function reasonWords(reason, name) {

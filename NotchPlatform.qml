@@ -81,12 +81,6 @@ Item {
     return out
   }
 
-  readonly property int acceptedCount: {
-    var n = 0
-    for (var id in candidates) if (candidates[id].accepted) n++
-    return n
-  }
-
   // --- what a panel may use --------------------------------------------------
 
   readonly property real maxPanelWidth: {
@@ -394,11 +388,6 @@ Item {
     return loader.item.panel || null
   }
 
-  function itemFor(id) {
-    var loader = loaders[id]
-    return loader && loader.item ? loader.item : null
-  }
-
   function hostFor(id) {
     if (hosts[id]) return hosts[id]
     var host = hostComponent.createObject(platform, { pluginId: id, bar: platform.bar, platform: platform })
@@ -496,8 +485,6 @@ Item {
   // --- activities ----------------------------------------------------------------
 
   property var activityState: Activities.create()
-  // Nothing draws activities yet (that is the activities plan), so a claim the
-  // queue would show answers "queued" rather than promising a line on screen.
   readonly property bool rendered: !!bar && bar.activitiesRendered
 
   function claimFor(id, activity, fromIpc) {
@@ -508,7 +495,6 @@ Item {
     var outcome = Activities.claim(activityState, checked.claim, Date.now())
     activityState = outcome.state
     activityTick.restart()
-    if (outcome.result === "shown" && !rendered) return "queued"
     return outcome.result
   }
 
@@ -523,7 +509,6 @@ Item {
     var outcome = Activities.claim(activityState, checked.claim, Date.now())
     activityState = outcome.state
     activityTick.restart()
-    if (outcome.result === "shown" && !rendered) return "queued"
     return outcome.result
   }
 

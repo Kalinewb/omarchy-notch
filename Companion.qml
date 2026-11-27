@@ -150,8 +150,6 @@ Item {
   }
 
   function setUp() { return startJob("install") }
-  function update() { return startJob("sync") }
-  function remove() { return startJob("remove") }
 
   Detached { id: detached }
 

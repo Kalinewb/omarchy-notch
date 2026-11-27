@@ -1894,8 +1894,6 @@ Item {
   readonly property bool notchAutoHide: notchSetting("autoHide", false) === true
   readonly property bool notchStayOpen: notchSetting("stayOpen", false) === true
   readonly property bool notchWindowsToTop: notchSetting("windowsToTop", notchAutoHide) === true
-  // Whether windowsToTop is set, or follows autoHide (for the settings' note).
-  readonly property bool notchWindowsToTopSet: notchConfig.windowsToTop === true || notchConfig.windowsToTop === false
 
   // --- battery ---------------------------------------------------------------
 
@@ -2395,8 +2393,6 @@ Item {
     for (var i = 0; i < windows.length; i++) if (windows[i].hostedOpen) windows[i].goBack()
   }
   readonly property var platform: platformService
-  // Activities are claimed and queued, but nothing draws them at rest yet, so a
-  // claim that would be shown answers "queued" (plan-activities-notifications).
   // Activities draw as a line in the resting notch (the transient slot widens
   // it sideways), so a claim the queue shows is a claim the user sees.
   readonly property bool activitiesRendered: true
@@ -4135,7 +4131,6 @@ Item {
 
     // The open settings panel itself, for settingsReport.
     readonly property var settingsItem: expandedHost.item
-    readonly property var setupItem: setupHost.item
 
     // pluginsPress: a button on this window's Plugins page or its notice.
     function pressPluginsButton(name) {

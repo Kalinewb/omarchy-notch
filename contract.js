@@ -63,11 +63,6 @@ function shortToId(name) {
   return SHORT_NAMES[key] || ""
 }
 
-function idToShort(id) {
-  for (var i = 0; i < BUILTINS.length; i++) if (BUILTINS[i].id === id) return BUILTINS[i].short
-  return ""
-}
-
 function isComponent(value) {
   return !!value && typeof value === "object" && typeof value.createObject === "function"
 }

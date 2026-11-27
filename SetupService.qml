@@ -36,7 +36,6 @@ Item {
   property var job: ({})
   property var snapshots: []
   property real checkedAt: 0
-  property real lastFullCheck: 0
 
   // What needs attention: the script's list, with the notch's own findings
   // laid over it. Only the notch can see an empty bar widget, and only its
@@ -165,7 +164,6 @@ Item {
         if (!root.checkFailed) {
           root.report = parsed
           root.checkedAt = Date.now()
-          if (!checkProcess.localOnly) root.lastFullCheck = root.checkedAt
           root.runAuto(parsed.auto)
         }
         root.checking = false
@@ -351,8 +349,6 @@ Item {
       }
     }
   }
-
-  function report_() { return report }
 
   // Tallied over the merged points, so the counts describe what the page
   // shows -- the script's own tally does not know the in-process points.

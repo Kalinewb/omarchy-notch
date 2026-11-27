@@ -43,10 +43,6 @@ Item {
   implicitWidth: row.implicitWidth
   implicitHeight: Math.max(fontSize + 8, 18)
 
-  function has(name) {
-    return Array.isArray(items) && items.indexOf(name) !== -1
-  }
-
   SystemClock {
     id: clock
     precision: SystemClock.Minutes

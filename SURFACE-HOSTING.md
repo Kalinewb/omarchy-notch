@@ -136,7 +136,8 @@ Item {
   // Optional: the panel the notch draws for you.
   property Component panel: Component { DemoPanel {} }
 
-  // Optional: named rows for activities you claim.
+  // Optional: named rows for activities you claim. Listed in the integration
+  // report, but not drawn yet (section 5).
   property var activityViews: ({ "progress": progressRow })
   property Component progressRow: Component { ProgressRow {} }
 }
@@ -168,7 +169,7 @@ do through it is attributed to your id, and it reaches nothing else.
 | member | type | what |
 |---|---|---|
 | `contract` | int | the notch's contract version |
-| `features` | list | `["panel", "activityViews", "heartbeat", "panelBack", "quiet", "backZone"]`; feature-detect against it |
+| `features` | list | `["panel", "activityViews", "heartbeat", "panelBack", "quiet", "backZone"]`; feature-detect against it (`activityViews` are accepted but not drawn yet, section 5) |
 | `pluginId` | string | your id |
 | `present` | bool | this notch is alive and is the bar |
 | `accepted` | bool | it accepted *your* integration |
@@ -297,11 +298,6 @@ Item {
 
 An activity is a short or ongoing line in the **resting** notch.
 
-> Activities are accepted and queued today, but nothing draws them yet: a claim
-> the queue would show answers `queued` rather than `shown`, and `activities()`
-> reports `rendered: false`. Don't hide your own cue for one until this note is
-> gone.
-
 ```qml
 surfaceHost.claim({
   title: "Switching to test…",     // required, cut at 60 characters
@@ -310,16 +306,21 @@ surfaceHost.claim({
   priority: "persistent",          // transient | persistent | persistent-low
   ttlMs: 30000,
   glyph: "󰒓",
-  progress: 0.4,                   // 0–1, or leave it out
-  view: "progress",                // a name from activityViews
-  panelRoute: "main",              // clicking it opens your panel there
-  screens: []                      // empty means every screen
+  progress: 0.4,                   // 0–1, or leave it out; not drawn yet
+  view: "progress",                // a name from activityViews; not drawn yet
+  panelRoute: "main",              // meant to open your panel on a click; not acted on yet
+  screens: []                      // screen names; not acted on yet
 })
 ```
 
+The notch draws a line's `glyph`, `title` and `detail`. `view`, `progress`, `panelRoute` and
+`screens` are accepted and reported by `activities`, but nothing draws or acts on them yet: a click on
+your line does not open your panel, and the line is not limited to the screens you name.
+
 The queue, in plain words:
 
-1. At most **two** are shown at a time.
+1. At most **two** hold a slot at a time (the answer is `shown`). The notch draws one line, the
+   most recently shown of them; the other keeps its slot and can be drawn when that one goes.
 2. A third **queues**, ordered by priority and then first-come.
 3. A **transient** jumps the queue: it takes a slot from a slower activity,
    which goes back to the front of its own kind rather than being dropped.
@@ -484,7 +485,7 @@ belong to something else as to you. Both shapes in the wild work — a widget th
 through a `Loader` (its clock, weather).
 
 Declined, in these words, if not: `no widget`, `no panel`, `panel has nothing in
-it`, `no panel controller`. The user sees the reason in Settings → Integrations.
+it`, `no panel controller`. The user sees the reason in Settings → Advanced → Panels.
 
 ### What the host does, in order
 
@@ -492,11 +493,10 @@ it`, `no panel controller`. The user sees the reason in Settings → Integration
    since 4.5 has: it is built when the window opens, and the window stays down), then takes
    **every** item in your panel's `contentItem` — not just the first; a panel with dialogs
    anchored over its column travels whole — recording each one's parent and size first.
-2. Parents them into its own slot, **below the back strip**: the slot starts at the resting
-   notch's height, because the strip at the top centre is the one way back and its whole width
-   takes the press. A panel that draws a title or a row of chips at the very top needs no
-   change; it is moved down by that much. An item that filled its parent is re-filled to the
-   slot; one that did not is given the size it had, because it was being sized by the card it
+2. Parents them into its own slot, inset by the notch's side padding, from the top as from the
+   sides. It is **not** pushed down below the back strip: the strip is a zone at the top centre
+   that takes the press, so keeping it clear is the panel's own layout (section 15). An item that
+   filled its parent is re-filled to the slot; one that did not is given the size it had, because it was being sized by the card it
    just left.
 3. Breaks the binding that maps your window (`open: root.opened` on every panel
    built on Omarchy's `Ui/Panel`) and sets it false, **then** opens your
@@ -534,7 +534,7 @@ and a widget whose panel is behind a Loader).
 
 ### Turning it off
 
-The user owns it: Settings → Integrations, per widget, off by default. Switching
+The user owns it: Settings → Advanced → Panels, per widget, off by default. Switching
 it off gives you your own window back at once, with no reload. Nothing about
 your plugin is modified, ever — no file is touched and no property of yours is
 rewritten except the one binding above, which is put back.
@@ -567,8 +567,8 @@ sides watch, or — for the host specifically — `surfaceHost` (§3) and
 
 ## 13. The catalogue: what the notch can install
 
-Setup → Plugins installs from `plugins/catalogue.json` and nothing else: Face
-ID, Profiles and OLED Corners. An id that is not in it cannot be installed from
+The Plugins page (the **Plugins** button in the Settings header) installs from
+`plugins/catalogue.json` and nothing else: Face ID, Profiles, OLED Corners and eGPU. An id that is not in it cannot be installed from
 the notch, and three are refused by name. That is a deliberately short list, not
 an oversight, and the rules matter more than the membership:
 
@@ -744,11 +744,11 @@ edit the panel, so what a plugin draws itself stays, and the author has to chang
 | omaplug | a `Back` button on its Layout and Updates sub-pages, and no `goBackInside()` (a hosted panel cannot be asked to step back inside itself, only an integration) | the plugin: declare a `surface` integration, or drop the button under a host with `panelBack` |
 | joramser.camera-test | `‹ 0 / 2 ›`, previous and next camera, top right: they read like a back arrow and are not | the plugin (a label, or an icon that is not a chevron) |
 | touchpad-comfortable | two elided device labels overprint each other in the chip row | the plugin |
-| omapods, Elsewhen | a title or heading centred in the top row, under the zone: a press on it goes back | the plugin: left-align the title (Settings → Integrations says so beside the name) |
+| omapods, Elsewhen | a title or heading centred in the top row, under the zone: a press on it goes back | the plugin: left-align the title (Settings → Advanced → Panels says so beside the name) |
 | touchpad-comfortable | its device chips run under the zone | the plugin |
 | system-monitor, eGPU, OLED corners | title at the left: clear. eGPU and OLED corners also keep the centre clear in their own integration | none |
 
-Settings → Integrations puts a short note beside the first two (`hosting-quirks.js`), so opting them in is an informed choice.
+Settings → Advanced → Panels puts a short note beside the first two (`hosting-quirks.js`), so opting them in is an informed choice.
 
 **Not hostable by this route**, because they open a window of their own and have no `KeyboardPanel` and
 `PanelController` for the host to take: omaland, arcdock settings, voxtype settings, ming.keybindings, the Spotify full

@@ -34,9 +34,10 @@ an update fails, the notice shows why until you dismiss it. Opening the notch co
 and hovering it never opens the notch, so the pointer can reach the buttons.
 
 The notch checks 20 seconds after it starts and every 6 hours after that. A check fetches
-origin's HEAD into `.git` and nothing else, so it never reloads plugins. Settings → Updates shows
-where things stand (up to date, available, a development install ahead of GitHub, local edits,
-offline) and has Check now. `updateCheck: false` turns checking off.
+origin's HEAD into `.git` and nothing else, so it never reloads plugins. The notch's own row on the
+Plugins page shows where things stand (up to date, available, a development install ahead of GitHub,
+local edits, offline) and has Check now. Settings → Advanced → **Check for updates**
+(`updateCheck: false`) turns checking off.
 
 The update runs as `bin/notch-update run` in its own `systemd-run --user` unit, because the
 update reloads every plugin and destroys the notch that started it. It runs
@@ -49,15 +50,15 @@ a sandbox git remote.
 
 The Settings header's **Plugins** button (**Plugins · n** when n of them have an update) grows the notch into the Plugins page; it is always there. It lists the plugins the notch installs,
 updates and removes, **Face ID** (`kalinewb.face`, once `graveklar.face`), **Profiles**
-(`kalinewb.profiles`) and **OLED Corners** (`kalinewb.oled-corners`), each at the commit the
-Omarchy plugin marketplace verified, with what each is doing: not installed, pinned to the
+(`kalinewb.profiles`), **OLED Corners** (`kalinewb.oled-corners`) and **eGPU** (`kalinewb.egpu`),
+each at the commit the Omarchy plugin marketplace verified, with what each is doing: not installed, pinned to the
 verified version, a verified update ready, newer than the verified version, installed but turned
 off, local edits, or installed from somewhere else. Each row has its buttons: Install…, Update to
 <version>…, Enable, Open setup, Remove…, Review in terminal. The notch itself is listed too, with
 its own update. Up/Down pick a row, Enter presses its main button, Escape closes.
 
 **Pinned, never HEAD.** `plugins/catalogue.json` names each plugin's GitHub URL and the full commit
-its marketplace listing verified, and only those three can be installed
+its marketplace listing verified, and only those four can be installed
 (`graveklar.liquid-notifications` and both Face lock clones are refused). The page reads the plugins
 folder alone, with no network: a row is "pinned" when the checkout is at that commit, "verified
 update ready" when the notch has moved the pin on, and "newer than the verified version" when it
@@ -188,8 +189,8 @@ so, drops anything it cannot read, and never runs anything it was given. From a 
 ### The on-screen display
 
 Omarchy answers a volume key, a brightness key or a media button with a card at
-the bottom of the screen. **Show the OSD in the notch** (`replaceOsd`, Settings →
-How it opens) puts it in the notch instead: one row — the glyph, a bar and the
+the bottom of the screen. **Volume and brightness** (`replaceOsd`, Settings →
+In the notch) puts it in the notch instead: one row — the glyph, a bar and the
 readout, or the word — with the notch widening around it and shrinking back. The
 glyph and the readout are Omarchy's own (`osd-model.js` is its model, vendored),
 so "volume-muted" is the glyph Omarchy picks; the drawing is the notch's, so
@@ -215,9 +216,9 @@ there is no card, no theme colour and no accent on the bar.
 
 ### Notifications
 
-With **Omarchy's notifications** on (the default), a toast also shows in the notch: its glyph and
-summary on the resting row, the body wrapped underneath. **Suppress Omarchy's own toast**
-(`suppressNativeToast`, Settings → What it shows) makes the notch the only place it shows.
+With **Notifications** (Settings → In the notch) on **Notch + toast** (the default), a toast also
+shows in the notch: its glyph and summary on the resting row, the body wrapped underneath.
+**Notch only** (`suppressNativeToast`) makes the notch the only place it shows.
 
 - **The same kind of one-time set-up as the OSD**, done by the notch itself: a companion plugin
   (`kalinewb.notch-notifications`) that says `clonedFrom: omarchy.notifications`, so Omarchy loads it
@@ -246,11 +247,12 @@ summary on the resting row, the body wrapped underneath. **Suppress Omarchy's ow
   the companion, straight into Omarchy's service for that toast; without it, through the
   `notifications` IPC target Omarchy's keybinds use (`invokeLast`, `dismissOne`). Pointing at it does
   not turn the notch into its hover view, and holds its clock while the pointer is on it.
-- **How long it stays** (Settings → Peeks, notifications and battery → Notifications): **Stay until I act**, or **Close
-  after** a number of seconds (1 to 60, 6 by default). The notch's copy keeps its own time, so it
+- **How long it stays** (Settings → Advanced → **Notification time**): **Until I act**, or 3, 6
+  (the default), 10 or 30 seconds; `omarchy-shell notch set notificationSeconds 45` sets any other
+  number from 1 to 60. The notch's copy keeps its own time, so it
   outlives Omarchy's own toast when that ends first; one whose toast has ended can still be opened
   (its action runs, or its app is focused) or dismissed.
-- **To undo:** turn the switch off (Omarchy's toast is back at once), or
+- **To undo:** pick **Notch + toast** again (Omarchy's toast is back at once), or
   `omarchy plugin disable kalinewb.notch-notifications`, which puts `omarchy.notifications` back
   exactly.
 
@@ -296,8 +298,8 @@ down with it. Audio, Bluetooth, Wifi, the
 clock, the weather, the power and monitor panels, Profiles, Face ID, Touchpad
 Comfortable, Power Manager and System Monitor all work this way today, unmodified.
 
-Settings → **Integrations** lists both: plugins that declare an integration, and
-widgets in your bar whose panel the notch can draw. Each has a switch, and when
+Settings → Advanced → **Panels** lists both: plugins that declare an integration, and
+widgets in your bar whose panel the notch can draw. Each is switched on or off there, and when
 something isn't shown the reason is there in words. Switching one off gives that
 plugin its own window back at once, with no reload. Nothing is hosted until you
 ask for it.
@@ -348,8 +350,11 @@ plugin's live widget and never loads a second copy.
 `openWith`, `settingsWith` and `menuWith` pick the gestures for the notch, the settings and the
 Omarchy menu (hover, click, double-click, long press, right-click, long right-click, middle-click,
 scroll; the menu takes no hover or scroll). `openKey`, `settingsKey`, `menuKey` and `autoHideKey`
-add keybinds for opening the notch, the settings and the menu, and for toggling auto-hide. In the settings each has a **Record** button: press it, then the combination
-(Escape cancels). Plain letters need SUPER, CTRL or ALT; F-keys work alone. A gesture belongs to one list at a time
+add keybinds for opening the notch, the settings and the menu, and for toggling auto-hide.
+Settings → Advanced → **Keybinds** has a **Record** button for `openKey`, `settingsKey`, `autoHideKey`
+and `stayOpenKey`: press it, then the combination (Escape cancels). `menuKey` and `stateKey` have no
+row: set them with `omarchy-shell notch set menuKey "SUPER + ALT + M"`. Plain letters need SUPER,
+CTRL or ALT; F-keys work alone. A gesture belongs to one list at a time
 (the settings win, then the menu).
 
 The open keybind works from any state. From the settings or the menu it goes straight to the
@@ -383,7 +388,8 @@ buttons for it, and the ✕ that closed them: the strip is the way out. Panels k
 zone by their own layout, and are not pushed down for it (`SURFACE-HOSTING.md` section 15;
 `omarchy-shell notch backZone` lists any that are in it).
 
-**Close it here, open it here** (`stateKey`, Settings → How it opens) shuts the
+**Close it here, open it here** (`stateKey`; no row in Settings, set it with
+`omarchy-shell notch set stateKey "SUPER + ALT + S"`) shuts the
 notch where it stands and opens it where it stood — the same page, the same
 view. It is for working on a panel: testing a change means shutting the notch
 and opening it again, and without it that is the walk back in through the menus
@@ -412,9 +418,8 @@ carries a bind of your own is never touched.
 
 Open the settings with a long right-click (by default) or its keybind. The notch grows into the
 panel; click outside, or press Escape to close it. Every change is saved to `shell.json` straight
-away. **Preview** (under Battery) shows the charging, full and low glow without touching the battery,
-until you pick Off or close the settings. It shows the glow at your current glow size. At a tiny size
-(under 4 px) or with the glow off there is nothing to see, and a note under Preview says so.
+away. To see the glow without touching the battery, run `omarchy-shell notch simulateBattery charging
+64` (or `discharging`, `full`); `omarchy-shell notch simulateBattery auto 0` goes back to the real one.
 
 Over IPC: `quickshell ipc -p $OMARCHY_PATH/shell call notch expand|collapse|toggle|settings|peek|geometry`,
 `view widgets|clock|battery|plugin|settings`, `menu <route>`, `windowsToTop true|false|toggle`, and
@@ -434,7 +439,7 @@ edge stays on the screen edge. It grows and shrinks with the spring as you move 
   directly.
 - **Close it** by picking a row, pressing Escape, clicking outside, or using the same trigger or
   call again.
-- **Replace the Omarchy menu** (Settings → How it opens) makes every way into Omarchy's menu open
+- **Menu** (`replaceMenu`, Settings → In the notch) makes every way into Omarchy's menu open
   the notch's: SUPER + SPACE and the other menu keybinds, `omarchy menu`, the bar's menu button,
   the screen-recording indicator and every picker. Off, they open Omarchy's own window, exactly
   as before. The switch takes effect on the next open, with no restart.
@@ -451,8 +456,8 @@ edge stays on the screen edge. It grows and shrinks with the spring as you move 
 - **Menu entries come from the same files** as Omarchy's menu:
   `$OMARCHY_PATH/default/omarchy/omarchy-menu.jsonc` and your
   `~/.config/omarchy/extensions/omarchy-menu.jsonc`. Both are watched for changes.
-- **Pickers** (emoji, keybindings, timezone, sharing) open in the notch when Replace the Omarchy
-  menu is on, and in Omarchy's window when it is off.
+- **Pickers** (emoji, keybindings, timezone, sharing) open in the notch when **Menu**
+  is on, and in Omarchy's window when it is off.
 - **The Apps list** needs an app library. A bar plugin isn't given one, so the menu loads its own
   copy of the shell's `AppLibrary` the first time it opens.
 
@@ -495,25 +500,22 @@ your own `shell.json`, kept in the gitignored `dev/baselines/local/`), and check
 
 ## Battery glow
 
-Light falls off outward from the edge of the notch **at rest**. It keeps that shape while the notch
-is open or grown into its settings. It is not a shape and not a blur: every pixel takes its opacity
-from its exact distance to the resting notch's outline, the fillet arcs included
-(`shaders/glow.frag`, curve in `glow.js`). The curve is set relative to the notch. With
+Light falls off below the bottom edge of the notch. It is not a shape and not a blur: every pixel
+takes its opacity from its exact distance to the notch's outline, weighted cos²(π·u/2) across the
+width: full in the middle, half at a quarter of the width in from each side, nothing at the sides
+(`shaders/bottomglow.frag`, curve in `glow.js`). The curve is set relative to the resting notch. With
 `glowScale` 1.0 it reaches zero at the resting height (32 px by default):
 
 | Distance from the edge (× reach / 80) | 0–6 | 20 | 50 | 80 and beyond |
 |---|---|---|---|---|
-| Opacity | 0.35 | 0.18 | 0.07 | 0 |
+| Opacity in the middle | 0.24 | 0.12 | 0.05 | 0 |
 
-So at the default 32 px reach: 0.35 up to 2.4 px, 0.18 at 8 px, 0.07 at 20 px, 0 from 32 px.
+So at the default 32 px reach: 0.24 up to 2.4 px, 0.12 at 8 px, 0.05 at 20 px, 0 from 32 px.
 Between those points the curve is a monotone cubic Hermite spline, with zero slope at both ends.
 
-The outline style is not that curve: it is a diffuse glow, a gaussian-like bell peaking at 0.16
-right at the notch's edge (no flat top, so no rim), reaching zero 1.6 times as far out as the reach
-above (`Glow.diffuse`, profile in `glow.js`). Along the top edge of the screen the glow does not stop
-at the fillet tip: it tapers outward, running three times as far along the edge as it reaches down,
-so it fades out instead of being cut off at its brightest (`edgeTail` 3 in `shaders/glow.frag`; below
-and beside the bar nothing changes). Neither is a setting. `dev/glow-fade.sh` checks both.
+An outline style, a diffuse glow around the whole resting notch (`Glow.qml`), is parked: it is not
+good enough yet. Every setting draws the glow above, a saved `glowStyle: "outline"` included.
+`NOTCH_GLOW_OUTLINE=1` brings the outline back for work on it (`dev/glow.sh`, `dev/glow-fade.sh`).
 
 | State | Colour |
 |---|---|
@@ -521,12 +523,8 @@ and beside the bar nothing changes). Neither is a setting. `dev/glow-fade.sh` ch
 | Full, on the charger | green `#30D158` |
 | Low (≤ 20 %, on battery) | red `#FF453A` |
 
-**Bottom style** (`glowStyle: "bottom"`): the same falloff at 0.24 instead of 0.35, only below the
-bottom edge, weighted cos²(π·u/2) across it: full in the middle, half at a quarter of the width in
-from each side, nothing at the sides.
-
 **When the notch widens or grows** (open, or the settings panel), the glow moves to the bottom of
-the notch as it is then, in the bottom style, following its live width and corner radius; it
+the notch as it is then, following its live width and corner radius; it
 hands over from the resting glow within the first 24 px of growth and comes back at rest.
 
 The glow fades in once over 800 ms (ease-out) and then stays completely still. Charging to full
@@ -582,7 +580,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `notificationStay`, `notificationSeconds` | `false`, `6` | How long the notch's copy of a toast stays: until you act on it (`notificationStay`), or this many seconds, 1 to 60, after it appears. Left click opens it, right click dismisses it. |
 | `suppressNativeToast` | `false` | The notch is the only place a toast shows: Omarchy's own is kept off screen by the notifications companion, which the notch installs by itself (see Notifications). Omarchy's toast comes back whenever the notch can't show one. |
 | `menuWith` | `[]` | Gestures that open the Omarchy menu inside the notch: `click`, `doubleClick`, `longPress`, `rightClick`, `longRightClick`, `middleClick`. |
-| `openKey`, `settingsKey`, `menuKey`, `autoHideKey`, `stateKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings. `stateKey` shuts the notch where it stands and opens it where it stood. |
+| `openKey`, `settingsKey`, `menuKey`, `autoHideKey`, `stateKey` | none | Keybinds, e.g. `"SUPER + N"`, recorded from the settings (`menuKey` and `stateKey` have no row). `stateKey` shuts the notch where it stands and opens it where it stood. |
 | `hoverItems`, `hoverPlugins` | `[]`, `[]` | What hovering shows when hover isn't in `openWith`: any of `clock`, `date`, `media`, `battery`, next to any widgets (by id), in one row. With hover in `openWith`, hovering opens the notch instead. |
 | `openAction`, `openPlugin` | `"widgets"` | The same, for every other way of opening it. `openAction` can also be `"settings"` or `"menu"`. |
 | `hiddenPlugins` | `[]` | Widget ids left out of the open notch's row. They stay loaded and can still be the hover or open plugin. `omarchy.tray` hides the whole system tray. Settings → Advanced → Hidden widgets also lists each icon the tray holds ("Tray · Steam") and hides or shows it by writing the tray widget's own `hidden` list in the layout (`{ "id": "omarchy.tray", "hidden": [...] }`), the list Omarchy's tray manage popup writes, so there is no second list to keep in step; an icon is unpinned when it is hidden. |
@@ -595,7 +593,7 @@ Everything lives under `bar.notch` in `~/.config/omarchy/shell.json`, and every 
 | `peekOnTrackChange`, `peekDuration` | `true`, `3500` | Widen briefly on a new track. |
 | `batteryGlow` | `true` | The battery glow. |
 | `glowScale` | `1.0` | Glow reach relative to the resting notch's size (0–2.5, at most 80 px). 0 draws no glow. |
-| `glowStyle` | `"outline"` | `"outline"`: around the resting notch. `"bottom"`: subtler (0.24 at its brightest), only under the bottom edge, strongest in the middle. |
+| `glowStyle` | `"bottom"` | `"bottom"`: only under the bottom edge, strongest in the middle (0.24 at its brightest). It is the only style drawn: the `"outline"` style is parked, and a saved `"outline"` draws the bottom glow. |
 | `chargingColor`, `fullColor`, `lowColor` | `#FFB340`, `#30D158`, `#FF453A` | Glow colours. |
 | `lowBattery`, `criticalBattery` | `20`, `10` | Percent thresholds, on battery. |
 | `greenAbove` | `100` | Charging at or above this percentage already shows the full colour (green). 100 means only a full battery does. |
@@ -631,7 +629,7 @@ Quickshell instance, reads every radius and arc centre over IPC (resting and ope
 tangency arithmetic, then renders `Island.qml` offscreen at those sizes and samples the pixels
 that separate a fused bar from a pill or a notch.
 
-`dev/glow.sh` does the same for the glow. It simulates each battery state over IPC and samples
+`dev/glow.sh` does the same for the parked outline glow. It simulates each battery state over IPC and samples
 the fade and crossfade with timestamps. Then it renders the glow offscreen, where
 `dev/glow_pixels.py` traces the outline, fillets included, as a dense polyline. It measures every
 pixel's distance to the outline by brute force and checks each pixel's opacity against the curve.

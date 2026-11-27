@@ -1,6 +1,6 @@
 # Settings
 
-Long press (or right-click and hold) the notch, or run `omarchy-shell notch settings`, and the
+Right-click and hold the notch, or run `omarchy-shell notch settings`, and the
 notch grows into the Settings panel. It is quiet on purpose: eight rows under three headings
 (**Look**, **Open**, **In the notch**), and one fold, **Advanced**, closed every time the panel
 opens. A row is a label on the left and its state on the right. Rest the pointer on a row, or
@@ -17,10 +17,10 @@ second press inside that time deletes your settings. Escape answers no.
 
 ## The header
 
-`Notch`, then up to three buttons, then `✕`.
+`Notch`, then up to three buttons.
 
-- **Plugins** is always there and opens the Plugins page, where Face ID, Profiles and OLED
-  Corners are installed. It reads **Plugins · n** when something has an update: `n` counts the
+- **Plugins** is always there and opens the Plugins page, where Face ID, Profiles, OLED
+  Corners and eGPU are installed. It reads **Plugins · n** when something has an update: `n` counts the
   notch's own update (1 when GitHub has a newer version) plus every plugin with a verified update
   ready. At zero it is just **Plugins**.
 - **n need attention** (**1 needs attention**) opens the Needs attention page. It is not there at zero; Advanced → **Check for problems** (*None*, or the count) opens the same page. The notch counts 20 seconds after it starts, every 6 hours and when Settings opens, so this is current without anyone asking.

@@ -12,10 +12,10 @@ Omarchy, see [COMPATIBILITY.md](../COMPATIBILITY.md) and [UPSTREAM-LEDGER.md](..
 
 | Companion id | Owner feature (setting) | Stands in for | Source (`companion/`) | Stock fallback |
 |---|---|---|---|---|
-| `kalinewb.notch-menu` | Replace the Omarchy menu (`replaceMenu`) | `omarchy.menu` | `kalinewb.notch-menu/` (`Facade.qml`, `BarWidget.qml`) | Omarchy's `plugins/menu/Menu.qml` |
-| `kalinewb.notch-osd` | Show the OSD in the notch (`replaceOsd`) | `omarchy.osd` | `kalinewb.notch-osd/` (`Facade.qml`, `Service.qml`) | Omarchy's `plugins/osd/Osd.qml`, loaded only when needed |
-| `kalinewb.notch-notifications` | Suppress Omarchy's own toast (`suppressNativeToast`; also needs `notifications` on) | `omarchy.notifications` | `kalinewb.notch-notifications/` (`Service.qml`) | Omarchy's real `Service.qml` runs unchanged; only its toast windows are hidden, and they come back whenever the notch will not show a card |
-| `kalinewb.notch-clipboard` | Clipboard opens in the notch (id `omarchy.clipboard` in `hostedPanels`, Settings -> Integrations) | `omarchy.clipboard` | `kalinewb.notch-clipboard/` (`Facade.qml`) | Omarchy's `plugins/clipboard/Clipboard.qml` |
+| `kalinewb.notch-menu` | Menu (`replaceMenu`) | `omarchy.menu` | `kalinewb.notch-menu/` (`Facade.qml`, `BarWidget.qml`) | Omarchy's `plugins/menu/Menu.qml` |
+| `kalinewb.notch-osd` | Volume and brightness (`replaceOsd`) | `omarchy.osd` | `kalinewb.notch-osd/` (`Facade.qml`, `Service.qml`) | Omarchy's `plugins/osd/Osd.qml`, loaded only when needed |
+| `kalinewb.notch-notifications` | Notifications -> Notch only (`suppressNativeToast`; also needs `notifications` on) | `omarchy.notifications` | `kalinewb.notch-notifications/` (`Service.qml`) | Omarchy's real `Service.qml` runs unchanged; only its toast windows are hidden, and they come back whenever the notch will not show a card |
+| `kalinewb.notch-clipboard` | Clipboard opens in the notch (id `omarchy.clipboard` in `hostedPanels`, Settings -> Advanced -> Panels) | `omarchy.clipboard` | `kalinewb.notch-clipboard/` (`Facade.qml`) | Omarchy's `plugins/clipboard/Clipboard.qml` |
 | `kalinewb.notch-emojis` | same, `omarchy.emojis` | `omarchy.emojis` | `kalinewb.notch-emojis/` | `plugins/emojis/Emojis.qml` |
 | `kalinewb.notch-image-picker` | same, `omarchy.image-picker` | `omarchy.image-picker` | `kalinewb.notch-image-picker/` | `plugins/image-picker/ImagePicker.qml` |
 | `kalinewb.notch-reminders` | same, `omarchy.reminders` | `omarchy.reminders` | `kalinewb.notch-reminders/` | `plugins/reminders/ReminderFlow.qml` |
@@ -48,12 +48,10 @@ the menu companion also swaps the `omarchy.menu` button in the bar layout for it
 restart (it does nothing to companions while the session is locked), it loops over the seven
 companions. For each one that is **already installed** and has a folder in the live checkout's
 `companion/`, it runs this repo's `bin/notch-companion sync --from <live checkout>/companion/<id>`.
-Companions that are not installed are skipped. The copy comes from the fast-forwarded live checkout,
-never from the working tree. `sync` returns success when the files already match, so `install.sh`
-prints `synced <id>` either way; the job's own message says "already up to date". When a sync
-replaces a folder, the old one is moved to
-`~/.local/state/kalinewb.notch/backups/<UTC stamp>-notch-menu` (the suffix is the same for every
-companion; see "Contradictions" below).
+Companions that are not installed are skipped, and so, silently, is one whose files already match;
+`install.sh` prints `synced <id>` only after a copy that succeeded. The copy comes from the
+fast-forwarded live checkout, never from the working tree. When a sync replaces a folder, the old one
+is moved to `~/.local/state/kalinewb.notch/backups/<UTC stamp>-<id>`.
 
 ## Enable, disable, remove
 
@@ -76,13 +74,7 @@ request is never dropped; a picker's caller is released if no menu can take it.
 
 These are in the code or its comments, not fixed here (documentation-only change):
 
-- `bin/notch-companion` names every backup `...-notch-menu`, whichever companion it is (the
-  `mv` in `sync_files`).
-- Its header comment still describes two or three companions (menu, OSD, notifications); there are
-  seven, and its `LABEL` default covers only OSD, notifications and "menu" (the notch passes
-  the label for the rest).
+- `bin/notch-companion`'s `LABEL` default covers only OSD, notifications and "menu" (the notch
+  passes the label for the rest).
 - `bin/notch-companion install` fails with "<id> already replaces Omarchy's menu." for a conflict
   on any companion, not only the menu.
-- `README.md` says the notch installs three companions; the picker companions are a fourth to
-  seventh and are installed by `hostedPanels`, which the README does not describe (it is in
-  `SURFACE-HOSTING.md` and `dev/own-window-hosting.md`).

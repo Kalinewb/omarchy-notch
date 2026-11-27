@@ -121,7 +121,6 @@ env_common=(
 nc() { env "${env_common[@]}" "$SCRIPT" "$@"; }
 calls() { cat "$CALLS" 2>/dev/null; }
 shell_hash() { sha256sum "$SHELL_SB" | cut -d' ' -f1; }
-state_files() { find "$STATE_SB" -type f 2>/dev/null | wc -l; }
 
 # A sender with every one of the 50 keys set, the three withheld, sentinels, a
 # clock format, two spacers; and a receiver that has hardly any.

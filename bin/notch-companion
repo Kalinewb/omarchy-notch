@@ -64,8 +64,6 @@ SOURCE="${NOTCH_COMPANION_SOURCE:-$REPO/companion/$ID}"
 PLUGINS_DIR="${NOTCH_COMPANION_DIR:-$HOME/.config/omarchy/plugins}"
 DEST="$PLUGINS_DIR/$ID"
 BACKUPS="${NOTCH_COMPANION_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/kalinewb.notch}/backups"
-SANDBOXED=0
-[[ -n ${NOTCH_COMPANION_DIR:-} ]] && SANDBOXED=1
 
 read -ra LIST_CMD <<<"${NOTCH_COMPANION_LIST:-omarchy plugin list --json}"
 read -ra ENABLE_CMD <<<"${NOTCH_COMPANION_ENABLE:-omarchy plugin enable}"

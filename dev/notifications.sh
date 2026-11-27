@@ -67,7 +67,6 @@ ago_s() { awk -v n="$(now_s)" -v a="$1" 'BEGIN { printf "%.3f", n - a }'; }
 # then a rename), so a reader never sees half of it. put() and drop() do the
 # same to the row list: oldest first, a row for a key already there replaced in
 # place.
-replace() { jq -c "$@" <"$live" >"$live.tmp" && mv "$live.tmp" "$live"; }
 # An empty file, and one that will not parse, are no rows.
 rows() { local r; r=$(jq -c . "$live" 2>/dev/null); echo "${r:-[]}"; }
 put() { # put <key> <ts> <summary> [body] [urgency] [execArgv]
